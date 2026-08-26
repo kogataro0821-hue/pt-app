@@ -8,16 +8,26 @@ import { VitePWA } from 'vite-plugin-pwa';
  *
  * 契約者は Safari で URL を開き、共有ボタン →「ホーム画面に追加」するだけで
  * アプリとして使えるようになります。App Store の審査も年会費も不要です。
+ *
+ * 公開先は GitHub Pages です。URL は
+ *     https://<GitHubのユーザー名>.github.io/pt-app/
+ * のように、リポジトリ名がパスに付きます。そのため BASE を '/pt-app/' にしています。
+ *
+ * ★ 独自ドメインを使うようになったら BASE を '/' に変えてください。
+ *   （それ以外に直す場所はありません）
  */
+const BASE = '/pt-app/';
+
 export default defineConfig({
+  base: BASE,
+
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // アイコンなどビルド対象外のファイルもキャッシュに含める
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        // ★アプリ名はここと src/config/app.ts の2箇所。設計書 §5
+        // ★アプリ名はここと src/config/firebase.ts の2箇所。設計書 §5
         name: 'PT Manager',
         short_name: 'PT Manager',
         description: '食事・運動・体重を記録して、PFCを正確に管理するアプリ',
@@ -26,8 +36,8 @@ export default defineConfig({
         // 普通のアプリのように全画面で表示されます
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        start_url: BASE,
+        scope: BASE,
         background_color: '#F3F5F2',
         theme_color: '#F3F5F2',
         icons: [
@@ -43,8 +53,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // Firestore への通信はキャッシュしない。常に最新のデータを取りに行く
-        navigateFallbackDenylist: [/^\/__/],
+        // Firebase への通信はキャッシュしない。常に最新のデータを取りに行く
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/,
@@ -59,6 +68,7 @@ export default defineConfig({
       devOptions: { enabled: false },
     }),
   ],
+
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -68,10 +78,12 @@ export default defineConfig({
       ),
     },
   },
+
   server: {
     host: true,
     port: 5173,
   },
+
   build: {
     outDir: 'dist',
     sourcemap: false,

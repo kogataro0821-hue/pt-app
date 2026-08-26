@@ -1,5 +1,5 @@
 import { formatNutrients, scaleByGrams, sumNutrients, toInternal, type Nutrients } from '@pt/core';
-import { APP_NAME, isFirebaseConfigured } from '@/config/env';
+import { APP_NAME, isFirebaseConfigured } from '@/config/firebase';
 import { useStandalone } from '@/hooks/useStandalone';
 
 /**

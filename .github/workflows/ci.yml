@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
   pull_request:
     branches: [main, develop]
 
@@ -35,7 +35,7 @@ jobs:
         run: npm test
 
       # 公開前にビルドが通ることを確かめる。
-      # 実際の公開は Cloudflare Pages が GitHub を見て自動で行う。
+      # 実際の公開は deploy.yml（GitHub Pages）が行う。
       - name: Build
         run: npm run build
 

@@ -1,6 +1,6 @@
 # AIパーソナルトレーナー 食事・運動管理アプリ ─ 設計書 (Phase 0)
 
-- 版: v0.4 (配布方法をPWAに変更)
+- 版: v0.5 (公開先を GitHub Pages に変更)
 - 作成日: 2026-08-26 / 更新: 2026-08-26
 - ステータス: **未承認 / 実装未着手**
 
@@ -12,7 +12,8 @@
 |---|---|---|
 | 配布は PWA | App Store には出さない。Safari で開いてホーム画面に追加してもらう | §2, §11, §13 |
 | React Native をやめる | React + Vite の Web アプリに変更。動作が軽く、Safari との相性がよい | §2 |
-| ローカル開発環境を作らない | GitHub に push すると Cloudflare Pages が自動でビルドして公開する | §4, §13 |
+| ローカル開発環境を作らない | GitHub に push すると GitHub Actions が自動でビルドして GitHub Pages に公開する | §4, §13 |
+| 公開先は GitHub Pages | 追加のサービスもアカウントも不要。リポジトリは Public にする | §4.5 |
 
 PFC計算エンジン（`packages/core`）と AI スキーマ（`packages/ai-contract`）は**一切変更なし**で流用できました。「純粋ロジックは何にも依存させない」という設計方針（§3.1）が効いています。
 
@@ -233,7 +234,7 @@ pt-app/
 | AI中継サーバー | **Cloudflare Workers** 無料プラン | 100,000 リクエスト/日、10ms CPU/呼出 | 不要 |
 | レート制限 | Workers KV 無料プラン | 読 100,000/日・書 1,000/日 | 不要 |
 | AI本体 | Gemini API 無料枠 | RPM/RPD 制限あり | 不要 |
-| アプリの公開 | **Cloudflare Pages** 無料プラン | 帯域無制限・月500ビルド | 不要 |
+| アプリの公開 | **GitHub Pages** 無料プラン | 1GB・100GB/月 | 不要 |
 
 > Cloudflare Workers の「10ms CPU」は **CPUを実際に使った時間**であり、Gemini API の応答を待っている時間は含まれません。中継処理（JWT検証 + JSON整形）は数ミリ秒で収まるため、この制限は問題になりません。
 
@@ -281,27 +282,39 @@ Firestore 無料枠 1GB に対して **1年強で上限**に届きます。そ�
 
 ### 4.5 公開の仕組み（ローカル開発環境を作らない）
 
-**あなたの PC には何もインストールしません。** 次のように回します。
+**PC に開発環境を作らず、追加のサービスも使いません。** 次のように回ります。
 
 ```
-私がコードを書く
+コードを書く
    ↓
-GitHub に push
+GitHub Desktop で push
+   ↓ （自動・GitHub Actions）
+型チェック → lint → テスト → ビルド
    ↓ （自動）
-GitHub Actions が型チェック・lint・テスト・ビルドを実行
-   ↓ （自動）
-Cloudflare Pages が同じコードを見てビルドし、公開
+GitHub Pages に公開
    ↓
-あなたと契約者は URL を Safari で開く
+Safari で URL を開く
 ```
 
-Cloudflare Pages は GitHub リポジトリを直接見に行くため、**GitHub 側に鍵やトークンを置く必要がありません**。管理画面で一度リポジトリをつなぐだけです。
+公開先の URL は次の形です。
 
-環境変数（Firebase の接続情報）も Cloudflare の管理画面に入れます。手元に `.env` を作る必要はありません。
+```
+https://<GitHubのユーザー名>.github.io/pt-app/
+```
 
-> **Firebase Hosting ではなく Cloudflare Pages にした理由**
-> Firebase Hosting も Spark プランで無料ですが、GitHub から自動公開するにはサービスアカウントの秘密鍵をダウンロードして GitHub の Secrets に貼る作業が必要です。Cloudflare Pages は管理画面でリポジトリを選ぶだけで済みます。
-> また Phase 8 の AI中継サーバー（Cloudflare Worker）も同じアカウントで動かせるため、管理する場所が増えません。
+**鍵やトークンを貼り付ける作業はありません。** GitHub Pages への公開は GitHub 自身の権限で行われるため、Secrets の設定が不要です。
+
+> **リポジトリを Public にする必要があります**
+> GitHub Pages は、無料プランでは Public リポジトリでしか使えません（Private で使うには GitHub Pro が必要）。
+>
+> Public にしても問題ありません。リポジトリに入るのはコード・Firebaseの接続情報・Security Rules だけで、**契約者の氏名・記録・写真は一切入りません**。それらは Firestore 側にあり、Rules で守られます。Rules が見えても破れません（設計書 §7.6）。
+>
+> **Firebase の接続情報（apiKey 等）は `apps/web/src/config/firebase.ts` に直接書いています。** これらはビルド後のJSに必ず埋め込まれ、アプリを開いた人なら誰でも見られる値なので、隠す方法もなければ隠す必要もありません。環境変数にしても同じです。
+>
+> 一方 AI の APIキーは**絶対にここに書きません**。Cloudflare Worker の Secret に置きます（§9.2）。
+
+> **他の選択肢を採らなかった理由**
+> Cloudflare Pages / Firebase Hosting も無料で使えますが、どちらもアカウントや鍵の受け渡しが増えます。GitHub Pages なら GitHub だけで完結し、すでに慣れている運用（ファイルを更新して GitHub Desktop で送る）がそのまま使えます。
 
 ### 4.6 有料化が必要になる分岐点
 
@@ -313,7 +326,8 @@ Cloudflare Pages は GitHub リポジトリを直接見に行くため、**GitHu
 | Gemini 無料枠の日次上限 | 1日あたりの解析回数が急増した場合 | 有料枠へ（Worker の環境変数を差し替えるだけ） |
 | 契約者が30人を超える | 読み書き回数が無料枠の半分を超える | Blaze へ（この規模なら実費も現実的） |
 | プッシュ通知が必要 | FCM 自体は無料。ただし送信の自動化にはサーバーが要る | Cloudflare Worker + Cron Triggers（無料枠内） |
-| Cloudflare Pages の月500ビルド超過 | 1日16回以上 push した場合 | 実質到達しない |
+| GitHub Pages の帯域超過 | 月100GB。1人あたり数MBなので実質到達しない | — |
+| リポジトリを Private にしたくなった | ソースを隠したくなった場合 | GitHub Pro（月$4）にするか、Cloudflare Pages（無料）へ移す |
 
 ---
 
@@ -1281,7 +1295,7 @@ export function sumNutrients(list: readonly Nutrients[]): Nutrients {
 |---|---|---|
 | **0** | 仕様・設計 | 本ドキュメント + ご承認 |
 | **1** | プロジェクト作成 / GitHub | モノレポ、PWA初期化、ESLint/TS/Vitest、README、.env.example、.gitignore、main/develop ブランチ |
-| **2** | Firebase + 自動公開 | Firebaseプロジェクト(Spark)、Firestore初期Rules、Cloudflare Pages連携、**URLで開けるようになる** |
+| **2** | Firebase + 自動公開 | Firebaseプロジェクト(Spark)、Firestore初期Rules、GitHub Pages連携、**URLで開けるようになる** |
 | **3** | 認証・権限 | ログイン画面、`users` ロール方式、Rules v1、**権限テスト自動化** |
 | **4** | 契約者管理 | 管理者画面、契約者CRUD、目標設定、過去編集ウィンドウ設定 |
 | **5** | カレンダー | 月表示・マーカー・日別画面の枠 |
@@ -1313,7 +1327,7 @@ fix/xxxx
 ### 13.2 秘密情報の扱い（§31）
 
 - `.env` は `.gitignore` に登録。`.env.example` のみコミット
-- Firebase の接続情報は Cloudflare Pages の環境変数に設定。手元に `.env` を作る必要はない
+- Firebase の接続情報は `apps/web/src/config/firebase.ts` に直接記載（秘密情報ではないため）
 - AI APIキーは Cloudflare Worker の Secret（`wrangler secret put GEMINI_API_KEY`）。リポジトリにも環境変数にも置かない
 - Firebase サービスアカウントJSON は絶対にコミットしない
 - コミット前フックで秘密情報パターンを検査（gitleaks 相当）
@@ -1340,7 +1354,8 @@ fix/xxxx
 | 13 | 単位「1食」「1杯」の曖昧さ | 換算不能で計算が破綻 | `unitConversions` 未設定なら `unknown` として要確認。0扱いだが必ずUIに出す |
 | 14 | 契約者が食品マスタを汚す | 個人食品が乱立して検索性が落ちる | 個人食品は個人スコープに隔離。管理者が「共通へ昇格」できる導線を用意 |
 | 15 | 写真削除後の再解析不能 | 過去の確認ができなくなる | 削除前に管理者へ警告。栄養データは残る旨を明示 |
-| 16 | Cloudflare の依存が増える | 障害時にAI機能が止まる | AI が落ちても記録機能は全て動く設計 (§9.8)。Worker は200行程度で、他所へ移すのも容易 |
+| 16 | Cloudflare の依存（Phase 8 のAI中継のみ） | 障害時にAI機能が止まる | AI が落ちても記録機能は全て動く設計 (§9.8)。Worker は200行程度で、他所へ移すのも容易 |
+| 17 | **リポジトリが Public である** | アプリの作り方が第三者に見える | 契約者のデータは一切含まれない。Security Rules は見られても破れない。ただし Rules の穴は見つけられやすくなるため、§16.7 の権限テストを必ず緑に保つ |
 
 ---
 
@@ -1373,9 +1388,9 @@ fix/xxxx
 いまは仮に <b>PT Manager</b> としています。決まりしだい2箇所を書き換えるだけです（ホーム画面のアイコン下に出る名前になります）。
 
 #### Q4. アプリを開く URL
-Cloudflare Pages の既定では `pt-app.pages.dev` のような URL になります。
+GitHub Pages の既定では `https://<ユーザー名>.github.io/pt-app/` になります。
 - (a) この既定の URL のままでよい ← **推奨**（無料・設定不要）
-- (b) お持ちのドメインのサブドメイン（例: `app.silce.jp`）を使いたい ← 無料でできますが、DNS の設定が1つ必要です
+- (b) お持ちのドメインのサブドメイン（例: `app.silce.jp`）を使いたい ← 無料でできますが、DNS の設定が1つ必要です（その場合 `vite.config.ts` の `BASE` を `'/'` に変えます）
 
 #### Q5. コピペ出力の絵文字（§27）
 - 絵文字は指示書の例で固定でよいか / 管理者がテンプレートを編集できるようにするか

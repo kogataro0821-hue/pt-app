@@ -1,0 +1,70 @@
+name: Deploy
+
+# main ブランチに変更が入ったら、自動でビルドして GitHub Pages に公開する。
+#
+# ★ 秘密情報の受け渡しは一切ありません。
+#   GitHub Pages への公開は GitHub 自身の権限で行われるため、
+#   トークンや鍵をどこかに貼り付ける作業は不要です。
+#
+# あなたの作業は「GitHub Desktop で更新を送る」だけです。
+
+on:
+  push:
+    branches: [main]
+  # 手動でも実行できるようにしておく（Actions タブから Run workflow）
+  workflow_dispatch:
+
+# GitHub Pages への公開に必要な権限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 公開が重ならないようにする。走っている途中の公開は止めない
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # 壊れたものを公開しないよう、先に検査する
+      - name: Verify
+        run: npm run verify
+
+      - name: Build
+        run: npm run build
+
+      # GitHub Pages は存在しないURLに 404.html を返す。
+      # index.html と同じ中身を置いておくと、アプリ内の画面遷移が正しく動く。
+      - name: Add SPA fallback
+        run: cp apps/web/dist/index.html apps/web/dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

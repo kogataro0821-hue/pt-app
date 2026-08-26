@@ -45,16 +45,24 @@ AI(推定) → 人間の確認 → 手動修正 → 確定 → 決定論的PFC�
 **このリポジトリを手元で動かす必要はありません。**
 
 ```
-コードを書く → GitHub に push
+コードを書く → GitHub Desktop で push
+   ↓ 自動（GitHub Actions）
+型チェック → lint → テスト → ビルド
    ↓ 自動
-GitHub Actions が型チェック・lint・テスト・ビルド
-   ↓ 自動
-Cloudflare Pages がビルドして公開
+GitHub Pages に公開
    ↓
 Safari で URL を開く
 ```
 
-環境変数（Firebase の接続情報）は Cloudflare Pages の管理画面に入れます。手元に `.env` を作る必要はありません。
+公開先:
+
+```
+https://<GitHubのユーザー名>.github.io/pt-app/
+```
+
+**鍵やトークンを貼り付ける作業はありません。** GitHub Pages への公開は GitHub 自身の権限で行われます。
+
+Firebase の接続情報は `apps/web/src/config/firebase.ts` に直接書いてあります（秘密情報ではないため。理由は下の「秘密情報について」を参照）。
 
 ## 手元で動かしたい場合（任意）
 
@@ -71,9 +79,6 @@ git clone <このリポジトリのURL>
 cd pt-app
 
 npm install
-
-cp .env.example .env
-#    → Firebase の値を入れる。動作確認だけなら空のままでOK
 
 npm run dev
 #    → http://localhost:5173 が開きます
@@ -114,6 +119,11 @@ pt-app/
 │   └── 00_DESIGN.md         設計書
 └── .env.example             環境変数のひな形
 ```
+
+### GitHub Pages のサブパスについて
+
+URL がリポジトリ名を含む（`.../pt-app/`）ため、`apps/web/vite.config.ts` の `BASE` を
+`'/pt-app/'` にしています。独自ドメインを使うようになったら、そこを `'/'` に変えるだけです。
 
 ### `packages/core` は特別です
 
@@ -186,29 +196,43 @@ kcal / PFC の計算は必ず `packages/core` の関数が行います。
 
 ## 秘密情報について
 
-### GitHub に入れてはいけないもの
+**このリポジトリは Public です。** GitHub Pages を無料で使うための条件です。
+そのため「何が入っていて、何が入っていないか」を明確にしておきます。
 
-- `.env`（`.gitignore` 済み。そもそも作る必要がありません）
+### 入っているもの（見られても問題ないもの）
+
+- プログラムのコード
+- **Firebase の接続情報**（`apps/web/src/config/firebase.ts`）
+- Security Rules
+
+### 入っていないもの
+
+- **契約者の氏名・記録・写真・体重 — 一切入りません。** すべて Firestore 側にあります
 - AI の APIキー
-- Firebase のサービスアカウント鍵（`*-firebase-adminsdk-*.json`）
-- 証明書・秘密鍵（`*.pem` `*.key` `*.p8` `*.p12`）
+- Firebase のサービスアカウント鍵
+- 証明書・秘密鍵
 
-AI の APIキーは **Cloudflare Worker の Secret** に置きます（Phase 8）。
-アプリのバンドルには絶対に入れません。
+### なぜ Firebase の apiKey を隠さないのか
 
-```bash
-cd worker
-npx wrangler secret put GEMINI_API_KEY
-```
-
-### Firebase の apiKey は秘密ではありません
-
-`VITE_FIREBASE_API_KEY` はアプリに埋め込まれ、誰でも取り出せます。
-これは仕様どおりで、問題ではありません。
+隠せないからです。この値はビルドすると JavaScript に埋め込まれ、
+アプリを開いた人なら誰でもブラウザの開発者ツールで見られます。
+環境変数にしても、GitHub Secrets にしても、結果は同じです。
 
 **データを守っているのは Firestore Security Rules です。**
+apiKey を知っていても、Rules が正しければ他人のデータには一切触れません。
+
 Rules がこのアプリの唯一の防衛線なので、Rules のテストを最優先で書きます
-（設計書 §7 / §16.7）。
+（設計書 §7 / §16.7）。リポジトリが Public である以上、
+**権限テストが緑でない状態で公開しないこと**を徹底します。
+
+### AI の APIキーだけは別扱い
+
+こちらは本物の秘密情報です。**Cloudflare Worker の Secret** に置きます（Phase 8）。
+アプリのコードにも GitHub にも、絶対に入れません。
+
+```bash
+npx wrangler secret put GEMINI_API_KEY
+```
 
 ---
 
@@ -225,28 +249,21 @@ fix/*      修正
 
 ---
 
-## GitHub への登録
+## 公開（GitHub Pages）
 
-このリポジトリはまだリモートに紐づいていません。GitHub で空のリポジトリを作ってから:
+`.github/workflows/deploy.yml` が全部やります。
 
-```bash
-git remote add origin https://github.com/<あなたのアカウント>/pt-app.git
-git push -u origin main
-git push -u origin develop
-```
+1. `main` に変更が入る
+2. GitHub Actions が型チェック・lint・テスト・ビルドを実行
+3. 通ったら GitHub Pages に公開
 
-**リポジトリは Private を推奨します。** 契約者の健康情報を扱うアプリのため、
-将来的にテストデータなどが混ざるリスクを避けます。
+**あなたの作業は GitHub Desktop で更新を送るだけです。**
 
-## 公開（ホスティング）
+### 一度だけ必要な設定
 
-Cloudflare Pages が GitHub リポジトリを直接見てビルドします。GitHub 側に鍵やトークンを置く必要はありません。
+リポジトリの Settings → Pages で、Source を「**GitHub Actions**」にします。
 
-| 項目 | 設定 |
-|---|---|
-| ビルドコマンド | `npm run build` |
-| 出力ディレクトリ | `apps/web/dist` |
-| Node バージョン | 22 |
-| 環境変数 | `VITE_FIREBASE_*` を Cloudflare の管理画面に設定 |
+### 壊れたものは公開されません
 
-`apps/web/public/_redirects` と `_headers` で、SPA のルーティングと Service Worker のキャッシュ設定を行っています。
+デプロイの前に `npm run verify`（型・lint・テスト）が走ります。
+失敗したらそこで止まり、公開中のアプリは前のバージョンのまま残ります。
