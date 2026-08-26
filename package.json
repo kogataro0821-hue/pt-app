@@ -5,7 +5,8 @@
   "description": "AIパーソナルトレーナー 食事・運動管理アプリ",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "firebase"
   ],
   "engines": {
     "node": ">=20.19.0"
@@ -20,7 +21,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml}\"",
-    "verify": "npm run typecheck && npm run lint && npm run test"
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "test:rules": "npm run rules:test --workspace @pt/firebase"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

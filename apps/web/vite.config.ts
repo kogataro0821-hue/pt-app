@@ -87,5 +87,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Firebase SDK はサイズが大きく、めったに変わりません。
+        // 別ファイルに切り出しておくと、アプリを更新しても
+        // 端末に残っているキャッシュがそのまま使え、再ダウンロードが減ります。
+        manualChunks: {
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+        },
+      },
+    },
   },
 });

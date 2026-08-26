@@ -27,8 +27,8 @@ AI(推定) → 人間の確認 → 手動修正 → 確定 → 決定論的PFC�
 |---|---|---|
 | 0 | 仕様・設計 | ✅ 完了 |
 | 1 | プロジェクト作成・GitHub整備 | ✅ 完了 |
-| 2 | Firebase + 自動公開（URLで開けるようになる） | ⬜ 未着手 |
-| 3 | 認証・権限 | ⬜ 未着手 |
+| 2 | Firebase + 自動公開（URLで開けるようになる） | ✅ 完了 |
+| 3 | 認証・権限 | ✅ 完了 |
 | 4 | 契約者管理 | ⬜ 未着手 |
 | 5 | カレンダー | ⬜ 未着手 |
 | 6 | 食事・食品・PFC計算 | ⬜ 未着手 |
@@ -36,7 +36,7 @@ AI(推定) → 人間の確認 → 手動修正 → 確定 → 決定論的PFC�
 | 8〜10 | AI（画像解析・自然言語編集・評価） | ⬜ 未着手 |
 | 11〜12 | テスト強化・実機での運用開始 | ⬜ 未着手 |
 
-**最後までクレジットカード登録は不要です。** Firebase は Spark プラン固定、公開は Cloudflare Pages の無料枠、AI は Gemini の無料枠で完結します。
+**最後までクレジットカード登録は不要です。** Firebase は Spark プラン固定、公開は GitHub Pages、AI は Gemini の無料枠で完結します。
 
 ---
 
@@ -114,7 +114,9 @@ pt-app/
 │   └── ai-contract/         AIの抽象インターフェースと入出力スキーマ
 │
 ├── worker/                  AI中継サーバー（Cloudflare Worker）— Phase 8
-├── firebase/                Rules と Emulator 設定 — Phase 2
+├── firebase/                ★Security Rules と、その自動テスト
+│   ├── firestore.rules      唯一の防衛線
+│   └── tests/rules.test.ts  権限テスト55件
 ├── docs/
 │   └── 00_DESIGN.md         設計書
 └── .env.example             環境変数のひな形
@@ -142,6 +144,7 @@ Firebase を import しようとすると lint エラーになります。
 npm run dev          # 開発サーバーを起動（http://localhost:5173）
 npm run build        # 本番用にビルド（apps/web/dist に出力）
 npm test             # 全パッケージのテストを実行
+npm run test:rules   # Security Rules のテスト（Java と Emulator が必要）
 npm run typecheck    # 型チェック
 npm run lint         # ESLint
 npm run format       # Prettier で整形
@@ -265,5 +268,13 @@ fix/*      修正
 
 ### 壊れたものは公開されません
 
-デプロイの前に `npm run verify`（型・lint・テスト）が走ります。
-失敗したらそこで止まり、公開中のアプリは前のバージョンのまま残ります。
+デプロイの前に `npm run verify`（型・lint・テスト）と
+**Security Rules のテスト55件**が走ります。
+ひとつでも失敗したらそこで止まり、公開中のアプリは前のバージョンのまま残ります。
+
+### Security Rules は手動で反映が必要です
+
+リポジトリの `firebase/firestore.rules` は、**Firebase に登録しないと効きません。**
+
+Firebase コンソール → Firestore → 「ルール」タブに中身を貼り付けて「公開」してください。
+Rules を変更したときは毎回必要です。

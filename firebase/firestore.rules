@@ -1,0 +1,231 @@
+rules_version = '2';
+
+// =============================================================================
+//  Firestore Security Rules
+//
+//  ★ このアプリには Cloud Functions がありません（設計書 §4.2）。
+//    つまり、このファイルが「唯一の防衛線」です。
+//    画面で隠すのは対策になりません。ここで拒否されないものは全て通ります。
+//
+//  中心の原則（設計書 §5.1）:
+//    契約者に紐づくデータは、例外なく clients/{clientId}/ 配下に置く。
+//    これにより「契約者Aが契約者Bを見られない」がパス比較1行で表現できます。
+//
+//  ここを変更したら、必ずテストを実行してください。
+//      npm run test:rules
+//  （GitHub に push すると CI が自動で実行し、失敗したら公開を止めます）
+//
+//  実装上の注意:
+//    1回のリクエストで呼べる get()/exists() は10回までです。
+//    そのため判定関数は呼び出し回数を最小にしてあります。
+//    条件の並び順（安いものを先に置く）にも意味があります。
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // 権限の判定
+    //
+    // Custom Claims は Admin SDK（＝サーバー）が必要なため使えません。
+    // 代わりに users/{uid} ドキュメントを読んで判定します（設計書 §6.4）。
+    //
+    // 安全性の要は1点だけ:
+    //   users/{uid} は管理者しか書けない。
+    //   → 契約者が自分を管理者に昇格させる経路が存在しない。
+    //
+    // users ドキュメントが存在しないユーザーは get() が失敗し、
+    // その時点でリクエストが拒否されます（＝既定で拒否）。
+    // -------------------------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return signedIn() && me().role == 'admin' && me().active == true;
+    }
+
+    function isClient(cid) {
+      return signedIn()
+          && me().role == 'client'
+          && me().active == true
+          && me().clientId == cid;
+    }
+
+    // 読み取り権限。管理者は全員分、契約者は自分の分だけ。
+    function canRead(cid) {
+      return isClient(cid) || isAdmin();
+    }
+
+    // このアプリに登録済みで、かつ有効なユーザーか。
+    //
+    // ★ Firebase Auth のメール/パスワード登録は、誰でも呼び出せてしまいます
+    //   （apiKey は公開情報のため）。しかし users ドキュメントは管理者しか
+    //   作れないので、勝手に登録した人は「ログインできるが何も見えない」状態になります。
+    //   共通マスタの読み取りにもこの判定を使い、そこも塞いでおきます。
+    function isKnownUser() {
+      return signedIn() && me().active == true
+          && (me().role == 'admin' || me().role == 'client');
+    }
+
+    // -------------------------------------------------------------------------
+    // 過去編集ウィンドウ（設計書 §7.3）
+    //
+    // 契約者は「直近N日以内」だけ自分で修正できます（既定 7日）。
+    // 日付は 'yyyy-MM-dd' のゼロ埋め形式なので、文字列の大小比較が
+    // そのまま日付の前後比較になります。
+    //
+    // 基準は request.time（サーバー時刻）に9時間足した JST の今日。
+    // 端末の時計をずらしても迂回できません。
+    // -------------------------------------------------------------------------
+
+    function pad(n) {
+      return n < 10 ? '0' + string(n) : string(n);
+    }
+
+    function windowDays(cid) {
+      return int(get(/databases/$(database)/documents/clients/$(cid))
+                   .data.permissions.pastEditWindowDays);
+    }
+
+    function floorTs(cid) {
+      return request.time
+           + duration.value(9, 'h')
+           - duration.value(windowDays(cid), 'd');
+    }
+
+    function inWindow(cid, date) {
+      return date >= string(floorTs(cid).year())
+                   + '-' + pad(floorTs(cid).month())
+                   + '-' + pad(floorTs(cid).day());
+    }
+
+    function dayIsOpen(cid, date) {
+      return !exists(/databases/$(database)/documents/clients/$(cid)/days/$(date))
+          || get(/databases/$(database)/documents/clients/$(cid)/days/$(date))
+               .data.get('status', 'open') != 'finalized';
+    }
+
+    // 契約者が、その日のデータを書き換えてよいか
+    function clientMayEdit(cid, date) {
+      return isClient(cid) && inWindow(cid, date) && dayIsOpen(cid, date);
+    }
+
+    // 管理者は日付も確定状態も無視して編集できる（設計書 §2）
+    function mayEdit(cid, date) {
+      return clientMayEdit(cid, date) || isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 既定：全拒否
+    // 明示的に許可を書いたパスだけが通ります。
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{uid} — 権限の台帳
+    // ★ 契約者は自分の分を読めるが、絶対に書けない
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      // 自分自身の読み取りは get() を使わずに判定できるので先に置く
+      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // clients/{cid} — 契約者のプロフィールと目標
+    // -------------------------------------------------------------------------
+    match /clients/{cid} {
+      allow get: if canRead(cid);
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+
+      // 契約者が自分で変えてよいのは、表示名・メモ・拡張欄・AI同意だけ。
+      // 目標値(targets)・権限(permissions)・評価モード・有効フラグは触れない。
+      allow update: if isAdmin()
+        || (isClient(cid)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['displayName', 'memo', 'extra', 'aiConsent', 'passwordChangedAt', 'updatedAt']));
+
+      // ---- 日次データ -------------------------------------------------------
+
+      match /days/{date} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      match /days/{date}/meals/{mealId} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      match /days/{date}/exercises/{exerciseId} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      match /days/{date}/notes/{noteId} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      // 写真は base64 で Firestore に格納します（設計書 §4.3）。
+      // Storage Rules が使えないぶん、サイズ上限をここで守ります。
+      match /days/{date}/photos/{photoId} {
+        allow get, list: if canRead(cid);
+        allow create: if mayEdit(cid, date)
+                      && request.resource.data.dataUrl is string
+                      && request.resource.data.dataUrl.size() < 400000;
+        allow delete: if mayEdit(cid, date);
+        allow update: if false;   // 差し替えず、消して撮り直す
+      }
+
+      // ---- 個人スコープのマスタ類 -------------------------------------------
+      // 日付に紐づかないため編集ウィンドウの対象外
+
+      match /foods/{foodId}         { allow read, write: if canRead(cid); }
+      match /recipes/{recipeId}     { allow read, write: if canRead(cid); }
+      match /favorites/{favoriteId} { allow read, write: if canRead(cid); }
+      match /measurements/{date}    { allow read, write: if canRead(cid); }
+
+      // AIとの会話履歴。消しても確定済みの食事データは残ります（設計書 §40）
+      match /aiSessions/{sessionId} {
+        allow read, write: if canRead(cid);
+        match /messages/{messageId} { allow read, write: if canRead(cid); }
+      }
+
+      // 変更履歴。追記のみ。書き換えも削除もできない（設計書 §19）
+      match /audits/{auditId} {
+        allow get, list: if isAdmin();
+        allow create: if canRead(cid);
+        allow update, delete: if false;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 共通マスタ — 登録済みユーザーが読めて、管理者だけが書ける（設計書 §21）
+    // -------------------------------------------------------------------------
+    match /foods/{foodId} {
+      allow read: if isKnownUser();
+      allow write: if isAdmin();
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if isKnownUser();
+      allow write: if isAdmin();
+    }
+
+    match /config/{docId} {
+      allow read: if isKnownUser();
+      allow write: if isAdmin();
+    }
+  }
+}

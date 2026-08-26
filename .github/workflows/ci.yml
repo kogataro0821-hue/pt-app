@@ -34,6 +34,15 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Set up Java (Firestore Emulator に必要)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Security Rules テスト
+        run: npm run test:rules
+
       # 公開前にビルドが通ることを確かめる。
       # 実際の公開は deploy.yml（GitHub Pages）が行う。
       - name: Build

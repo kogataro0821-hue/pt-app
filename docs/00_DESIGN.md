@@ -1293,10 +1293,10 @@ export function sumNutrients(list: readonly Nutrients[]): Nutrients {
 
 | Phase | 内容 | 主な成果物 |
 |---|---|---|
-| **0** | 仕様・設計 | 本ドキュメント + ご承認 |
-| **1** | プロジェクト作成 / GitHub | モノレポ、PWA初期化、ESLint/TS/Vitest、README、.env.example、.gitignore、main/develop ブランチ |
-| **2** | Firebase + 自動公開 | Firebaseプロジェクト(Spark)、Firestore初期Rules、GitHub Pages連携、**URLで開けるようになる** |
-| **3** | 認証・権限 | ログイン画面、`users` ロール方式、Rules v1、**権限テスト自動化** |
+| **0** | 仕様・設計 | 本ドキュメント + ご承認 ✅ |
+| **1** | プロジェクト作成 / GitHub | モノレポ、PWA初期化、ESLint/TS/Vitest、README、.env.example、.gitignore、main/develop ブランチ ✅ |
+| **2** | Firebase + 自動公開 | Firebaseプロジェクト(Spark)、Firestore、GitHub Pages連携、**URLで開けるようになる** ✅ |
+| **3** | 認証・権限 | ログイン画面、`users` ロール方式、Rules v1、**権限テスト55件を CI の必須項目に** ✅ |
 | **4** | 契約者管理 | 管理者画面、契約者CRUD、目標設定、過去編集ウィンドウ設定 |
 | **5** | カレンダー | 月表示・マーカー・日別画面の枠 |
 | **6** | 食事・食品・PFC計算 | **PFCエンジン + 全テスト**、食品マスタ、食事CRUD、レシピ、お気に入り、コピペ出力 |
