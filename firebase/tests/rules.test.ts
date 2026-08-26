@@ -198,6 +198,28 @@ describe('★ 目標値と権限設定は契約者から触れない（設計書
     );
   });
 
+  // 初回パスワード変更の印は契約者自身が書く（設計書 §6.5）。
+  // ここが書けないと、契約者はパスワード変更画面から永久に出られなくなる。
+  it('契約者は自分の passwordChangedAt を書ける', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), 'clients/alice'),
+        { passwordChangedAt: 1700000000000, updatedAt: 1700000000000 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('契約者は他人の passwordChangedAt を書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'clients/bob'), { passwordChangedAt: 1 }, { merge: true }),
+    );
+  });
+
+  it('契約者は自分の clients ドキュメントを読める（初回判定に必要）', async () => {
+    await assertSucceeds(getDoc(doc(alice(), 'clients/alice')));
+  });
+
   it('契約者は目標カロリーを書き換えられない', async () => {
     await assertFails(
       setDoc(

@@ -19,6 +19,8 @@ interface AuthContextValue {
   signOutNow(): Promise<void>;
   /** パスワードを変更する。現在のパスワードで本人確認してから変更する */
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
+  /** users / clients を読み直して、ログイン状態を最新にする */
+  refresh(): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -34,40 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState({ status: 'signedOut' });
         return;
       }
-
-      // 権限は users/{uid} から読む（設計書 §6.4）
-      void (async () => {
-        try {
-          const snap = await getDoc(doc(getDb(), 'users', firebaseUser.uid));
-
-          if (!snap.exists()) {
-            setState({ status: 'unregistered', uid: firebaseUser.uid });
-            return;
-          }
-
-          const data = snap.data();
-          if (data.active !== true) {
-            setState({ status: 'disabled', uid: firebaseUser.uid });
-            return;
-          }
-
-          setState({
-            status: 'signedIn',
-            user: {
-              uid: firebaseUser.uid,
-              role: data.role === 'admin' ? 'admin' : 'client',
-              clientId: typeof data.clientId === 'string' ? data.clientId : null,
-              active: true,
-              displayName: typeof data.displayName === 'string' ? data.displayName : null,
-              passwordChangedAt:
-                typeof data.passwordChangedAt === 'number' ? data.passwordChangedAt : null,
-            },
-          });
-        } catch {
-          // users を読めない = Rules に拒否された = 登録されていない扱い
-          setState({ status: 'unregistered', uid: firebaseUser.uid });
-        }
-      })();
+      void loadProfile(firebaseUser.uid).then(setState);
     });
   }, []);
 
@@ -106,6 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // 「初回パスワード変更が済んだ」印を残す。
         // 契約者自身が書ける数少ないフィールドのひとつ（設計書 §7.2）。
+        //
+        // ★ 書き先は clients/{clientId} です。users/{uid} には書けません
+        //   （契約者が自分の権限行を書ける経路を作らないため。設計書 §7.1）。
+        //   そのため、この印を読むときも clients 側を見ます。
         if (state.status === 'signedIn' && state.user.clientId !== null) {
           try {
             await setDoc(
@@ -114,15 +87,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               { merge: true },
             );
           } catch {
-            // 記録に失敗してもパスワード変更自体は成功しているので、続行する
+            // 記録に失敗してもパスワード変更自体は成功しているので、続行する。
+            // 画面側はセッション内のフラグでも先へ進めるようにしてある。
           }
+          setState(await loadProfile(state.user.uid));
         }
+      },
+
+      async refresh() {
+        const uid = getAuthClient().currentUser?.uid;
+        if (uid === undefined) return;
+        setState(await loadProfile(uid));
       },
     }),
     [state],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/**
+ * ログイン状態を読み直す（設計書 §6.4）。
+ *
+ * 2か所を読みます。
+ *   users/{uid}        … 権限（管理者か契約者か・有効か）。管理者しか書けない。
+ *   clients/{clientId} … 初回パスワード変更の印。契約者自身が書ける。
+ *
+ * 権限にかかわる情報と、本人が書き換えられる情報を、別のドキュメントに
+ * 分けてあるのが要点です。混ぜると「自分を管理者にする」経路ができてしまいます。
+ */
+async function loadProfile(uid: string): Promise<AuthState> {
+  let data: Record<string, unknown>;
+  try {
+    const snap = await getDoc(doc(getDb(), 'users', uid));
+    if (!snap.exists()) return { status: 'unregistered', uid };
+    data = snap.data();
+  } catch {
+    // users を読めない = Rules に拒否された = 登録されていない扱い
+    return { status: 'unregistered', uid };
+  }
+
+  if (data.active !== true) return { status: 'disabled', uid };
+
+  const role = data.role === 'admin' ? 'admin' : 'client';
+  const clientId = typeof data.clientId === 'string' ? data.clientId : null;
+
+  // 初回パスワード変更の印は clients 側にある
+  let passwordChangedAt: number | null = null;
+  if (role === 'client' && clientId !== null) {
+    try {
+      const clientSnap = await getDoc(doc(getDb(), 'clients', clientId));
+      const value = clientSnap.data()?.passwordChangedAt;
+      passwordChangedAt = typeof value === 'number' ? value : null;
+    } catch {
+      // 読めなくても致命的ではない。未変更として扱う（安全側）。
+      passwordChangedAt = null;
+    }
+  }
+
+  return {
+    status: 'signedIn',
+    user: {
+      uid,
+      role,
+      clientId,
+      active: true,
+      displayName: typeof data.displayName === 'string' ? data.displayName : null,
+      passwordChangedAt,
+    },
+  };
 }
 
 export function useAuth(): AuthContextValue {

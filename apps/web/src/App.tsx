@@ -23,6 +23,15 @@ export default function App() {
 function Router() {
   const { state, signOutNow } = useAuth();
   const [changingPassword, setChangingPassword] = useState(false);
+  /**
+   * このセッションでパスワード変更を済ませたユーザーのUID。
+   *
+   * 本来の判定は clients/{clientId}.passwordChangedAt です。
+   * ただし、その記録の書き込みだけが失敗した場合に画面から出られなくなるため、
+   * 二重の安全網としてセッション内でも覚えておきます。
+   * UIDを持つのは、ログアウトして別の人がログインしたときに引きずらないためです。
+   */
+  const [changedUid, setChangedUid] = useState<string | null>(null);
 
   if (state.status === 'loading') {
     return <Splash />;
@@ -53,13 +62,20 @@ function Router() {
   }
 
   // 契約者が一度もパスワードを変えていない場合は、変更するまで先へ進めない
-  const mustChange = state.user.role === 'client' && state.user.passwordChangedAt === null;
+  const mustChange =
+    state.user.role === 'client' &&
+    state.user.passwordChangedAt === null &&
+    changedUid !== state.user.uid;
 
   if (mustChange || changingPassword) {
+    const uid = state.user.uid;
     return (
       <PasswordChangeScreen
         required={mustChange}
-        onDone={() => setChangingPassword(false)}
+        onDone={() => {
+          setChangedUid(uid);
+          setChangingPassword(false);
+        }}
         onCancel={() => setChangingPassword(false)}
       />
     );
