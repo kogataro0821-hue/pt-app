@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { LoginScreen } from '@/features/auth/LoginScreen';
 import { PasswordChangeScreen } from '@/features/auth/PasswordChangeScreen';
 import { HomeScreen } from '@/features/home/HomeScreen';
+import { AdminScreen } from '@/features/home/AdminScreen';
 
 export default function App() {
   return (
@@ -62,6 +63,10 @@ function Router() {
         onCancel={() => setChangingPassword(false)}
       />
     );
+  }
+
+  if (state.user.role === 'admin') {
+    return <AdminScreen onChangePassword={() => setChangingPassword(true)} />;
   }
 
   return <HomeScreen user={state.user} onChangePassword={() => setChangingPassword(true)} />;

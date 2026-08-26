@@ -14,3 +14,5 @@ export * from './nutrition/convert';
 export * from './nutrition/sum';
 export * from './nutrition/format';
 export * from './units/types';
+export * from './client/id';
+export * from './client/targets';

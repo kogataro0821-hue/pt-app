@@ -560,3 +560,230 @@ a {
   font-size: 15px;
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+ * 管理者画面
+ * ------------------------------------------------------------------------- */
+
+.appbar-actions {
+  display: flex;
+  gap: var(--space-lg);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.button-primary.compact {
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.button-quiet.back {
+  padding: 0;
+  text-decoration: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.card.warn {
+  border-color: var(--warn-rule, var(--attention));
+  background: var(--attention-soft);
+}
+
+/* ---- 契約者の行 ----------------------------------------------------------- */
+
+.client-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-md) 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.client-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.client-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.client-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.client-meta {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chevron {
+  flex: none;
+  color: var(--rule-strong);
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* ---- フォームの補助 ------------------------------------------------------- */
+
+.field-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.field-error {
+  font-size: 12.5px;
+  color: var(--danger);
+  line-height: 1.75;
+}
+
+.field-label.macro.p {
+  color: var(--p);
+}
+.field-label.macro.f {
+  color: var(--f);
+}
+.field-label.macro.c {
+  color: var(--c);
+}
+
+.form-ok {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13.5px;
+}
+
+.notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--attention-soft);
+  color: var(--attention);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+textarea.input {
+  resize: vertical;
+  line-height: 1.7;
+}
+
+select.input {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 22px,
+    calc(100% - 13px) 22px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
+
+/* ---- 選択肢 --------------------------------------------------------------- */
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.choice:last-child {
+  border-bottom: 0;
+}
+
+.choice input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.choice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choice-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.choice-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+}
+
+.button-secondary.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
