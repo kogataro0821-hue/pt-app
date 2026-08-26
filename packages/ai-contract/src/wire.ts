@@ -15,7 +15,7 @@ import type { RecognizedItem, MealRecognition } from './schemas';
  *   受け取ってからアプリ側の型へ広げます。欄が無ければ埋めようがありません。
  */
 
-export const aiUnitSchema = z.enum([
+const KNOWN_UNITS = [
   'g',
   'ml',
   '個',
@@ -27,7 +27,24 @@ export const aiUnitSchema = z.enum([
   '大さじ',
   '小さじ',
   'unknown',
-]);
+] as const;
+
+/**
+ * 単位。
+ *
+ * ★ 知らない単位が来たら 'unknown' に寄せます。
+ *   AIが「切れ」「玉」など想定外の単位を返したとき、
+ *   応答全体を捨ててしまうと、他の正しい項目まで失われるためです。
+ *   'unknown' になれば「何グラムでしたか」と聞く動きになるので、
+ *   勝手な換算が起きる心配はありません。
+ */
+export const aiUnitSchema = z.preprocess(
+  (value) =>
+    typeof value === 'string' && (KNOWN_UNITS as readonly string[]).includes(value)
+      ? value
+      : 'unknown',
+  z.enum(KNOWN_UNITS),
+);
 
 export const aiItemSchema = z.object({
   /** 食材の名前。商品名ではなく、一般的な food の名前 */

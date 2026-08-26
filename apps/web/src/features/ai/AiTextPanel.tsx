@@ -88,7 +88,9 @@ export function AiTextPanel({
       setResult({ guard, recognition, sourceText: text });
       setDrafts([...guard.accepted, ...guard.flagged].map((item) => toDraft(item, foods)));
     } catch (e) {
-      setError(e instanceof AiError ? aiErrorMessage(e.kind) : 'AIの呼び出しに失敗しました。');
+      setError(
+        e instanceof AiError ? aiErrorMessage(e.kind, e.detail) : 'AIの呼び出しに失敗しました。',
+      );
     } finally {
       setBusy(false);
     }

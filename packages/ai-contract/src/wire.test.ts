@@ -98,14 +98,20 @@ describe('スキーマの検証', () => {
     ).toBe(false);
   });
 
-  it('知らない単位は受け付けない', () => {
-    expect(
-      aiTextResultSchema.safeParse({
-        items: [{ ...item(), unit: 'ポンド' }],
-        unidentified: [],
-        notes: [],
-      }).success,
-    ).toBe(false);
+  // ★ 想定外の単位で応答全体を捨てると、正しい項目まで失われる。
+  //   'unknown' に寄せて「何グラムでしたか」と聞く動きにする。
+  it('知らない単位は unknown に寄せる（応答全体は捨てない）', () => {
+    const parsed = aiTextResultSchema.safeParse({
+      items: [{ ...item(), unit: '切れ' }],
+      unidentified: [],
+      notes: [],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.items[0]!.unit).toBe('unknown');
+      // 単位が unknown なので、量は利用者に聞く
+      expect(toRecognizedItem(parsed.data.items[0]!).needsUserInput).toBe(true);
+    }
   });
 });
 

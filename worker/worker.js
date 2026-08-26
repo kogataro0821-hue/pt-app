@@ -108,11 +108,25 @@ export default {
     if (!upstream.ok) {
       const kind =
         upstream.status === 429 ? 'rate_limited' : upstream.status >= 500 ? 'unavailable' : 'rejected';
+
+      // ★ 失敗の理由は Cloudflare のログに残します。
+      //   これが無いと「AIに接続できませんでした」としか分からず、
+      //   原因の切り分けに何往復もかかります。
+      //   APIキーは URL のクエリにあり、応答本文には含まれません。
+      console.log(
+        JSON.stringify({
+          uid,
+          result: 'error',
+          status: upstream.status,
+          detail: text.slice(0, 500),
+        }),
+      );
+
       return json({ error: kind, status: upstream.status }, upstream.status, origin);
     }
 
     // 誰が使ったかを Cloudflare のログに残す（本文は残しません）
-    console.log(JSON.stringify({ uid, bytes: body.length, status: upstream.status }));
+    console.log(JSON.stringify({ uid, result: 'ok', bytes: body.length }));
 
     return new Response(text, {
       status: 200,

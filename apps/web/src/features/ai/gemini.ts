@@ -21,13 +21,22 @@ export type AiErrorKind =
   | 'network';
 
 export class AiError extends Error {
-  constructor(readonly kind: AiErrorKind) {
+  constructor(
+    readonly kind: AiErrorKind,
+    /** 切り分けのための手がかり。利用者にもそのまま見せる */
+    readonly detail?: string,
+  ) {
     super(kind);
     this.name = 'AiError';
   }
 }
 
-export function aiErrorMessage(kind: AiErrorKind): string {
+export function aiErrorMessage(kind: AiErrorKind, detail?: string): string {
+  const suffix = detail === undefined ? '' : `（${detail}）`;
+  return baseMessage(kind) + suffix;
+}
+
+function baseMessage(kind: AiErrorKind): string {
   switch (kind) {
     case 'not_configured':
       return 'AIの設定がまだ済んでいません。トレーナーにご連絡ください。';
@@ -60,10 +69,12 @@ const RESPONSE_SCHEMA = {
         properties: {
           name: { type: 'string' },
           amount: { type: 'number' },
-          unit: {
-            type: 'string',
-            enum: ['g', 'ml', '個', '枚', '本', '杯', '食', 'パック', '大さじ', '小さじ', 'unknown'],
-          },
+          // ★ ここに enum を書くと、Gemini が 400 を返すことがあります。
+          //   単位の候補は指示文（SYSTEM_PROMPT）の側で伝え、
+          //   受け取ってから wire.ts 側で正規化します。
+          //   知らない単位が来ても 'unknown' に寄せるので、
+          //   スキーマを緩めても「勝手な補完」は防げます。
+          unit: { type: 'string' },
           amountStated: { type: 'boolean' },
           confidence: { type: 'number' },
           evidence: { type: 'string' },
@@ -117,9 +128,13 @@ const SYSTEM_PROMPT = `あなたは食事記録の入力を補助する役です
 
 ■ 単位について
 
+unit には次のいずれかを入れてください。
+  g / ml / 個 / 枚 / 本 / 杯 / 食 / パック / 大さじ / 小さじ / unknown
+
 グラムやミリリットルで書かれていればそのまま使ってください。
 「1個」「1杯」のような単位は、グラムに換算しないでください。
 その単位のまま返し、question に「何グラムでしたか」と書いてください。
+量がまったく書かれていない場合は amount を 0、unit を unknown にしてください。
 
 ■ 名前について
 
@@ -170,7 +185,11 @@ export async function parseMealText(text: string): Promise<MealRecognition> {
   if (!response.ok) {
     if (response.status === 401) throw new AiError('unauthenticated');
     if (response.status === 429) throw new AiError('rate_limited');
-    throw new AiError('unavailable');
+
+    // ★ 状態番号を画面に出します。
+    //   「接続できませんでした」だけだと、
+    //   キーの問題なのか、要求の形の問題なのかが切り分けられません。
+    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
   }
 
   let raw: GeminiResponse;
