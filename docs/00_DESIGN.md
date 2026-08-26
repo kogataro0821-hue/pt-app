@@ -1,10 +1,20 @@
 # AIパーソナルトレーナー 食事・運動管理アプリ ─ 設計書 (Phase 0)
 
-- 版: v0.3 (Phase 1 実装で判明した訂正を反映)
+- 版: v0.4 (配布方法をPWAに変更)
 - 作成日: 2026-08-26 / 更新: 2026-08-26
 - ステータス: **未承認 / 実装未着手**
 
 > このドキュメントは指示書 §48 に対する回答です。承認を頂くまで実装は開始しません。
+
+**v0.4 での変更点** — 契約者への配り方が「Safari で開いてホーム画面に追加」だと判明したため、アプリの作りを変更しました。
+
+| 決定 | 内容 | 影響範囲 |
+|---|---|---|
+| 配布は PWA | App Store には出さない。Safari で開いてホーム画面に追加してもらう | §2, §11, §13 |
+| React Native をやめる | React + Vite の Web アプリに変更。動作が軽く、Safari との相性がよい | §2 |
+| ローカル開発環境を作らない | GitHub に push すると Cloudflare Pages が自動でビルドして公開する | §4, §13 |
+
+PFC計算エンジン（`packages/core`）と AI スキーマ（`packages/ai-contract`）は**一切変更なし**で流用できました。「純粋ロジックは何にも依存させない」という設計方針（§3.1）が効いています。
 
 **v0.2 での変更点** — 以下のご判断を反映し、バックエンド構成を組み替えました。
 
@@ -62,55 +72,76 @@ AI(推定) → 人間の確認 → 手動修正 → 確定 → 決定論的PFC�
 
 ### 2.1 結論
 
-**React Native + Expo (SDK 57系) + TypeScript** を推奨します。
+**React + Vite + TypeScript の Web アプリ（PWA）** を推奨します。
 
-### 2.2 React Native/Expo vs SwiftUI 比較
+契約者は Safari で URL を開き、共有ボタン →「ホーム画面に追加」で、ふつうのアプリと同じように使えます。
 
-| 観点 | React Native + Expo | SwiftUI |
+### 2.2 なぜネイティブアプリ（App Store）にしないのか
+
+| 観点 | PWA（Safari + ホーム画面に追加） | ネイティブアプリ（App Store） |
 |---|---|---|
-| 開発機 | **Windows で開発可** (EAS Build がクラウドでiOSビルド) | **macOS + Xcode 必須** |
-| Claude Code との相性 | TypeScript単一言語・テストが軽い。相性 ◎ | Swift。ビルド確認にXcode往復が必要 |
-| 実機MVPまでの速さ | Expo Go で即日 | 署名・プロビジョニング設定が必要 |
-| PFC計算エンジンの共有 | TypeScript で アプリ / AI中継サーバー / テスト を**同一コード**で共有できる | Swift版とTS版が二重管理になる |
-| 管理者用Web画面（将来） | 同じロジックをWebで再利用可 | 別実装 |
-| ネイティブ性能 | 本アプリの規模では十分 | 有利だが差が出ない |
-| HealthKit連携（将来） | Config Plugin経由で可（やや手間） | 有利 |
+| 契約者への配り方 | **URL を送るだけ** | App Store で検索してもらう / TestFlight で招待 |
+| 費用 | **0円** | Apple Developer Program 年 $99 |
+| 審査 | **なし** | あり。健康関連アプリは特に厳しい |
+| 修正の反映 | **即座に全員へ** | 審査待ち（数日）。契約者が更新するまで古いまま |
+| 開発機 | Windows で完結 | ビルドに Mac が必要（クラウドビルドで回避可能だが手間） |
+| カメラ | 使える（写真の撮影・選択） | 使える |
+| プッシュ通知 | iOS 16.4 以降、ホーム画面に追加していれば使える | 使える |
+| HealthKit（歩数の自動取得） | **使えない** | 使える |
+| オフライン | Service Worker で対応可能 | 対応可能 |
 
-**決め手**: ご利用環境が Windows であること、そして §14/§15 の「決定論的PFC計算エンジンを1つだけ持ち、アプリとサーバーとテストで共有する」という要件です。SwiftUIだと計算ロジックがSwift/TSに二重化し、§15の「合計一致」保証が破綻しやすくなります。
+**決め手**: 契約者が1〜10人という規模で、App Store の審査と年会費を払う理由がありません。「URL を送るだけ」で配れることのほうが、この業務にはずっと価値があります。
 
-> HealthKit（歩数の自動取り込み）を最優先するなら SwiftUI 有利です。現時点では歩数は手入力で足りると判断しました。ご意向があればお知らせください。
+**諦めるもの**: HealthKit 連携（歩数の自動取り込み）はできません。歩数は手入力になります。将来どうしても必要になったら、そのときにネイティブ化を検討します。
 
-### 2.3 採用ライブラリ
+### 2.3 なぜ React Native をやめたのか
+
+当初は「App Store にも出せるように」React Native + Expo を選びました。PWA に決まった以上、React Native Web を経由する意味がなくなります。
+
+| | React Native + Expo（旧） | React + Vite（新） |
+|---|---|---|
+| ビルドサイズ | 1.1 MB | **198 KB（gzip 63 KB）** |
+| 依存パッケージ | 717 | **488** |
+| 脆弱性警告 | 11件 | **0件** |
+| Safari との相性 | Web は「おまけ」の位置づけ | Web が本命 |
+| PWA 対応 | 追加設定が必要 | 標準的な手順で済む |
+
+Phase 1 の成果のうち、**PFC計算エンジンと AI スキーマはそのまま流用**できました。作り直したのは画面の枠だけです。
+
+### 2.4 採用ライブラリ
 
 | 領域 | 採用 | 理由 |
 |---|---|---|
 | 言語 | TypeScript (strict) | 型で推定/確定を区別する設計の前提 |
-| フレームワーク | Expo (Managed) + expo-router | ファイルベースルーティング、実機確認が速い |
-| Firebase SDK | Firebase JS SDK v12系 | Expo Go で動作しMVPが速い。将来 `@react-native-firebase` へ移行可能なようRepository層で隔離 |
+| フレームワーク | React 19 + Vite 7 | 軽い。ビルドが速い |
+| PWA | vite-plugin-pwa（Workbox） | manifest と Service Worker を自動生成 |
+| ルーティング | React Router（Phase 5 で導入） | 画面が増えてから入れる |
 | 状態管理 | Zustand + Firestore onSnapshot ラッパー | 軽量。Reduxは過剰 |
 | フォーム/検証 | react-hook-form + **zod** | zodスキーマを AI出力検証 / Firestore書込検証 / フォーム検証 で共用 |
-| カレンダー | react-native-calendars | マーカー表示（記録あり/確定済み）が容易 |
-| グラフ | react-native-gifted-charts | 依存が軽くPFCドーナツ/推移グラフに十分 |
-| 画像 | expo-image-picker / expo-image-manipulator | 端末側で圧縮してから送信（無料枠対策） |
-| テスト | Vitest (core) / Jest + RNTL (UI) / Firebase Emulator + @firebase/rules-unit-testing (Rules) | §43 の3種テストに対応 |
-| AI中継 | **Cloudflare Workers**（無料プラン） | Cloud Functions の代替。APIキーを秘匿する唯一のサーバー。カード登録不要 |
-| 品質 | ESLint + Prettier + tsc --noEmit + Husky | CIで強制 |
+| カレンダー | 自作（Phase 5） | 日本語の月表示は自作のほうが軽く、思いどおりになる |
+| グラフ | 自作の SVG（Phase 6） | PFCリングと推移グラフだけならライブラリ不要 |
+| 画像圧縮 | Canvas API（ブラウザ標準） | 追加ライブラリ不要 |
+| テスト | Vitest / Firebase Emulator + @firebase/rules-unit-testing | §43 のテストに対応 |
+| 品質 | ESLint + Prettier + tsc --noEmit | CIで強制 |
 
-### 2.4 リポジトリ構成（モノレポ）
+### 2.5 リポジトリ構成（モノレポ）
 
 ```
 pt-app/
 ├── apps/
-│   └── mobile/              # Expo アプリ
+│   └── web/                 PWA（React + Vite）
+│       ├── public/          アイコン・ホスティング設定
+│       └── src/
+│           ├── config/      環境変数の読み取り口
+│           ├── hooks/
+│           └── styles.css   配色トークン
 ├── packages/
-│   ├── core/                # ★純粋ロジック（Firebase/AI非依存）
-│   │   ├── nutrition/       # 栄養値解決・PFC計算エンジン
-│   │   ├── schema/          # zodスキーマ（Firestore + AI I/O）
-│   │   └── units/           # 単位換算
-│   └── ai-contract/         # AIProviderインターフェース + 入出力スキーマ
-├── worker/                  # Cloudflare Worker (AI中継のみ)
-│   ├── src/ai/providers/    # Gemini / OpenAI / Claude 実装
-│   └── src/auth/            # Firebase IDトークン検証
+│   ├── core/                ★純粋ロジック（Firebase/AI非依存）
+│   │   ├── nutrition/       栄養値解決・PFC計算エンジン
+│   │   ├── schema/          zodスキーマ（Firestore + AI I/O）
+│   │   └── units/           単位換算
+│   └── ai-contract/         AIProviderインターフェース + 入出力スキーマ
+├── worker/                  Cloudflare Worker (AI中継のみ)
 ├── firebase/
 │   ├── firestore.rules
 │   └── firestore.indexes.json
@@ -120,7 +151,7 @@ pt-app/
 └── README.md
 ```
 
-**`packages/core` は Firebase も AI も import しません。** これが §14/§37「責任分離」の物理的な担保です。
+**`packages/core` は Firebase も AI も import しません。** これが §14/§37「責任分離」の物理的な担保です。ESLint の `no-restricted-imports` で機械的に禁止しています。
 
 ---
 
@@ -130,7 +161,7 @@ pt-app/
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ UI層  screens / components                          │
+│ UI層  pages / components （React + Vite / PWA）     │
 │   カレンダー・日別詳細・食事編集・AI確認画面        │
 ├─────────────────────────────────────────────────────┤
 │ アプリケーション層  hooks / usecases                │
@@ -202,6 +233,7 @@ pt-app/
 | AI中継サーバー | **Cloudflare Workers** 無料プラン | 100,000 リクエスト/日、10ms CPU/呼出 | 不要 |
 | レート制限 | Workers KV 無料プラン | 読 100,000/日・書 1,000/日 | 不要 |
 | AI本体 | Gemini API 無料枠 | RPM/RPD 制限あり | 不要 |
+| アプリの公開 | **Cloudflare Pages** 無料プラン | 帯域無制限・月500ビルド | 不要 |
 
 > Cloudflare Workers の「10ms CPU」は **CPUを実際に使った時間**であり、Gemini API の応答を待っている時間は含まれません。中継処理（JWT検証 + JSON整形）は数ミリ秒で収まるため、この制限は問題になりません。
 
@@ -247,7 +279,31 @@ Firestore 無料枠 1GB に対して **1年強で上限**に届きます。そ�
 
 **この構成の実費は 0円です。** クレジットカードの登録も不要です。
 
-### 4.5 有料化が必要になる分岐点
+### 4.5 公開の仕組み（ローカル開発環境を作らない）
+
+**あなたの PC には何もインストールしません。** 次のように回します。
+
+```
+私がコードを書く
+   ↓
+GitHub に push
+   ↓ （自動）
+GitHub Actions が型チェック・lint・テスト・ビルドを実行
+   ↓ （自動）
+Cloudflare Pages が同じコードを見てビルドし、公開
+   ↓
+あなたと契約者は URL を Safari で開く
+```
+
+Cloudflare Pages は GitHub リポジトリを直接見に行くため、**GitHub 側に鍵やトークンを置く必要がありません**。管理画面で一度リポジトリをつなぐだけです。
+
+環境変数（Firebase の接続情報）も Cloudflare の管理画面に入れます。手元に `.env` を作る必要はありません。
+
+> **Firebase Hosting ではなく Cloudflare Pages にした理由**
+> Firebase Hosting も Spark プランで無料ですが、GitHub から自動公開するにはサービスアカウントの秘密鍵をダウンロードして GitHub の Secrets に貼る作業が必要です。Cloudflare Pages は管理画面でリポジトリを選ぶだけで済みます。
+> また Phase 8 の AI中継サーバー（Cloudflare Worker）も同じアカウントで動かせるため、管理する場所が増えません。
+
+### 4.6 有料化が必要になる分岐点
 
 先に明示しておきます。以下に該当したときだけ、改めてご相談します。
 
@@ -257,6 +313,7 @@ Firestore 無料枠 1GB に対して **1年強で上限**に届きます。そ�
 | Gemini 無料枠の日次上限 | 1日あたりの解析回数が急増した場合 | 有料枠へ（Worker の環境変数を差し替えるだけ） |
 | 契約者が30人を超える | 読み書き回数が無料枠の半分を超える | Blaze へ（この規模なら実費も現実的） |
 | プッシュ通知が必要 | FCM 自体は無料。ただし送信の自動化にはサーバーが要る | Cloudflare Worker + Cron Triggers（無料枠内） |
+| Cloudflare Pages の月500ビルド超過 | 1日16回以上 push した場合 | 実質到達しない |
 
 ---
 
@@ -1171,7 +1228,11 @@ export function sumNutrients(list: readonly Nutrients[]): Nutrients {
 | 入力 | 最小タップ数優先。ホームから2タップで食品追加まで到達 |
 | 文字 | 動的フォントサイズ対応。数値は等幅で桁ズレを防ぐ |
 | ダークモード | 対応（トークン化した配色で両対応） |
-| アプリ名 | `config/app.appName` + `app.config.ts` の1箇所のみ。コードにハードコードしない（§5） |
+| アプリ名 | `src/config/env.ts` と `vite.config.ts` の manifest の2箇所のみ。コードにハードコードしない（§5） |
+| ホーム画面追加 | 初回訪問時に「共有ボタン →ホーム画面に追加」の案内を出す。追加後は案内を隠す |
+| セーフエリア | ノッチ／ホームバーに文字が隠れないよう `env(safe-area-inset-*)` で余白を確保 |
+| 入力欄 | フォントサイズを16px未満にしない（iOS が自動でズームしてしまうため） |
+| 更新 | Service Worker が新しい版を検知したら、静かに次回起動から差し替える |
 
 ---
 
@@ -1219,22 +1280,23 @@ export function sumNutrients(list: readonly Nutrients[]): Nutrients {
 | Phase | 内容 | 主な成果物 |
 |---|---|---|
 | **0** | 仕様・設計 | 本ドキュメント + ご承認 |
-| **1** | プロジェクト作成 / GitHub | モノレポ、Expo初期化、ESLint/TS/Vitest、README、.env.example、.gitignore、main/develop ブランチ |
-| **2** | Firebase (Spark) | dev/prodプロジェクト、Emulator Suite、Firestore初期Rules、CI |
+| **1** | プロジェクト作成 / GitHub | モノレポ、PWA初期化、ESLint/TS/Vitest、README、.env.example、.gitignore、main/develop ブランチ |
+| **2** | Firebase + 自動公開 | Firebaseプロジェクト(Spark)、Firestore初期Rules、Cloudflare Pages連携、**URLで開けるようになる** |
 | **3** | 認証・権限 | ログイン画面、`users` ロール方式、Rules v1、**権限テスト自動化** |
-| **4** | 契約者管理 | 管理者画面、契約者CRUD（セカンダリインスタンス方式）、目標設定、過去編集ウィンドウ設定 |
+| **4** | 契約者管理 | 管理者画面、契約者CRUD、目標設定、過去編集ウィンドウ設定 |
 | **5** | カレンダー | 月表示・マーカー・日別画面の枠 |
 | **6** | 食事・食品・PFC計算 | **PFCエンジン + 全テスト**、食品マスタ、食事CRUD、レシピ、お気に入り、コピペ出力 |
 | **7** | 運動・メモ | 運動記録、メモ、体重、1日確定 |
-| — | **ここまでで MVP 完成 / 実機運用開始可能。ここまで一切カード登録なし** | |
-| **8** | AI基盤 + 画像解析 | **Cloudflare Worker**（IDトークン検証・レート制限・Gemini実装）、同意フロー、写真保存（Firestore方式）、画像圧縮、確認画面 |
+| — | **ここまでで MVP 完成 / 契約者に URL を配れる状態** | |
+| **8** | AI基盤 + 画像解析 | **Cloudflare Worker**（IDトークン検証・レート制限・Gemini実装）、同意フロー、写真保存、画像圧縮、確認画面 |
 | **9** | AI自然言語編集 | 編集指示の解釈、evidence検証、操作適用 |
 | **10** | AI評価 | 評価モード、日次評価生成、トレーナーフィードバック |
-| **11** | テスト強化 | E2E、Rules網羅、Worker のテスト、App Check 導入検討 |
-| **12** | iPhone実機確認 | EAS Build、実機配布、実運用フィードバック反映 |
-| **13** | App Store公開準備 | プライバシーポリシー、App Privacy申告、審査対応（Apple Developer Program $99/年） |
+| **11** | テスト強化 | E2E、Rules網羅、Worker のテスト |
+| **12** | 実機での運用開始 | iPhone実機で全機能を確認、契約者へ配布、オフライン挙動の確認 |
 
-> **全フェーズを通じてクレジットカード登録は不要です。** 唯一の例外は Phase 13（App Store公開）で、これは Apple の年会費であり Firebase とは無関係です。実機での運用だけなら Phase 12 で完結します。
+> **クレジットカード登録も年会費も一切不要です。** App Store に出す予定がないため、Apple Developer Program も必要ありません。
+
+> **あなたの PC への作業は発生しません。** すべてブラウザ上の操作（GitHub と Firebase と Cloudflare の管理画面）だけで進みます。
 
 ### 13.1 ブランチ運用（§32）
 
@@ -1251,7 +1313,8 @@ fix/xxxx
 ### 13.2 秘密情報の扱い（§31）
 
 - `.env` は `.gitignore` に登録。`.env.example` のみコミット
-- AI APIキーは Cloudflare Worker の Secret（`wrangler secret put GEMINI_API_KEY`）。リポジトリにも `.env` にも置かない
+- Firebase の接続情報は Cloudflare Pages の環境変数に設定。手元に `.env` を作る必要はない
+- AI APIキーは Cloudflare Worker の Secret（`wrangler secret put GEMINI_API_KEY`）。リポジトリにも環境変数にも置かない
 - Firebase サービスアカウントJSON は絶対にコミットしない
 - コミット前フックで秘密情報パターンを検査（gitleaks 相当）
 
@@ -1267,8 +1330,9 @@ fix/xxxx
 | 4 | **契約者作成でトランザクションが張れない** | 途中で失敗すると中途半端なアカウントが残る | 作成順序を固定し、未完了状態を管理者画面に表示して再開できるようにする (§6.5) |
 | 5 | **AIの重量推定精度は本質的に低い** | 誤ったPFCが確定されるリスク | 確認必須UI + `needsReview` + 確定時の警告。「AIは推定するだけ」をUIで明示 |
 | 6 | **食品成分データのライセンス** | 他社アプリのDBは流用不可 | 初期データは空から開始（ご判断済み）。将来 日本食品標準成分表（文部科学省 食品成分データベース）を使う場合は、出典明記と商用利用条件の確認を先に行う |
-| 7 | 実機配布の制約 | Expo Go を離れると署名が必要 | MVPは Expo Go。Phase 12 で EAS Build。App Store公開時のみ Apple Developer Program($99/年) |
-| 8 | オフライン時の記録 | 電波の悪いジムで入力できない | Firestore のローカルキャッシュ + 送信キュー。MVPでは「オンライン前提 + 失敗時の下書き保持」 |
+| 7 | **iOS の PWA 固有の制約** | ホーム画面に追加しないと全画面にならない／通知が使えない | 初回に追加の案内を出す。追加したかどうかを検知して案内を出し分ける |
+| 7b | **Safari のデータ退避** | 長期間使わないとブラウザ側の保存データが消える場合がある | ログイン状態が切れても、データは Firestore にあるので失われない。再ログインで復帰できる旨を案内する |
+| 8 | オフライン時の記録 | 電波の悪いジムで入力できない | Service Worker で画面は開ける。Firestore のローカルキャッシュ + 送信キュー。MVPでは「オンライン前提 + 失敗時の下書き保持」 |
 | 9 | 同時編集の競合 | 管理者と契約者が同じ食事を同時編集 | `updatedAt` によるオプティミスティックロック。競合時は差分表示して選択させる |
 | 10 | 日合計キャッシュの陳腐化 | 表示値と実データがズレる | 表示時に必ず items から再計算・照合。ズレたら自動修復 + ログ |
 | 11 | **健康情報の法的な取り扱い** | 個人情報保護法上、健康関連情報は慎重な扱いが必要。AI APIへの送信は第三者提供/越境移転の論点 | 利用目的の明示と同意取得を §9.7 の同意フローに組み込む。プライバシーポリシー雛形をPhase 13で用意 |
@@ -1302,30 +1366,40 @@ fix/xxxx
 
 #### Q2. ログイン用のドメイン（§6.2）
 契約者IDを合成メールへ変換します。
-- (a) お持ちのドメイン（silce.jp 等）のサブドメイン: `tanaka01@members.silce.jp`
-- (b) ドメイン非依存の内部形式: `tanaka01@pt-app-prod.local` ← **推奨**（設定不要・外部に漏れない）
+- (a) ドメイン非依存の内部形式: `tanaka01@pt-app.local` ← **推奨**（設定不要・外部に漏れない）
+- (b) お持ちのドメイン（silce.jp 等）のサブドメイン: `tanaka01@members.silce.jp`
 
-#### Q3. コピペ出力の絵文字（§27）
+#### Q3. アプリの名前
+いまは仮に <b>PT Manager</b> としています。決まりしだい2箇所を書き換えるだけです（ホーム画面のアイコン下に出る名前になります）。
+
+#### Q4. アプリを開く URL
+Cloudflare Pages の既定では `pt-app.pages.dev` のような URL になります。
+- (a) この既定の URL のままでよい ← **推奨**（無料・設定不要）
+- (b) お持ちのドメインのサブドメイン（例: `app.silce.jp`）を使いたい ← 無料でできますが、DNS の設定が1つ必要です
+
+#### Q5. コピペ出力の絵文字（§27）
 - 絵文字は指示書の例で固定でよいか / 管理者がテンプレートを編集できるようにするか
 - 丸めは「kcalは整数・PFCは小数第1位」でよいか
 
-#### Q4. 体重・体脂肪率の記録場所（§4）
+#### Q6. 体重・体脂肪率の記録場所（§4）
 - 日別画面に入力欄を設ける想定でよいか（本設計ではそのように置いています）
 - 毎日入力か、週1回程度か（カレンダーのマーカー設計に影響します）
 
-#### Q5. トレーナーからのフィードバック（§1）
+#### Q7. トレーナーからのフィードバック（§1）
 - AI評価とは別枠でトレーナーのコメント欄を設ける想定でよいか
 - 契約者への通知（プッシュ）は必要か（FCM自体は無料。送信の自動化は Phase 10 以降）
 
-#### Q6. 契約者の食品・レシピ登録権限（§21）
+#### Q8. 契約者の食品・レシピ登録権限（§21）
 - 管理者が個人食品を「共通へ昇格」できる導線は必要か
 - 契約者の食品登録自体をオフにする設定は必要か
 
-#### Q7. 将来の管理者用Web画面（PC）
-- 管理者機能をPCのブラウザからも使いたいご意向はありますか
-- ある場合、Phase 4 の設計を少し変えておきます（Expo Web で同じコードを流用できます）
+#### Q9. 管理者機能をPCの大きい画面でも使いたいか
+Web アプリになったので、**PCのブラウザで同じ URL を開けば管理者機能はそのまま使えます**。追加開発は不要です。
+- ただし「PCでは一覧を横に広く並べたい」など、画面幅に応じた作り込みが必要かどうかだけ教えてください
+- (a) スマホの見た目のままでよい ← **推奨**（作り込みは後からでもできます）
+- (b) PC用に横並びのレイアウトを用意したい
 
-#### Q8. 開発の進め方（§45）
+#### Q10. 開発の進め方（§45）
 - 各Phase完了ごとにご確認いただき、承認後に次へ進む形でよいか
 - 1Phaseあたりの粒度（もっと細かく区切る / このままでよい）
 
@@ -1341,7 +1415,7 @@ fix/xxxx
 | スキーマ | Vitest + zod | AI入出力・Firestore書込データ | 主要パス |
 | Rules | Firebase Emulator + `@firebase/rules-unit-testing` | Firestore Rules | **全ルール分岐** |
 | 結合 | Vitest + Emulator | Repository層 | 主要パス |
-| UI | Jest + React Native Testing Library | 確認画面・編集フロー | 重要画面 |
+| UI | Vitest + React Testing Library | 確認画面・編集フロー | 重要画面 |
 | Worker | Vitest + Miniflare | IDトークン検証・レート制限・AI出力の後処理 | 主要パス |
 | E2E | Maestro（Phase 11） | ログイン→記録→確定→コピー | 主要シナリオ |
 
@@ -1470,7 +1544,7 @@ typecheck → lint → vitest (core) → rules-test (emulator) → vitest (worke
 | §29 Firebase | §4（Spark固定・カード登録なし） |
 | §30 AI API | §9.1, §9.2 |
 | §31-32 GitHub | §13.1, §13.2 |
-| §33 iPhone | §2.2 |
+| §33 iPhone | §2.1, §2.2（PWAとして配布） |
 | §34 セキュリティ | §7, §9.2 |
 | §35 AIへ渡すデータ | §9.3 |
 | §36 出力形式 | §9.4 |
@@ -1489,10 +1563,12 @@ typecheck → lint → vitest (core) → rules-test (emulator) → vitest (worke
 
 ## 承認のお願い
 
-第1回のご判断（カード登録なし / AI無料枠+同意 / 過去編集7日 / 食品マスタ空）を反映して、v0.2 としました。
+第1回（カード登録なし / AI無料枠+同意 / 過去編集7日 / 食品マスタ空）と、第2回（Safariで開くPWA / ローカル開発環境なし）のご判断を反映して、v0.4 としました。
 
-**Phase 1〜7（MVP完成・実機運用開始）まで、クレジットカード登録は一切不要です。** AI機能を載せる Phase 8 でも、Cloudflare Workers と Gemini の無料枠だけで完結します。
+**最後までクレジットカード登録は不要です。** App Store に出さないため Apple の年会費もかかりません。AI機能を載せる Phase 8 でも、Cloudflare と Gemini の無料枠だけで完結します。
 
-本設計書の内容にご承認をいただけましたら、**Phase 1（プロジェクト作成・GitHub整備）**から着手します。§15.2 の Q1〜Q8 は Phase 4 に入るまでに決まっていれば十分ですので、承認と同時でなくても構いません。
+**あなたの PC には何もインストールしません。** GitHub・Firebase・Cloudflare の管理画面をブラウザで操作するだけで進みます。
+
+本設計書の内容にご承認をいただけましたら、**Phase 1（プロジェクト作成・GitHub整備）**から着手します。§15.2 の Q1〜Q10 は Phase 4 に入るまでに決まっていれば十分ですので、承認と同時でなくても構いません。
 
 修正・追加のご要望があれば、この設計書を更新したうえで再度ご確認いただきます。

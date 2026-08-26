@@ -27,17 +27,14 @@ build/
 coverage/
 *.tsbuildinfo
 
-# ---- Expo --------------------------------------------------------------
-.expo/
-.expo-shared/
-expo-env.d.ts
-ios/
-android/
-*.jks
-*.orig.*
+# ---- Vite / ビルド出力 -------------------------------------------------
+apps/web/dist/
+.vite/
 
-# ---- Metro / RN --------------------------------------------------------
-.metro-health-check*
+# ---- ホスティング ------------------------------------------------------
+.cloudflare/
+.wrangler/
+
 *.log
 npm-debug.*
 yarn-debug.*

@@ -12,56 +12,78 @@ AI(推定) → 人間の確認 → 手動修正 → 確定 → 決定論的PFC�
 
 ---
 
+## どうやって使うものか
+
+契約者は **Safari で URL を開いて「ホーム画面に追加」** します。App Store には出しません。
+ホーム画面から開くと Safari のバーが消え、ふつうのアプリと同じ見た目になります。
+
+- 審査なし・年会費なし
+- 直したらすぐ全員に反映される
+- 配るときは URL を送るだけ
+
 ## 現在の状況
 
 | Phase | 内容 | 状態 |
 |---|---|---|
 | 0 | 仕様・設計 | ✅ 完了 |
 | 1 | プロジェクト作成・GitHub整備 | ✅ 完了 |
-| 2 | Firebase (Spark) | ⬜ 未着手 |
+| 2 | Firebase + 自動公開（URLで開けるようになる） | ⬜ 未着手 |
 | 3 | 認証・権限 | ⬜ 未着手 |
 | 4 | 契約者管理 | ⬜ 未着手 |
 | 5 | カレンダー | ⬜ 未着手 |
 | 6 | 食事・食品・PFC計算 | ⬜ 未着手 |
 | 7 | 運動・メモ | ⬜ 未着手 |
 | 8〜10 | AI（画像解析・自然言語編集・評価） | ⬜ 未着手 |
-| 11〜13 | テスト強化・実機・公開準備 | ⬜ 未着手 |
+| 11〜12 | テスト強化・実機での運用開始 | ⬜ 未着手 |
 
-**Phase 7 まではクレジットカード登録なしで進みます**（Firebase は Spark プラン固定）。
+**最後までクレジットカード登録は不要です。** Firebase は Spark プラン固定、公開は Cloudflare Pages の無料枠、AI は Gemini の無料枠で完結します。
 
 ---
 
-## セットアップ
+## 開発の進め方
+
+**このリポジトリを手元で動かす必要はありません。**
+
+```
+コードを書く → GitHub に push
+   ↓ 自動
+GitHub Actions が型チェック・lint・テスト・ビルド
+   ↓ 自動
+Cloudflare Pages がビルドして公開
+   ↓
+Safari で URL を開く
+```
+
+環境変数（Firebase の接続情報）は Cloudflare Pages の管理画面に入れます。手元に `.env` を作る必要はありません。
+
+## 手元で動かしたい場合（任意）
+
+自分でもコードをいじりたくなったときだけ、以下を行ってください。
 
 ### 必要なもの
 
 - Node.js 20.19 以上（推奨: 22系）
-- iPhone に **Expo Go** アプリをインストール
-- PC と iPhone が同じ Wi-Fi につながっていること
 
 ### 手順
 
 ```bash
-# 1) 取得
 git clone <このリポジトリのURL>
 cd pt-app
 
-# 2) 依存関係をインストール（モノレポ全体が一度に入ります）
 npm install
 
-# 3) 環境変数を用意
 cp .env.example .env
-#    → Phase 2 で Firebase の値を入れます。Phase 1 の動作確認だけなら空のままでOK
+#    → Firebase の値を入れる。動作確認だけなら空のままでOK
 
-# 4) 起動
-npm start
-#    → ターミナルにQRコードが出ます。iPhone のカメラで読み取ると Expo Go で開きます
+npm run dev
+#    → http://localhost:5173 が開きます
+#    → 同じ Wi-Fi 上の iPhone からも、表示されるネットワークURLで開けます
 ```
 
 ### 動作確認
 
-起動すると「セットアップが完了しました」という画面が出ます。
-サンプルの食事（白米180g / 鶏ささみ150g / 卵60g）の内訳と合計が表示されれば、
+「セットアップが完了しました」という画面が出ます。
+サンプルの食事（白米180g / 鶏ささみ150g / 卵60g）の内訳と合計 513kcal が表示されれば、
 モノレポと PFC計算エンジンが正しくつながっています。
 
 ---
@@ -71,12 +93,15 @@ npm start
 ```
 pt-app/
 ├── apps/
-│   └── mobile/              Expo アプリ（iPhone）
-│       ├── app.config.ts    ★アプリ名はここ1箇所だけで定義
+│   └── web/                 PWA（React + Vite）
+│       ├── index.html       iOS 向けのメタタグ（ホーム画面追加時の見え方）
+│       ├── vite.config.ts   ★アプリ名（manifest）はここ
+│       ├── public/          アイコン・ホスティング設定
 │       └── src/
-│           ├── app/         画面（expo-router のファイルベースルーティング）
+│           ├── App.tsx      画面
 │           ├── config/      環境変数の読み取り口
-│           └── theme/       配色トークン（P/F/C の色もここ）
+│           ├── hooks/
+│           └── styles.css   配色トークン（P/F/C の色もここ）
 │
 ├── packages/
 │   ├── core/                ★PFC計算エンジン（純粋ロジック）
@@ -92,7 +117,7 @@ pt-app/
 
 ### `packages/core` は特別です
 
-このパッケージは **Firebase も AI も React Native も import しません**。
+このパッケージは **Firebase も AI も React も import しません**。
 純粋な TypeScript の関数だけを置きます。
 
 これは設計上の要求（設計書 §14 / §37「AIと計算エンジンの責任分離」）であり、
@@ -104,7 +129,8 @@ Firebase を import しようとすると lint エラーになります。
 ## コマンド
 
 ```bash
-npm start            # Expo 開発サーバーを起動
+npm run dev          # 開発サーバーを起動（http://localhost:5173）
+npm run build        # 本番用にビルド（apps/web/dist に出力）
 npm test             # 全パッケージのテストを実行
 npm run typecheck    # 型チェック
 npm run lint         # ESLint
@@ -162,7 +188,7 @@ kcal / PFC の計算は必ず `packages/core` の関数が行います。
 
 ### GitHub に入れてはいけないもの
 
-- `.env`（`.gitignore` 済み）
+- `.env`（`.gitignore` 済み。そもそも作る必要がありません）
 - AI の APIキー
 - Firebase のサービスアカウント鍵（`*-firebase-adminsdk-*.json`）
 - 証明書・秘密鍵（`*.pem` `*.key` `*.p8` `*.p12`）
@@ -177,7 +203,7 @@ npx wrangler secret put GEMINI_API_KEY
 
 ### Firebase の apiKey は秘密ではありません
 
-`EXPO_PUBLIC_FIREBASE_API_KEY` はアプリに埋め込まれ、誰でも取り出せます。
+`VITE_FIREBASE_API_KEY` はアプリに埋め込まれ、誰でも取り出せます。
 これは仕様どおりで、問題ではありません。
 
 **データを守っているのは Firestore Security Rules です。**
@@ -204,10 +230,23 @@ fix/*      修正
 このリポジトリはまだリモートに紐づいていません。GitHub で空のリポジトリを作ってから:
 
 ```bash
-git remote add origin git@github.com:<あなたのアカウント>/pt-app.git
+git remote add origin https://github.com/<あなたのアカウント>/pt-app.git
 git push -u origin main
 git push -u origin develop
 ```
 
 **リポジトリは Private を推奨します。** 契約者の健康情報を扱うアプリのため、
 将来的にテストデータなどが混ざるリスクを避けます。
+
+## 公開（ホスティング）
+
+Cloudflare Pages が GitHub リポジトリを直接見てビルドします。GitHub 側に鍵やトークンを置く必要はありません。
+
+| 項目 | 設定 |
+|---|---|
+| ビルドコマンド | `npm run build` |
+| 出力ディレクトリ | `apps/web/dist` |
+| Node バージョン | 22 |
+| 環境変数 | `VITE_FIREBASE_*` を Cloudflare の管理画面に設定 |
+
+`apps/web/public/_redirects` と `_headers` で、SPA のルーティングと Service Worker のキャッシュ設定を行っています。

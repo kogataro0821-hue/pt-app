@@ -1,0 +1,14 @@
+# Service Worker は必ず最新を取りに行かせる。
+# ここをキャッシュすると、アプリを更新しても古い画面が出続けます。
+/sw.js
+  Cache-Control: no-cache
+
+/registerSW.js
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# ビルドのたびにファイル名が変わる資産は、長期キャッシュして構わない
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

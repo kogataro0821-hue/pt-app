@@ -1,0 +1,2 @@
+# 画面遷移をアプリ側で処理するため、どのURLでも index.html を返す（SPA）
+/*    /index.html   200

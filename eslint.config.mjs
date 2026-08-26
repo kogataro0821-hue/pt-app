@@ -63,20 +63,27 @@ export default tseslint.config(
     },
   },
 
-  // Node 上で動く設定ファイル（metro.config.js など）は CommonJS。
+  // ブラウザで動くコード（apps/web）はブラウザのグローバルを使う。
   {
-    files: ['**/*.config.js', '**/babel.config.js', '**/metro.config.js'],
+    files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: {
-      sourceType: 'commonjs',
+      parserOptions: { ecmaFeatures: { jsx: true } },
       globals: {
-        require: 'readonly',
-        module: 'writable',
-        process: 'readonly',
-        __dirname: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        navigator: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        fetch: 'readonly',
+        console: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        Navigator: 'readonly',
+        HTMLElement: 'readonly',
+        File: 'readonly',
+        FileReader: 'readonly',
+        Blob: 'readonly',
       },
-    },
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 
