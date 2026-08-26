@@ -11,6 +11,7 @@ import {
 import type { Client } from '@/features/clients/clientTypes';
 import { MealsSection } from '@/features/meals/MealsSection';
 import { ExercisesSection } from '@/features/exercises/ExercisesSection';
+import { PhotosSection } from '@/features/photos/PhotosSection';
 import { getDay, saveBodyMetrics, setDayStatus, validateBodyMetrics } from './daysRepo';
 import { emptyDay, type Day } from './dayTypes';
 
@@ -221,6 +222,8 @@ export function DayScreen({
               setDay((prev) => (prev === null ? prev : { ...prev, hasExercise }))
             }
           />
+
+          <PhotosSection clientId={client.clientId} date={date} canEdit={canEdit} />
 
           <FinalizeCard
             status={day.status}

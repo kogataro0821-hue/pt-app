@@ -583,6 +583,52 @@ describe('★ 写真のサイズ制限（設計書 §7.4）', () => {
     );
   });
 
+  // ★ ちょうど境界のあたりを確認する。
+  //   アプリ側の縮小は 400,000 バイト以内に収めるので、そこが通ることが要。
+  it('上限ぎりぎり（399,999バイト）は通る', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/photos/pEdge`), {
+        dataUrl: 'A'.repeat(399_999),
+        createdAt: 1,
+      }),
+    );
+  });
+
+  it('上限ちょうど（400,000バイト）は拒否される', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/photos/pEdge2`), {
+        dataUrl: 'A'.repeat(400_000),
+        createdAt: 1,
+      }),
+    );
+  });
+
+  it('契約者は他人の写真を保存できない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/bob/days/${TODAY}/photos/p9`), {
+        dataUrl: small,
+        createdAt: 1,
+      }),
+    );
+  });
+
+  it('契約者は他人の写真を一覧できない', async () => {
+    await assertFails(getDocs(collection(alice(), `clients/bob/days/${TODAY}/photos`)));
+  });
+
+  it('管理者は契約者の写真を見られる', async () => {
+    await assertSucceeds(getDocs(collection(admin(), `clients/alice/days/${TODAY}/photos`)));
+  });
+
+  it('確定済みの日には写真を足せない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${YESTERDAY}/photos/p9`), {
+        dataUrl: small,
+        createdAt: 1,
+      }),
+    );
+  });
+
   it('400KBを超える写真は拒否される（無料枠を食い潰されないため）', async () => {
     await assertFails(
       setDoc(doc(alice(), `clients/alice/days/${TODAY}/photos/p2`), {

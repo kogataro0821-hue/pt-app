@@ -142,3 +142,21 @@ export async function setDayStatus(
     { merge: true },
   );
 }
+
+/**
+ * 期間を指定して日ドキュメントをまとめて読む（体重グラフ用）。
+ *
+ * ★ 読む件数は期間の日数ぶんです。「全期間」を無制限にすると、
+ *   続けるほど1回の表示が重く・高くなっていきます。
+ *   そのため画面側では最長1年に区切っています。
+ */
+export async function listRange(
+  clientId: string,
+  from: DateKey,
+  to: DateKey,
+): Promise<Day[]> {
+  const snap = await getDocs(
+    query(daysCol(clientId), where('date', '>=', from), where('date', '<=', to)),
+  );
+  return snap.docs.map((d) => toDay(d.id, d.data())).sort((a, b) => a.date.localeCompare(b.date));
+}

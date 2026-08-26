@@ -10,6 +10,7 @@ import { ClientEditScreen } from '@/features/clients/ClientEditScreen';
 import { ClientGate } from '@/features/clients/ClientGate';
 import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { DayScreen } from '@/features/days/DayScreen';
+import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AppShell } from '@/features/shell/AppShell';
 
 export default function App() {
@@ -149,6 +150,10 @@ function AppRoutes({ onChangePassword }: { onChangePassword: () => void }) {
         element={<CalendarRoute onChangePassword={onChangePassword} />}
       />
       <Route path="/c/:clientId/d/:date" element={<DayRoute onChangePassword={onChangePassword} />} />
+      <Route
+        path="/c/:clientId/weight"
+        element={<WeightRoute onChangePassword={onChangePassword} />}
+      />
 
       <Route path="*" element={<NotFoundRoute onChangePassword={onChangePassword} />} />
     </Routes>
@@ -279,6 +284,29 @@ function DayRoute({ onChangePassword }: { onChangePassword: () => void }) {
           }
         >
           <DayScreen client={client} date={date} isAdmin={isAdmin} />
+        </Shell>
+      )}
+    </ClientGate>
+  );
+}
+
+function WeightRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const { clientId } = useParams();
+  if (clientId === undefined) return <Navigate to="/" replace />;
+
+  return (
+    <ClientGate
+      clientId={clientId}
+      wrap={(node) => <Shell onChangePassword={onChangePassword}>{node}</Shell>}
+    >
+      {(client, isAdmin) => (
+        <Shell
+          onChangePassword={onChangePassword}
+          viewing={
+            isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
+          }
+        >
+          <WeightScreen client={client} />
         </Shell>
       )}
     </ClientGate>

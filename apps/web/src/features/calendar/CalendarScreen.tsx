@@ -118,6 +118,12 @@ export function CalendarScreen({ clientId, month }: { clientId: string; month: M
         </div>
       </div>
 
+      <div className="month-today">
+        <Link className="button-secondary" to={`/c/${clientId}/weight`}>
+          体重の推移を見る
+        </Link>
+      </div>
+
       <section className="card legend">
         <h3 className="card-title">印の見かた</h3>
         <ul className="legend-list">
