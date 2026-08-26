@@ -39,13 +39,30 @@
  *    GEMINI_API_KEY   … Google AI Studio で取得したキー（Secret として登録）
  *    FIREBASE_PROJECT … pt-app-54f32
  *    ALLOWED_ORIGIN   … https://kogataro0821-hue.github.io
+ *    GEMINI_MODEL     … 使うモデル名（省略可。既定 gemini-2.5-flash）
+ *
+ *  ---------------------------------------------------------------------
+ *  動作確認
+ *  ---------------------------------------------------------------------
+ *
+ *  ブラウザでこの Worker の URL をそのまま開くと、
+ *  設定の状態と「いま使えるモデルの一覧」が表示されます。
  *
  * ===========================================================================
  */
 
-/** 転送先。ここに固定することで、他の用途に流用されるのを防ぎます。 */
-const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+/**
+ * 使うモデル。
+ *
+ * ★ 設定値（GEMINI_MODEL）で差し替えられるようにしてあります。
+ *   モデルは提供側の都合で入れ替わるため、そのたびにコードを貼り直すのは現実的ではありません。
+ *   Cloudflare の管理画面で値を変えるだけで切り替えられます。
+ *
+ *   いま使えるモデルの一覧は、この Worker に GET でアクセスすると見られます。
+ */
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 /** 受け取る本文の上限。写真を送る Phase 8B でも収まる大きさにしてあります。 */
 const MAX_BODY_BYTES = 2_000_000;
@@ -60,6 +77,42 @@ export default {
     // ブラウザが本番の通信の前に投げてくる確認（CORS preflight）
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+
+    /**
+     * 動作確認用。ブラウザでこのWorkerのURLを開くと、
+     * 「キーが設定されているか」「どのモデルが使えるか」が分かります。
+     *
+     * ★ 返すのはモデル名の一覧だけです。APIキーも利用者のデータも含みません。
+     *   設定を間違えたときに、原因が分からず何往復もするのを避けるための窓口です。
+     */
+    if (request.method === 'GET') {
+      if (!env.GEMINI_API_KEY) {
+        return json({ ok: false, reason: 'GEMINI_API_KEY が設定されていません' }, 500, origin);
+      }
+
+      try {
+        const res = await fetch(`${GEMINI_BASE}/models?key=${env.GEMINI_API_KEY}`);
+        const data = await res.json();
+        if (!res.ok) {
+          return json({ ok: false, status: res.status, reason: data }, 200, origin);
+        }
+        return json(
+          {
+            ok: true,
+            configuredModel: env.GEMINI_MODEL ?? DEFAULT_MODEL,
+            firebaseProject: env.FIREBASE_PROJECT ?? '(未設定)',
+            usableModels: (data.models ?? [])
+              .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+              .map((m) => m.name),
+          },
+          200,
+          origin,
+        );
+      } catch (e) {
+        return json({ ok: false, reason: String(e && e.message) }, 502, origin);
+      }
     }
 
     if (request.method !== 'POST') {
@@ -91,13 +144,18 @@ export default {
       return json({ error: 'server_not_configured' }, 500, origin);
     }
 
+    const model = env.GEMINI_MODEL ?? DEFAULT_MODEL;
+
     let upstream;
     try {
-      upstream = await fetch(`${GEMINI_ENDPOINT}?key=${env.GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
+      upstream = await fetch(
+        `${GEMINI_BASE}/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        },
+      );
     } catch {
       return json({ error: 'upstream_unreachable' }, 502, origin);
     }
@@ -122,7 +180,7 @@ export default {
         }),
       );
 
-      return json({ error: kind, status: upstream.status }, upstream.status, origin);
+      return json({ error: kind, status: upstream.status, model }, upstream.status, origin);
     }
 
     // 誰が使ったかを Cloudflare のログに残す（本文は残しません）
