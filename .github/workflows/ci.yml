@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck / lint / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+  # 秘密情報が push されていないかを毎回チェックする（設計書 §31 / §46）
+  secrets-scan:
+    name: secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail if a real .env or key file is committed
+        run: |
+          set -e
+          BAD=$(git ls-files \
+            | grep -E '(^|/)\.env$|(^|/)\.env\.(local|development|production)$|\.pem$|\.p8$|\.p12$|\.keystore$|firebase-adminsdk|serviceAccount.*\.json$' \
+            || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::秘密情報らしきファイルがコミットされています:"
+            echo "$BAD"
+            exit 1
+          fi
+          echo "OK: 秘密情報らしきファイルはありません"

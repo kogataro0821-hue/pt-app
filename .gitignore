@@ -1,0 +1,59 @@
+# ---- 秘密情報（設計書 §31）--------------------------------------------
+# .env は絶対にコミットしない。共有するのは .env.example だけ。
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.keystore
+*.mobileprovision
+# Firebase サービスアカウント鍵（万一ダウンロードしても入らないように）
+**/serviceAccount*.json
+**/*-firebase-adminsdk-*.json
+.firebase/
+.wrangler/
+.dev.vars
+
+# ---- 依存関係 ----------------------------------------------------------
+node_modules/
+.pnp
+.pnp.js
+
+# ---- ビルド成果物 ------------------------------------------------------
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# ---- Expo --------------------------------------------------------------
+.expo/
+.expo-shared/
+expo-env.d.ts
+ios/
+android/
+*.jks
+*.orig.*
+
+# ---- Metro / RN --------------------------------------------------------
+.metro-health-check*
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# ---- OS / エディタ -----------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ---- テスト ------------------------------------------------------------
+.vitest/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
