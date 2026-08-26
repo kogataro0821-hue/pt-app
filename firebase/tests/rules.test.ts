@@ -75,6 +75,12 @@ beforeEach(async () => {
       clientId: 'carol',
       active: false,
     });
+    // 食品の自己登録を止められた契約者（設計書 §21）
+    await setDoc(doc(db, 'users/dave-uid'), {
+      role: 'client',
+      clientId: 'dave',
+      active: true,
+    });
 
     for (const cid of ['alice', 'bob', 'carol']) {
       await setDoc(doc(db, `clients/${cid}`), {
@@ -85,6 +91,14 @@ beforeEach(async () => {
         reviewMode: 'standard',
       });
     }
+
+    await setDoc(doc(db, 'clients/dave'), {
+      displayName: 'dave',
+      active: true,
+      targets: { kcal: 1800, p: 130, f: 50, c: 200 },
+      permissions: { pastEditWindowDays: 7, allowFoodCreate: false, allowRecipeCreate: false },
+      reviewMode: 'standard',
+    });
 
     // 確定済みの日（設計書 §7）
     await setDoc(doc(db, 'clients/alice/days/2026-01-15'), { status: 'finalized' });
@@ -100,6 +114,7 @@ const admin = () => env.authenticatedContext('admin-uid').firestore();
 const alice = () => env.authenticatedContext('alice-uid').firestore();
 const bob = () => env.authenticatedContext('bob-uid').firestore();
 const carol = () => env.authenticatedContext('carol-uid').firestore();
+const dave = () => env.authenticatedContext('dave-uid').firestore();
 const guest = () => env.unauthenticatedContext().firestore();
 
 // =============================================================================
@@ -334,6 +349,63 @@ describe('★ 過去編集ウィンドウ（設計書 §7.3 / 既定7日）', ()
       setDoc(doc(alice(), `clients/alice/measurements/${TEN_DAYS_AGO}`), { weightKg: 62.4 }),
     );
     await assertSucceeds(getDoc(doc(alice(), `clients/alice/measurements/${TEN_DAYS_AGO}`)));
+  });
+});
+
+describe('★ 食事の記録（設計書 §14 / Phase 6A）', () => {
+  const meal = { order: 0, label: '1食目', items: [], totals: { kcal: 0, p: 0, f: 0, c: 0 } };
+
+  it('契約者は今日の食事を書ける', async () => {
+    await assertSucceeds(setDoc(doc(alice(), `clients/alice/days/${TODAY}/meals/m9`), meal));
+  });
+
+  it('契約者は自分の食事を一覧できる', async () => {
+    await assertSucceeds(getDocs(collection(alice(), `clients/alice/days/${TODAY}/meals`)));
+  });
+
+  it('契約者は他人の食事を一覧できない', async () => {
+    await assertFails(getDocs(collection(alice(), `clients/bob/days/${TODAY}/meals`)));
+  });
+
+  it('契約者は他人の食事を書けない', async () => {
+    await assertFails(setDoc(doc(alice(), `clients/bob/days/${TODAY}/meals/m9`), meal));
+  });
+
+  it('契約者は食事を削除できる', async () => {
+    await assertSucceeds(deleteDoc(doc(alice(), `clients/alice/days/${TODAY}/meals/m9`)));
+  });
+
+  it('10日前の食事は書けない（ウィンドウ外）', async () => {
+    await assertFails(setDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/meals/m9`), meal));
+  });
+});
+
+describe('★ 食品マスタの自己登録（設計書 §21）', () => {
+  const food = { name: 'ゆで卵', per100g: { kcal: 142, p: 12.2, f: 10.2, c: 0.4 }, usedCount: 1 };
+
+  it('既定では契約者が自分の食品を登録できる', async () => {
+    await assertSucceeds(setDoc(doc(alice(), 'clients/alice/foods/new1'), food));
+  });
+
+  // ★ 画面で隠すだけでは対策にならない。Rules 側でも止まることを確認する。
+  it('allowFoodCreate が false の契約者は登録できない', async () => {
+    await assertFails(setDoc(doc(dave(), 'clients/dave/foods/new1'), food));
+  });
+
+  it('登録を止められていても、読むことはできる', async () => {
+    await assertSucceeds(getDocs(collection(dave(), 'clients/dave/foods')));
+  });
+
+  it('止められていても管理者は代わりに登録できる', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'clients/dave/foods/new1'), food));
+  });
+
+  it('契約者は他人の食品マスタに書けない', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/bob/foods/new1'), food));
+  });
+
+  it('契約者は共通マスタに書けない', async () => {
+    await assertFails(setDoc(doc(alice(), 'foods/common-2'), food));
   });
 });
 

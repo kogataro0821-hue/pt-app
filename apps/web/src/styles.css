@@ -1071,3 +1071,210 @@ select.input {
 .client-row .badge {
   flex: none;
 }
+
+/* ---------------------------------------------------------------------------
+ * Phase 6A — 食事の記録
+ * ------------------------------------------------------------------------- */
+
+.meal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+/* 食事の名前はその場で書き換えられる。入力欄に見えすぎないよう控えめにする */
+.meal-label {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  font-family: inherit;
+}
+
+.meal-label:hover {
+  border-color: var(--rule);
+}
+
+.meal-label:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: var(--surface-2);
+}
+
+.item-row {
+  align-items: flex-start;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.item-row .row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.item-name {
+  font-weight: 600;
+}
+
+.item-grams {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.item-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex: none;
+}
+
+.button-quiet.compact {
+  padding: 2px 4px;
+  font-size: 12.5px;
+}
+
+.button-quiet.danger {
+  color: var(--danger);
+}
+
+/* ---- 食材の入力欄 --------------------------------------------------------- */
+
+.item-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  margin: var(--space-sm) 0;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.item-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.per100g {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-sm);
+}
+
+.field-label.small {
+  font-size: 12px;
+}
+
+/* 入力欄は16px未満にしない。iOS が自動でズームしてしまうため */
+.grid-4 .input {
+  font-size: 16px;
+  padding: 8px;
+  text-align: center;
+}
+
+/* ---- 候補 ----------------------------------------------------------------- */
+
+.suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestions li:last-child .suggestion {
+  border-bottom: 0;
+}
+
+.suggestion-name {
+  font-weight: 600;
+  flex: none;
+}
+
+.suggestion-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 入力中のプレビュー --------------------------------------------------- */
+
+.preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.preview-label {
+  font-size: 12.5px;
+  color: var(--muted);
+  flex: none;
+}
+
+/* ---- 合計と差 ------------------------------------------------------------- */
+
+.row.diff .macros {
+  font-weight: 700;
+}
+
+.diff-over {
+  color: var(--attention);
+}
+
+.diff-under {
+  color: var(--p);
+}
+
+.diff-even {
+  color: var(--muted);
+}
+
+.card.totals .row {
+  border-bottom: 1px solid var(--rule);
+}
+
+.card.totals .row.diff {
+  border-bottom: 0;
+}

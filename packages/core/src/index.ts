@@ -17,3 +17,4 @@ export * from './units/types';
 export * from './client/id';
 export * from './client/targets';
 export * from './date/day';
+export * from './meal/meal';

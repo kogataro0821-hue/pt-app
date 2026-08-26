@@ -9,6 +9,7 @@ import {
   type DateKey,
 } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
+import { MealsSection } from '@/features/meals/MealsSection';
 import { getDay, saveBodyMetrics, validateBodyMetrics } from './daysRepo';
 import { emptyDay, type Day } from './dayTypes';
 
@@ -183,24 +184,19 @@ export function DayScreen({
             )}
           </form>
 
-          <section className="card placeholder">
-            <h3 className="card-title">食事</h3>
-            <p className="note">
-              食事の記録は <b>Phase 6</b> で作ります。写真やテキストからAIが推定し、
-              あなたが確認・修正してから確定する流れになります。
-            </p>
-          </section>
+          <MealsSection
+            clientId={client.clientId}
+            date={date}
+            targets={client.targets}
+            canEdit={canEdit}
+            allowFoodCreate={isAdmin || client.permissions.allowFoodCreate}
+            onMealsChanged={(hasMeals) => setDay((prev) => (prev === null ? prev : { ...prev, hasMeals }))}
+          />
 
           <section className="card placeholder">
             <h3 className="card-title">運動</h3>
-            <p className="note">運動の記録も Phase 6 で作ります。</p>
-          </section>
-
-          <section className="card placeholder">
-            <h3 className="card-title">この日の合計と目標との差</h3>
             <p className="note">
-              食事が記録できるようになると、ここに合計と目標（{client.targets.kcal}kcal / P
-              {client.targets.p} F{client.targets.f} C{client.targets.c}）との差が出ます。
+              運動の記録は <b>Phase 6B</b> で作ります。1日確定もそちらで足します。
             </p>
           </section>
         </>

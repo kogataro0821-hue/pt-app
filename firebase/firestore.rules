@@ -105,6 +105,18 @@ service cloud.firestore {
                    + '-' + pad(floorTs(cid).day());
     }
 
+    // 契約者ごとの「できること」（設計書 §6.5 permissions）。
+    // 既定は true。設定が無い古いデータでも動くようにしておく。
+    function mayCreateFood(cid) {
+      return get(/databases/$(database)/documents/clients/$(cid))
+               .data.permissions.get('allowFoodCreate', true) == true;
+    }
+
+    function mayCreateRecipe(cid) {
+      return get(/databases/$(database)/documents/clients/$(cid))
+               .data.permissions.get('allowRecipeCreate', true) == true;
+    }
+
     function dayIsOpen(cid, date) {
       return !exists(/databases/$(database)/documents/clients/$(cid)/days/$(date))
           || get(/databases/$(database)/documents/clients/$(cid)/days/$(date))
@@ -191,8 +203,19 @@ service cloud.firestore {
       // ---- 個人スコープのマスタ類 -------------------------------------------
       // 日付に紐づかないため編集ウィンドウの対象外
 
-      match /foods/{foodId}         { allow read, write: if canRead(cid); }
-      match /recipes/{recipeId}     { allow read, write: if canRead(cid); }
+      // 個人の食品マスタ。
+      // ★ 管理者は「自分で食品を登録できる」権限を契約者ごとに切れます（設計書 §21）。
+      //   画面で隠すだけでは対策にならないので、ここでも見ます。
+      match /foods/{foodId} {
+        allow read: if canRead(cid);
+        allow write: if isAdmin() || (isClient(cid) && mayCreateFood(cid));
+      }
+
+      match /recipes/{recipeId} {
+        allow read: if canRead(cid);
+        allow write: if isAdmin() || (isClient(cid) && mayCreateRecipe(cid));
+      }
+
       match /favorites/{favoriteId} { allow read, write: if canRead(cid); }
 
       // 体重などの実測値。ドキュメントIDが日付なので、
