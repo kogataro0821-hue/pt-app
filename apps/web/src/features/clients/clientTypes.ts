@@ -41,6 +41,36 @@ export const DEFAULT_PERMISSIONS: ClientPermissions = {
  */
 export type ProvisionStatus = 'provisioning' | 'ready';
 
+/**
+ * AI利用への同意（設計書 §35 / Phase 8）。
+ *
+ * ★ 同意していない契約者には、AIのボタン自体を出しません。
+ *   無料枠のAIに送ったデータは、提供事業者のモデル改善に使われる可能性があります。
+ *   その事実を伝えたうえで、本人が選べる形にしています。
+ *
+ * ★ 同意は契約者本人が与え、本人がいつでも取り消せます。
+ *   管理者が代わりに同意することはできません（clients の書き込み許可を
+ *   aiConsent に限って本人に開けてあるのはこのためです）。
+ */
+export interface AiConsent {
+  /** 同意しているか */
+  granted: boolean;
+  /** 同意（または取り消し）した時刻 */
+  updatedAt: number | null;
+  /** 同意時に提示した説明文の版。文面を変えたら上げる */
+  version: number;
+}
+
+/** いま提示している同意文の版。文面を実質的に変えたら +1 する。 */
+export const AI_CONSENT_VERSION = 1;
+
+export const NO_CONSENT: AiConsent = { granted: false, updatedAt: null, version: 0 };
+
+/** 同意が有効か。文面の版が上がったら、取り直しになる。 */
+export function hasValidAiConsent(consent: AiConsent): boolean {
+  return consent.granted && consent.version >= AI_CONSENT_VERSION;
+}
+
 export interface Client {
   clientId: string;
   displayName: string;
@@ -58,6 +88,8 @@ export interface Client {
   provisionStatus: ProvisionStatus;
   /** 初回パスワード変更が済んだ時刻。未変更なら null（設計書 §6.5） */
   passwordChangedAt: number | null;
+  /** AI利用への同意（設計書 §35） */
+  aiConsent: AiConsent;
   /** 後から項目を足すための入れ物（設計書 §4） */
   extra: Record<string, unknown>;
   createdAt: number | null;
@@ -80,6 +112,7 @@ export function emptyClient(clientId: string): Client {
     authUid: null,
     provisionStatus: 'provisioning',
     passwordChangedAt: null,
+    aiConsent: { ...NO_CONSENT },
     extra: {},
     createdAt: null,
     updatedAt: null,

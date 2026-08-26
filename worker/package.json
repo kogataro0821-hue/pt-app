@@ -1,0 +1,13 @@
+{
+  "name": "@pt/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI中継役（Cloudflare Worker）と、その自動テスト（設計書 §9.2）",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

@@ -11,3 +11,4 @@
 export * from './schemas';
 export * from './provider';
 export * from './guard';
+export * from './wire';

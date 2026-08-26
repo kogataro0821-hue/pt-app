@@ -118,9 +118,12 @@ export function CalendarScreen({ clientId, month }: { clientId: string; month: M
         </div>
       </div>
 
-      <div className="month-today">
+      <div className="calendar-links">
         <Link className="button-secondary" to={`/c/${clientId}/weight`}>
-          体重の推移を見る
+          体重の推移
+        </Link>
+        <Link className="button-secondary" to={`/c/${clientId}/settings`}>
+          設定
         </Link>
       </div>
 

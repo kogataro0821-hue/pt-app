@@ -78,3 +78,15 @@ export const AI_WORKER_URL = env('VITE_AI_WORKER_URL') ?? null;
 
 /** アプリ名。ここと vite.config.ts の manifest の2箇所だけ（設計書 §5）。 */
 export const APP_NAME = 'PT Manager';
+
+/**
+ * AI中継役（Cloudflare Worker）のURL（設計書 §9.2）。
+ *
+ * ★ ここにAPIキーは入りません。キーは Worker の中だけにあります。
+ *   このURLは公開情報ですが、Worker 側で
+ *   「このアプリにログインしている人か」を検証しているため、
+ *   URLを知っただけでは使えません。
+ *
+ * まだ設定していなければ null になり、AIの機能は画面に出ません。
+ */
+export const AI_RELAY_URL: string | null = env('VITE_AI_RELAY_URL') ?? null;

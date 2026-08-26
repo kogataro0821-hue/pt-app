@@ -16,6 +16,7 @@ import { getDb } from '@/lib/firebase';
 import {
   DEFAULT_PERMISSIONS,
   emptyClient,
+  type AiConsent,
   type Client,
   type ClientPermissions,
   type ProvisionStatus,
@@ -242,6 +243,7 @@ function toClient(id: string, data: Record<string, unknown>): Client {
     authUid: str(data.authUid),
     provisionStatus: data.provisionStatus === 'ready' ? 'ready' : 'provisioning',
     passwordChangedAt: num(data.passwordChangedAt),
+    aiConsent: toConsent(data.aiConsent),
     extra: (data.extra as Record<string, unknown> | undefined) ?? {},
     createdAt: num(data.createdAt),
     updatedAt: num(data.updatedAt),
@@ -263,9 +265,19 @@ function toFirestore(client: Client): Record<string, unknown> {
     authUid: client.authUid,
     provisionStatus: client.provisionStatus,
     passwordChangedAt: client.passwordChangedAt,
+    aiConsent: client.aiConsent,
     extra: client.extra,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,
+  };
+}
+
+function toConsent(raw: unknown): AiConsent {
+  const data = (raw ?? {}) as Record<string, unknown>;
+  return {
+    granted: data.granted === true,
+    updatedAt: num(data.updatedAt),
+    version: typeof data.version === 'number' ? data.version : 0,
   };
 }
 

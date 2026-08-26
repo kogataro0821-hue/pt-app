@@ -211,6 +211,7 @@ export function DayScreen({
             targets={client.targets}
             canEdit={canEdit}
             allowFoodCreate={isAdmin || client.permissions.allowFoodCreate}
+            aiConsent={client.aiConsent}
             onMealsChanged={(hasMeals) => setDay((prev) => (prev === null ? prev : { ...prev, hasMeals }))}
           />
 

@@ -93,4 +93,29 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
+
+  // Cloudflare Worker。ブラウザでも Node でもない実行環境なので、
+  // 使える道具をここで明示する（設計書 §9.2）。
+  {
+    files: ['worker/worker.js'],
+    languageOptions: {
+      globals: {
+        fetch: 'readonly',
+        Response: 'readonly',
+        Request: 'readonly',
+        Headers: 'readonly',
+        crypto: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+      },
+    },
+    rules: {
+      // 利用状況を Cloudflare のログに残すために使う（本文は残さない）
+      'no-console': 'off',
+    },
+  },
 );

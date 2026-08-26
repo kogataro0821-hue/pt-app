@@ -57,8 +57,14 @@ jobs:
       - name: Security Rules テスト
         run: npm run test:rules
 
+      # ★ AI中継役のURLは、GitHub の Variables から渡します。
+      #   秘密ではありませんが（Worker 側でログイン検証をしているため）、
+      #   環境ごとに変わる値なのでコードには埋めていません。
+      #   未設定なら空になり、その場合アプリは AI のボタンを出しません。
       - name: Build
         run: npm run build
+        env:
+          VITE_AI_RELAY_URL: ${{ vars.VITE_AI_RELAY_URL }}
 
       # GitHub Pages は存在しないURLに 404.html を返す。
       # index.html と同じ中身を置いておくと、アプリ内の画面遷移が正しく動く。

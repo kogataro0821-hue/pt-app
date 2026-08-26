@@ -6,7 +6,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "firebase"
+    "firebase",
+    "worker"
   ],
   "engines": {
     "node": ">=20.19.0"

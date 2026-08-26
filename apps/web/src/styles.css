@@ -1527,3 +1527,155 @@ select.input {
   color: var(--muted);
   font-weight: 400;
 }
+
+/* ---------------------------------------------------------------------------
+ * Phase 8A — AI（同意と、文章からの入力）
+ * ------------------------------------------------------------------------- */
+
+.calendar-links {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.calendar-links .button-secondary {
+  flex: 1;
+  text-align: center;
+}
+
+/* ---- 同意の本文 ----------------------------------------------------------- */
+/* 読ませたい文章なので、行間を広めに取り、小さくしない */
+
+.consent-body {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--surface-2);
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+.consent-body h4 {
+  margin: var(--space-md) 0 var(--space-xs);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.consent-body h4:first-child {
+  margin-top: 0;
+}
+
+.consent-body p {
+  margin: 0 0 var(--space-sm);
+}
+
+.consent-body ul {
+  margin: 0 0 var(--space-sm);
+  padding-left: 1.2em;
+}
+
+/* ---- AIの入力パネル ------------------------------------------------------- */
+
+.add-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.add-actions .button-secondary {
+  flex: 1;
+}
+
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  margin-top: var(--space-sm);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* ---- AIが起こした下書き --------------------------------------------------- */
+
+.ai-draft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+/* そのまま追加できる状態が、ひと目で分かるようにする */
+.ai-draft.ready {
+  border-color: var(--accent);
+}
+
+.ai-draft-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.ai-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+/* 根拠は「AIが原文のどこを見たか」。ここが読めることが信頼につながる */
+.ai-evidence {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.ai-evidence span {
+  color: var(--ink-2);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+.ai-status {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 10px;
+}
+
+.ai-rejected {
+  margin: 0;
+}
+
+.note-list {
+  margin: 0 0 var(--space-sm);
+  padding-left: 1.2em;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--ink-2);
+}
+
+/* AIの下書きは入れ子が深く横幅が狭いので、数値欄の余白を詰める */
+.ai-draft .grid-4 {
+  gap: 6px;
+}
+
+.ai-draft .grid-4 .input {
+  padding: 8px 2px;
+}

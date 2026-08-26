@@ -14,6 +14,9 @@ import {
   type Per100gInput,
   type Targets,
 } from '@pt/core';
+import { AI_RELAY_URL } from '@/config/firebase';
+import { AiTextPanel } from '@/features/ai/AiTextPanel';
+import { hasValidAiConsent, type AiConsent } from '@/features/clients/clientTypes';
 import { rememberFood } from './foodsRepo';
 import { ItemForm } from './ItemForm';
 import { deleteMeal, listMeals, newMealId, saveMeal, syncDayMealFlag } from './mealsRepo';
@@ -31,6 +34,7 @@ export function MealsSection({
   targets,
   canEdit,
   allowFoodCreate,
+  aiConsent,
   onMealsChanged,
 }: {
   clientId: string;
@@ -38,12 +42,15 @@ export function MealsSection({
   targets: Targets;
   canEdit: boolean;
   allowFoodCreate: boolean;
+  /** AI利用への同意。同意が無ければAIのボタンを出さない（設計書 §35） */
+  aiConsent: AiConsent;
   /** カレンダーの印を更新するために、食事の有無を親へ伝える */
   onMealsChanged?: (hasMeals: boolean) => void;
 }) {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [aiFor, setAiFor] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ mealId: string; item: MealItem } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,6 +59,7 @@ export function MealsSection({
     setMeals(null);
     setError(null);
     setAddingTo(null);
+    setAiFor(null);
     setEditing(null);
 
     void (async () => {
@@ -167,6 +175,25 @@ export function MealsSection({
     setEditing(null);
   }
 
+  /** AIが起こした下書きを、人が確認したうえでまとめて追加する（設計書 §47）。 */
+  function addItems(
+    mealId: string,
+    newItems: MealItem[],
+    sources: { name: string; per100g: Per100gInput }[],
+  ) {
+    const list = meals ?? [];
+    const target = list.find((m) => m.id === mealId);
+    if (target === undefined || newItems.length === 0) return;
+
+    const updated = { ...target, items: [...target.items, ...newItems] };
+    void persist(
+      list.map((m) => (m.id === mealId ? updated : m)),
+      updated,
+    );
+    for (const source of sources) void rememberFood(clientId, source, allowFoodCreate);
+    setAiFor(null);
+  }
+
   function removeItem(mealId: string, itemId: string) {
     const list = meals ?? [];
     const target = list.find((m) => m.id === mealId);
@@ -190,6 +217,8 @@ export function MealsSection({
 
   const totals = dayTotals(meals);
   const hasAnyItem = meals.some((m) => m.items.length > 0);
+  // 中継役が未設定なら、そもそもAIは動かないのでボタンも出さない
+  const aiAvailable = AI_RELAY_URL !== null && hasValidAiConsent(aiConsent);
 
   return (
     <>
@@ -255,13 +284,36 @@ export function MealsSection({
             </>
           )}
 
+          {canEdit && aiFor === meal.id && (
+            <AiTextPanel
+              clientId={clientId}
+              onAdd={(items, sources) => addItems(meal.id, items, sources)}
+              onClose={() => setAiFor(null)}
+            />
+          )}
+
           {canEdit &&
-            (addingTo === meal.id ? (
-              <ItemForm
-                clientId={clientId}
-                onSubmit={(item, source) => addItem(meal.id, item, source)}
-                onCancel={() => setAddingTo(null)}
-              />
+            addingTo !== meal.id &&
+            aiFor !== meal.id &&
+            (aiAvailable ? (
+              <div className="add-actions">
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setAddingTo(meal.id)}
+                  disabled={busy}
+                >
+                  + 食材を追加
+                </button>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setAiFor(meal.id)}
+                  disabled={busy}
+                >
+                  文章から入力
+                </button>
+              </div>
             ) : (
               <button
                 className="button-secondary"
@@ -272,6 +324,14 @@ export function MealsSection({
                 + 食材を追加
               </button>
             ))}
+
+          {canEdit && addingTo === meal.id && (
+            <ItemForm
+              clientId={clientId}
+              onSubmit={(item, source) => addItem(meal.id, item, source)}
+              onCancel={() => setAddingTo(null)}
+            />
+          )}
         </section>
       ))}
 

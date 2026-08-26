@@ -8,9 +8,11 @@ import { ClientListScreen } from '@/features/clients/ClientListScreen';
 import { ClientCreateScreen } from '@/features/clients/ClientCreateScreen';
 import { ClientEditScreen } from '@/features/clients/ClientEditScreen';
 import { ClientGate } from '@/features/clients/ClientGate';
+import type { Client } from '@/features/clients/clientTypes';
 import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
+import { AiConsentCard } from '@/features/ai/AiConsentCard';
 import { AppShell } from '@/features/shell/AppShell';
 
 export default function App() {
@@ -153,6 +155,10 @@ function AppRoutes({ onChangePassword }: { onChangePassword: () => void }) {
       <Route
         path="/c/:clientId/weight"
         element={<WeightRoute onChangePassword={onChangePassword} />}
+      />
+      <Route
+        path="/c/:clientId/settings"
+        element={<ClientSettingsRoute onChangePassword={onChangePassword} />}
       />
 
       <Route path="*" element={<NotFoundRoute onChangePassword={onChangePassword} />} />
@@ -310,6 +316,70 @@ function WeightRoute({ onChangePassword }: { onChangePassword: () => void }) {
         </Shell>
       )}
     </ClientGate>
+  );
+}
+
+/** 契約者本人の設定（AI同意など）。管理者から見ると閲覧のみになる。 */
+function ClientSettingsRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const { clientId } = useParams();
+  if (clientId === undefined) return <Navigate to="/" replace />;
+
+  return (
+    <ClientGate
+      clientId={clientId}
+      wrap={(node) => <Shell onChangePassword={onChangePassword}>{node}</Shell>}
+    >
+      {(client, isAdmin) => (
+        <Shell
+          onChangePassword={onChangePassword}
+          viewing={
+            isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
+          }
+        >
+          <ClientSettings client={client} isAdmin={isAdmin} onChangePassword={onChangePassword} />
+        </Shell>
+      )}
+    </ClientGate>
+  );
+}
+
+function ClientSettings({
+  client,
+  isAdmin,
+  onChangePassword,
+}: {
+  client: Client;
+  isAdmin: boolean;
+  onChangePassword: () => void;
+}) {
+  const [current, setCurrent] = useState(client);
+
+  return (
+    <>
+      <div className="section-head">
+        <Link className="button-quiet back" to={`/c/${client.clientId}`}>
+          ‹ カレンダー
+        </Link>
+      </div>
+
+      <h2 className="title">設定</h2>
+
+      <AiConsentCard
+        client={current}
+        isSelf={!isAdmin}
+        onChanged={(aiConsent) => setCurrent({ ...current, aiConsent })}
+      />
+
+      {!isAdmin && (
+        <section className="card">
+          <h3 className="card-title">パスワード</h3>
+          <p className="note">ご自身だけが知っているパスワードに変更できます。</p>
+          <button className="button-secondary" type="button" onClick={onChangePassword}>
+            パスワードを変更する
+          </button>
+        </section>
+      )}
+    </>
   );
 }
 
