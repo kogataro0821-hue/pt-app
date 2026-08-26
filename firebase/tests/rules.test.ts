@@ -29,6 +29,7 @@ function jstDate(offsetDays: number): string {
 }
 
 const TODAY = jstDate(0);
+const YESTERDAY = jstDate(1);
 const THREE_DAYS_AGO = jstDate(3);
 const TEN_DAYS_AGO = jstDate(10);
 
@@ -101,6 +102,18 @@ beforeEach(async () => {
     });
 
     // 確定済みの日（設計書 §7）
+    //
+    // 2種類を用意する。ウィンドウ内かどうかで、できることが変わるため。
+    //   昨日      … 確定済み・編集ウィンドウの中（本人が解除できる）
+    //   2026-01-15 … 確定済み・ウィンドウの外（本人には手が出せない）
+    await setDoc(doc(db, `clients/alice/days/${YESTERDAY}`), {
+      date: YESTERDAY,
+      status: 'finalized',
+      finalizedAt: 1,
+      updatedAt: 1,
+    });
+    await setDoc(doc(db, `clients/alice/days/${YESTERDAY}/meals/m1`), { label: '1食目' });
+
     await setDoc(doc(db, 'clients/alice/days/2026-01-15'), { status: 'finalized' });
     await setDoc(doc(db, 'clients/alice/days/2026-01-15/meals/m1'), { label: '1食目' });
 
@@ -433,11 +446,22 @@ describe('★ カレンダー（月まとめ取得）の分離（設計書 §6�
 describe('★ 1日確定の解除（設計書 §7 / Q14）', () => {
   // 確定は「トレーナーへの提出」ではなく本人の意思表示なので、
   // 本人がカギを外して書き直せる。ただし外せるのは status だけ。
-  it('契約者は自分で確定を解除できる', async () => {
+  it('契約者は自分で確定を解除できる（ウィンドウ内）', async () => {
     await assertSucceeds(
       setDoc(
+        doc(alice(), `clients/alice/days/${YESTERDAY}`),
+        { status: 'open', finalizedAt: null, updatedAt: 2 },
+        { merge: true },
+      ),
+    );
+  });
+
+  // 解除も編集の一種なので、ウィンドウの外までは戻れない。
+  it('ウィンドウ外の確定は、本人でも解除できない', async () => {
+    await assertFails(
+      setDoc(
         doc(alice(), 'clients/alice/days/2026-01-15'),
-        { status: 'open', finalizedAt: null, updatedAt: 1 },
+        { status: 'open', finalizedAt: null, updatedAt: 2 },
         { merge: true },
       ),
     );
@@ -446,8 +470,8 @@ describe('★ 1日確定の解除（設計書 §7 / Q14）', () => {
   it('確定したまま中身を書き換える経路は無い', async () => {
     await assertFails(
       setDoc(
-        doc(alice(), 'clients/alice/days/2026-01-15'),
-        { status: 'finalized', weightKg: 99, updatedAt: 1 },
+        doc(alice(), `clients/alice/days/${YESTERDAY}`),
+        { status: 'finalized', weightKg: 99, updatedAt: 2 },
         { merge: true },
       ),
     );
@@ -456,8 +480,8 @@ describe('★ 1日確定の解除（設計書 §7 / Q14）', () => {
   it('解除にみせかけて他の項目も同時に書き換えることはできない', async () => {
     await assertFails(
       setDoc(
-        doc(alice(), 'clients/alice/days/2026-01-15'),
-        { status: 'open', weightKg: 99, updatedAt: 1 },
+        doc(alice(), `clients/alice/days/${YESTERDAY}`),
+        { status: 'open', weightKg: 99, updatedAt: 2 },
         { merge: true },
       ),
     );
@@ -466,8 +490,8 @@ describe('★ 1日確定の解除（設計書 §7 / Q14）', () => {
   it('他人の確定は解除できない', async () => {
     await assertFails(
       setDoc(
-        doc(bob(), 'clients/alice/days/2026-01-15'),
-        { status: 'open', finalizedAt: null, updatedAt: 1 },
+        doc(bob(), `clients/alice/days/${YESTERDAY}`),
+        { status: 'open', finalizedAt: null, updatedAt: 2 },
         { merge: true },
       ),
     );
@@ -519,18 +543,30 @@ describe('★ 運動の記録（設計書 §22 / Phase 6B）', () => {
 describe('★ 1日確定（finalized）の保護（設計書 §7）', () => {
   it('確定済みの日は、契約者が食事を書き換えられない', async () => {
     await assertFails(
-      setDoc(doc(alice(), 'clients/alice/days/2026-01-15/meals/m1'), { label: '変更' }),
+      setDoc(doc(alice(), `clients/alice/days/${YESTERDAY}/meals/m1`), { label: '変更' }),
+    );
+  });
+
+  // ★ ウィンドウ内かどうかに関わらず、確定済みなら書けないこと。
+  //   「昨日は編集できる期間だから」という理由で通ってはいけない。
+  it('確定済みなら、ウィンドウ内でも体重を書き換えられない', async () => {
+    await assertFails(
+      setDoc(
+        doc(alice(), `clients/alice/days/${YESTERDAY}`),
+        { weightKg: 99, updatedAt: 2 },
+        { merge: true },
+      ),
     );
   });
 
   it('確定済みの日でも、管理者は書き換えられる', async () => {
     await assertSucceeds(
-      setDoc(doc(admin(), 'clients/alice/days/2026-01-15/meals/m1'), { label: '変更' }),
+      setDoc(doc(admin(), `clients/alice/days/${YESTERDAY}/meals/m1`), { label: '変更' }),
     );
   });
 
   it('確定済みの日でも、契約者は読める', async () => {
-    await assertSucceeds(getDoc(doc(alice(), 'clients/alice/days/2026-01-15/meals/m1')));
+    await assertSucceeds(getDoc(doc(alice(), `clients/alice/days/${YESTERDAY}/meals/m1`)));
   });
 });
 
