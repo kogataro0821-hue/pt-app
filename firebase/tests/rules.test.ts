@@ -430,6 +430,92 @@ describe('★ カレンダー（月まとめ取得）の分離（設計書 §6�
   });
 });
 
+describe('★ 1日確定の解除（設計書 §7 / Q14）', () => {
+  // 確定は「トレーナーへの提出」ではなく本人の意思表示なので、
+  // 本人がカギを外して書き直せる。ただし外せるのは status だけ。
+  it('契約者は自分で確定を解除できる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), 'clients/alice/days/2026-01-15'),
+        { status: 'open', finalizedAt: null, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('確定したまま中身を書き換える経路は無い', async () => {
+    await assertFails(
+      setDoc(
+        doc(alice(), 'clients/alice/days/2026-01-15'),
+        { status: 'finalized', weightKg: 99, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('解除にみせかけて他の項目も同時に書き換えることはできない', async () => {
+    await assertFails(
+      setDoc(
+        doc(alice(), 'clients/alice/days/2026-01-15'),
+        { status: 'open', weightKg: 99, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('他人の確定は解除できない', async () => {
+    await assertFails(
+      setDoc(
+        doc(bob(), 'clients/alice/days/2026-01-15'),
+        { status: 'open', finalizedAt: null, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('管理者は確定を解除できる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(admin(), 'clients/alice/days/2026-01-15'),
+        { status: 'open', finalizedAt: null, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('契約者は今日を確定できる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), `clients/alice/days/${TODAY}`),
+        { date: TODAY, status: 'finalized', finalizedAt: 1, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+});
+
+describe('★ 運動の記録（設計書 §22 / Phase 6B）', () => {
+  const ex = { order: 0, name: 'ベンチプレス', minutes: 45, detail: '60kg 10回 3セット' };
+
+  it('契約者は今日の運動を書ける', async () => {
+    await assertSucceeds(setDoc(doc(alice(), `clients/alice/days/${TODAY}/exercises/e9`), ex));
+  });
+
+  it('契約者は他人の運動を書けない', async () => {
+    await assertFails(setDoc(doc(alice(), `clients/bob/days/${TODAY}/exercises/e9`), ex));
+  });
+
+  it('契約者は他人の運動を一覧できない', async () => {
+    await assertFails(getDocs(collection(alice(), `clients/bob/days/${TODAY}/exercises`)));
+  });
+
+  it('10日前の運動は書けない（ウィンドウ外）', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/exercises/e9`), ex),
+    );
+  });
+});
+
 describe('★ 1日確定（finalized）の保護（設計書 §7）', () => {
   it('確定済みの日は、契約者が食事を書き換えられない', async () => {
     await assertFails(

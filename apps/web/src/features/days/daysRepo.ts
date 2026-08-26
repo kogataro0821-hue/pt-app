@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { monthRange, type DateKey, type MonthKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
-import { emptyDay, type Day } from './dayTypes';
+import { emptyDay, type Day, type DayStatus } from './dayTypes';
 
 /**
  * 日次データの読み書き（設計書 §5.3）。
@@ -97,4 +97,48 @@ export function validateBodyMetrics(input: {
     return '体脂肪率は1〜70%の範囲で入力してください。';
   }
   return null;
+}
+
+/**
+ * 運動の有無をカレンダーの印に反映する（設計書 §6）。
+ * 食事と同じ考え方で、月表示のときに1クエリで済むよう日ドキュメントへ写します。
+ */
+export async function syncDayExerciseFlag(
+  clientId: string,
+  date: DateKey,
+  hasExercise: boolean,
+): Promise<void> {
+  await setDoc(
+    doc(daysCol(clientId), date),
+    { date, hasExercise, updatedAt: Date.now() },
+    { merge: true },
+  );
+}
+
+/**
+ * 1日確定と、その解除（設計書 §7 / Q14）。
+ *
+ * ★ 確定は「今日はもう食べません」という本人の意思表示です。
+ *   トレーナーへの提出ではないので、書き直したくなったら本人が解除できます。
+ *   ただし解除という操作を一度挟ませることで、
+ *   確定済みの日をうっかり上書きする事故は防ぎます。
+ *
+ * ★ Rules 側では、確定済みの日への書き込みは拒否したうえで、
+ *   「status を open に戻すだけの更新」に限り本人に許可しています。
+ *   ここを画面だけで実現してはいけません（設計書 §7.1）。
+ */
+export async function setDayStatus(
+  clientId: string,
+  date: DateKey,
+  status: DayStatus,
+): Promise<void> {
+  await setDoc(
+    doc(daysCol(clientId), date),
+    {
+      status,
+      finalizedAt: status === 'finalized' ? Date.now() : null,
+      updatedAt: Date.now(),
+    },
+    { merge: true },
+  );
 }

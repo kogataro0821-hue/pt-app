@@ -10,14 +10,14 @@ import {
 } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
 import { MealsSection } from '@/features/meals/MealsSection';
-import { getDay, saveBodyMetrics, validateBodyMetrics } from './daysRepo';
+import { ExercisesSection } from '@/features/exercises/ExercisesSection';
+import { getDay, saveBodyMetrics, setDayStatus, validateBodyMetrics } from './daysRepo';
 import { emptyDay, type Day } from './dayTypes';
 
 /**
  * その日の画面（設計書 §6 / §11.2）。
  *
- * Phase 5 の時点では「体重・体脂肪率」だけが入力できます。
- * 食事と運動、そして1日確定は Phase 6 で足します。
+ * からだ（体重）／食事／運動／1日確定 が1画面にまとまっています。
  *
  * ★ 編集可否の判定はここでも行いますが、これは親切のためです。
  *   本当の防衛線は Security Rules です（設計書 §7.1）。
@@ -95,6 +95,26 @@ export function DayScreen({
     }
   }
 
+  async function changeStatus(next: 'open' | 'finalized') {
+    if (busy || day === null) return;
+    if (next === 'finalized' && !window.confirm('この日を確定します。よろしいですか？')) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await setDayStatus(client.clientId, date, next);
+      setDay({ ...day, status: next, finalizedAt: next === 'finalized' ? Date.now() : null });
+    } catch {
+      setError(
+        next === 'open'
+          ? '確定を解除できませんでした。編集できる期間を過ぎている可能性があります。'
+          : '確定できませんでした。通信状態を確認してください。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <div className="section-head">
@@ -120,7 +140,7 @@ export function DayScreen({
           {!canEdit && (
             <p className="notice">
               {isFinalized
-                ? 'この日は確定済みです。修正が必要なときはトレーナーにご連絡ください。'
+                ? 'この日は確定済みです。書き直すには、下の「確定を解除する」を押してください。'
                 : isFuture
                   ? 'まだ先の日付です。当日になったら記録できます。'
                   : `自分で修正できるのは${client.permissions.pastEditWindowDays}日前までです。ここから先はトレーナーにご連絡ください。`}
@@ -193,12 +213,23 @@ export function DayScreen({
             onMealsChanged={(hasMeals) => setDay((prev) => (prev === null ? prev : { ...prev, hasMeals }))}
           />
 
-          <section className="card placeholder">
-            <h3 className="card-title">運動</h3>
-            <p className="note">
-              運動の記録は <b>Phase 6B</b> で作ります。1日確定もそちらで足します。
-            </p>
-          </section>
+          <ExercisesSection
+            clientId={client.clientId}
+            date={date}
+            canEdit={canEdit}
+            onExercisesChanged={(hasExercise) =>
+              setDay((prev) => (prev === null ? prev : { ...prev, hasExercise }))
+            }
+          />
+
+          <FinalizeCard
+            status={day.status}
+            canFinalize={canEdit && !isFuture}
+            canUnfinalize={isAdmin || (inWindow && !isFuture)}
+            windowDays={client.permissions.pastEditWindowDays}
+            busy={busy}
+            onChange={(next) => void changeStatus(next)}
+          />
         </>
       )}
 
@@ -215,4 +246,75 @@ function numberOrNull(value: string): number | null {
   if (value.trim().length === 0) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 1日確定（設計書 §7 / Q14）。
+ *
+ * ★ 確定は「トレーナーへの提出」ではありません。
+ *   「今日はもう食べません」という本人の意思表示です。
+ *   だから、書き直したくなったら本人が解除できます。
+ *
+ *   それでも解除という一手間を残しているのは、
+ *   確定済みの日をうっかり上書きする事故を防ぐためです。
+ */
+function FinalizeCard({
+  status,
+  canFinalize,
+  canUnfinalize,
+  windowDays,
+  busy,
+  onChange,
+}: {
+  status: 'open' | 'finalized';
+  canFinalize: boolean;
+  canUnfinalize: boolean;
+  windowDays: number;
+  busy: boolean;
+  onChange: (next: 'open' | 'finalized') => void;
+}) {
+  if (status === 'finalized') {
+    return (
+      <section className="card finalized">
+        <h3 className="card-title">この日は確定済みです</h3>
+        <p className="note">
+          記録が締められています。書き直したいときは、いったん解除してください。
+        </p>
+        {canUnfinalize ? (
+          <button
+            className="button-secondary"
+            type="button"
+            onClick={() => onChange('open')}
+            disabled={busy}
+          >
+            確定を解除する
+          </button>
+        ) : (
+          <p className="note">
+            自分で解除できるのは{windowDays}日前までです。トレーナーにご連絡ください。
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  if (!canFinalize) return null;
+
+  return (
+    <section className="card">
+      <h3 className="card-title">1日を確定する</h3>
+      <p className="note">
+        「今日はもう食べません」という区切りです。確定すると、この日の記録は締められます。
+        あとから書き直したくなったら、自分で解除できます。
+      </p>
+      <button
+        className="button-primary"
+        type="button"
+        onClick={() => onChange('finalized')}
+        disabled={busy}
+      >
+        1日を確定する
+      </button>
+    </section>
+  );
 }

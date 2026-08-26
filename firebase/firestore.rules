@@ -172,6 +172,20 @@ service cloud.firestore {
       match /days/{date} {
         allow get, list: if canRead(cid);
         allow write: if mayEdit(cid, date);
+
+        // ★ 1日確定の「解除」だけは、確定済みの日でも本人が行えます（Q14の決定）。
+        //
+        //   確定は「トレーナーへの提出」ではなく「今日はもう食べません」という
+        //   意思表示です。書き直したくなったら、本人がカギを外してよい。
+        //
+        //   ただし通せるのは status を open に戻す更新だけです。
+        //   確定したまま中身を書き換える経路は作りません。
+        //   編集ウィンドウの外（既定で8日以上前）は、これも通しません。
+        allow update: if isClient(cid)
+                      && inWindow(cid, date)
+                      && request.resource.data.status == 'open'
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['status', 'finalizedAt', 'updatedAt']);
       }
 
       match /days/{date}/meals/{mealId} {
