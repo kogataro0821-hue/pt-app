@@ -297,6 +297,65 @@ describe('★ 過去編集ウィンドウ（設計書 §7.3 / 既定7日）', ()
       setDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/notes/n1`), { text: 'メモ' }),
     );
   });
+
+  // ---- Phase 5: 体重を日ドキュメントに置いたことによる追加 -------------------
+
+  it('今日の体重は自分で書ける', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}`), { date: TODAY, weightKg: 62.4 }),
+    );
+  });
+
+  it('10日前の体重は自分では書けない（ウィンドウ外）', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}`), {
+        date: TEN_DAYS_AGO,
+        weightKg: 62.4,
+      }),
+    );
+  });
+
+  it('10日前の体重も管理者なら書ける', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TEN_DAYS_AGO}`), {
+        date: TEN_DAYS_AGO,
+        weightKg: 62.4,
+      }),
+    );
+  });
+
+  // measurements は日付がIDなので、days と同じ制限が要る。
+  // ここが read/write 一括許可のままだと、何年前の体重でも書き換えられてしまう。
+  it('measurements にも同じウィンドウが適用される', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/measurements/${TODAY}`), { weightKg: 62.4 }),
+    );
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/measurements/${TEN_DAYS_AGO}`), { weightKg: 62.4 }),
+    );
+    await assertSucceeds(getDoc(doc(alice(), `clients/alice/measurements/${TEN_DAYS_AGO}`)));
+  });
+});
+
+describe('★ カレンダー（月まとめ取得）の分離（設計書 §6）', () => {
+  it('契約者は自分の月ぶんの日データを一覧できる', async () => {
+    await assertSucceeds(getDocs(collection(alice(), 'clients/alice/days')));
+  });
+
+  it('契約者は他人の日データを一覧できない', async () => {
+    await assertFails(getDocs(collection(alice(), 'clients/bob/days')));
+  });
+
+  it('契約者は他人の体重を書き込めない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/bob/days/${TODAY}`), { date: TODAY, weightKg: 99 }),
+    );
+  });
+
+  it('管理者は全員分の日データを一覧できる', async () => {
+    await assertSucceeds(getDocs(collection(admin(), 'clients/alice/days')));
+    await assertSucceeds(getDocs(collection(admin(), 'clients/bob/days')));
+  });
 });
 
 describe('★ 1日確定（finalized）の保護（設計書 §7）', () => {

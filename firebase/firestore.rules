@@ -194,7 +194,14 @@ service cloud.firestore {
       match /foods/{foodId}         { allow read, write: if canRead(cid); }
       match /recipes/{recipeId}     { allow read, write: if canRead(cid); }
       match /favorites/{favoriteId} { allow read, write: if canRead(cid); }
-      match /measurements/{date}    { allow read, write: if canRead(cid); }
+
+      // 体重などの実測値。ドキュメントIDが日付なので、
+      // days と同じ「過去編集ウィンドウ」を適用します。
+      // ★ ここを canRead のままにすると、何年前の体重でも書き換えられてしまいます。
+      match /measurements/{date} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
 
       // AIとの会話履歴。消しても確定済みの食事データは残ります（設計書 §40）
       match /aiSessions/{sessionId} {

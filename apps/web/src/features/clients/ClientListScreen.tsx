@@ -10,9 +10,13 @@ import { reviewModeLabel, type Client } from './clientTypes';
 export function ClientListScreen({
   onCreate,
   onOpen,
+  onSettings,
 }: {
   onCreate: () => void;
+  /** 名前をタップ → その人のカレンダーへ */
   onOpen: (clientId: string) => void;
+  /** 歯車をタップ → 目標や権限の設定へ */
+  onSettings: (clientId: string) => void;
 }) {
   const [clients, setClients] = useState<Client[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +72,12 @@ export function ClientListScreen({
             作成の途中で止まっています。開いて「作成をやり直す」か、削除してください。
           </p>
           {provisioning.map((client) => (
-            <ClientRow key={client.clientId} client={client} onOpen={onOpen} />
+            <ClientRow
+              key={client.clientId}
+              client={client}
+              onOpen={onSettings}
+              onSettings={onSettings}
+            />
           ))}
         </section>
       )}
@@ -76,7 +85,12 @@ export function ClientListScreen({
       {ready.length > 0 && (
         <section className="card">
           {ready.map((client) => (
-            <ClientRow key={client.clientId} client={client} onOpen={onOpen} />
+            <ClientRow
+              key={client.clientId}
+              client={client}
+              onOpen={onOpen}
+              onSettings={onSettings}
+            />
           ))}
         </section>
       )}
@@ -84,24 +98,42 @@ export function ClientListScreen({
   );
 }
 
-function ClientRow({ client, onOpen }: { client: Client; onOpen: (id: string) => void }) {
+function ClientRow({
+  client,
+  onOpen,
+  onSettings,
+}: {
+  client: Client;
+  onOpen: (id: string) => void;
+  onSettings: (id: string) => void;
+}) {
   return (
-    <button className="client-row" type="button" onClick={() => onOpen(client.clientId)}>
-      <span className="client-main">
-        <span className="client-name">
-          {client.displayName.length > 0 ? client.displayName : client.clientId}
+    <div className="client-row-wrap">
+      <button className="client-row" type="button" onClick={() => onOpen(client.clientId)}>
+        <span className="client-main">
+          <span className="client-name">
+            {client.displayName.length > 0 ? client.displayName : client.clientId}
+          </span>
+          <span className="client-meta">
+            {client.clientId} · {client.targets.kcal}kcal · {reviewModeLabel(client.reviewMode)}
+          </span>
         </span>
-        <span className="client-meta">
-          {client.clientId} · {client.targets.kcal}kcal · {reviewModeLabel(client.reviewMode)}
+        {!client.active && <span className="badge wait">無効</span>}
+        {client.active && client.passwordChangedAt === null && (
+          <span className="badge wait">初期パスワード</span>
+        )}
+        <span className="chevron" aria-hidden="true">
+          ›
         </span>
-      </span>
-      {!client.active && <span className="badge wait">無効</span>}
-      {client.active && client.passwordChangedAt === null && (
-        <span className="badge wait">初期パスワード</span>
-      )}
-      <span className="chevron" aria-hidden="true">
-        ›
-      </span>
-    </button>
+      </button>
+      <button
+        className="client-settings"
+        type="button"
+        onClick={() => onSettings(client.clientId)}
+        aria-label={`${client.displayName || client.clientId} の設定`}
+      >
+        設定
+      </button>
+    </div>
   );
 }
