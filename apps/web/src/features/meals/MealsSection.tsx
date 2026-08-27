@@ -50,7 +50,7 @@ export function MealsSection({
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [aiFor, setAiFor] = useState<string | null>(null);
+  const [aiFor, setAiFor] = useState<{ mealId: string; mode: 'text' | 'photo' } | null>(null);
   const [editing, setEditing] = useState<{ mealId: string; item: MealItem } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -284,9 +284,10 @@ export function MealsSection({
             </>
           )}
 
-          {canEdit && aiFor === meal.id && (
+          {canEdit && aiFor?.mealId === meal.id && (
             <AiTextPanel
               clientId={clientId}
+              mode={aiFor.mode}
               onAdd={(items, sources) => addItems(meal.id, items, sources)}
               onClose={() => setAiFor(null)}
             />
@@ -294,7 +295,7 @@ export function MealsSection({
 
           {canEdit &&
             addingTo !== meal.id &&
-            aiFor !== meal.id &&
+            aiFor?.mealId !== meal.id &&
             (aiAvailable ? (
               <div className="add-actions">
                 <button
@@ -303,15 +304,23 @@ export function MealsSection({
                   onClick={() => setAddingTo(meal.id)}
                   disabled={busy}
                 >
-                  + 食材を追加
+                  + 食材
                 </button>
                 <button
                   className="button-secondary"
                   type="button"
-                  onClick={() => setAiFor(meal.id)}
+                  onClick={() => setAiFor({ mealId: meal.id, mode: 'text' })}
                   disabled={busy}
                 >
-                  文章から入力
+                  文章から
+                </button>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setAiFor({ mealId: meal.id, mode: 'photo' })}
+                  disabled={busy}
+                >
+                  写真から
                 </button>
               </div>
             ) : (

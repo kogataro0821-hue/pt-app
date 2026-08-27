@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  PHOTO_MIN_CONFIDENCE,
+  formatRange,
   guardRecognition,
   type GuardResult,
   type MealRecognition,
@@ -14,7 +16,8 @@ import {
 } from '@pt/core';
 import { loadFoods, searchFoods, type Food } from '@/features/meals/foodsRepo';
 import { newItemId } from '@/features/meals/mealsRepo';
-import { AiError, aiErrorMessage, parseMealText } from './gemini';
+import { PhotoResizeError, formatBytes, photoErrorMessage, resizePhoto } from '@/features/photos/resize';
+import { AiError, aiErrorMessage, analyzeMealPhoto, parseMealText } from './gemini';
 
 /**
  * 文章から食材を起こす（設計書 §12 / §14 / §39）。
@@ -35,6 +38,10 @@ interface Draft {
   key: string;
   name: string;
   grams: string;
+  /** 「150〜210g」。写真からの推定のときだけ入る */
+  range: string | null;
+  /** 写真からの推定か。true なら画面で「推定」と明示する */
+  estimated: boolean;
   per100g: Record<keyof Per100gInput, string>;
   /** AIが根拠にした原文の一部 */
   evidence: string;
@@ -49,14 +56,19 @@ interface Draft {
 
 export function AiTextPanel({
   clientId,
+  mode,
   onAdd,
   onClose,
 }: {
   clientId: string;
+  /** 'text' = 文章から / 'photo' = 写真から */
+  mode: 'text' | 'photo';
   onAdd: (items: MealItem[], sources: { name: string; per100g: Per100gInput }[]) => void;
   onClose: () => void;
 }) {
   const [text, setText] = useState('');
+  const [photo, setPhoto] = useState<{ dataUrl: string; bytes: number } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [foods, setFoods] = useState<Food[]>([]);
@@ -73,20 +85,53 @@ export function AiTextPanel({
       .catch(() => setFoods([]));
   }, [clientId]);
 
+  async function pick(files: FileList | null) {
+    if (files === null || files.length === 0) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const resized = await resizePhoto(files[0]!);
+      setPhoto({ dataUrl: resized.dataUrl, bytes: resized.bytes });
+    } catch (e) {
+      setError(
+        e instanceof PhotoResizeError ? photoErrorMessage(e.kind) : '写真を読み込めませんでした。',
+      );
+    } finally {
+      setBusy(false);
+      if (fileInput.current !== null) fileInput.current.value = '';
+    }
+  }
+
   async function run() {
-    if (busy || text.trim().length === 0) return;
+    if (busy) return;
+    if (mode === 'text' && text.trim().length === 0) return;
+    if (mode === 'photo' && photo === null) return;
+
     setBusy(true);
     setError(null);
 
     try {
-      const recognition = await parseMealText(text);
+      const isPhoto = mode === 'photo';
+      const recognition = isPhoto
+        ? await analyzeMealPhoto(photo!.dataUrl, text)
+        : await parseMealText(text);
 
-      // ★ ここが設計書 §12 の第3層。
-      //   AIが返した根拠が原文に無ければ、その項目は捨てます。
-      const guard = guardRecognition(recognition, { minConfidence: 0.6, sourceText: text });
+      /**
+       * ★ 受け止め方が2通りあります。
+       *
+       *   文章から … 根拠が原文にあるかを照合し、無ければ捨てる（設計書 §12 の第3層）
+       *   写真から … 照合できる原文が無いので、閾値を厳しくし、
+       *              すべてを確認待ちに回す（wire.ts の説明を参照）
+       */
+      const guard = isPhoto
+        ? guardRecognition(recognition, {
+            minConfidence: PHOTO_MIN_CONFIDENCE,
+            sourceText: null,
+          })
+        : guardRecognition(recognition, { minConfidence: 0.6, sourceText: text });
 
       setResult({ guard, recognition, sourceText: text });
-      setDrafts([...guard.accepted, ...guard.flagged].map((item) => toDraft(item, foods)));
+      setDrafts([...guard.accepted, ...guard.flagged].map((item) => toDraft(item, foods, isPhoto)));
     } catch (e) {
       setError(
         e instanceof AiError ? aiErrorMessage(e.kind, e.detail) : 'AIの呼び出しに失敗しました。',
@@ -137,7 +182,7 @@ export function AiTextPanel({
   return (
     <div className="ai-panel">
       <div className="ai-head">
-        <h4 className="ai-title">文章から入力</h4>
+        <h4 className="ai-title">{mode === 'photo' ? '写真から入力' : '文章から入力'}</h4>
         <button className="button-quiet" type="button" onClick={onClose}>
           閉じる
         </button>
@@ -145,17 +190,49 @@ export function AiTextPanel({
 
       {result === null && (
         <>
+          {mode === 'photo' && (
+            <>
+              {photo !== null && (
+                <div className="ai-photo-preview">
+                  <img src={photo.dataUrl} alt="" />
+                  <span className="note">{formatBytes(photo.bytes)}に縮小して送ります</span>
+                </div>
+              )}
+
+              <input
+                ref={fileInput}
+                className="visually-hidden"
+                type="file"
+                accept="image/*"
+                onChange={(e) => void pick(e.target.files)}
+              />
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                disabled={busy}
+              >
+                {photo === null ? '写真を選ぶ / 撮る' : '別の写真にする'}
+              </button>
+            </>
+          )}
+
           <textarea
             className="input"
-            rows={3}
+            rows={mode === 'photo' ? 2 : 3}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="白米180gと鶏むね肉150g、ブロッコリー少し"
-            autoFocus
+            placeholder={
+              mode === 'photo'
+                ? '補足があれば（例: ごはんは少なめ）。空欄でも構いません'
+                : '白米180gと鶏むね肉150g、ブロッコリー少し'
+            }
+            autoFocus={mode === 'text'}
           />
           <p className="field-hint">
-            食べたものをそのまま書いてください。量が分かるものは書いておくと、そのまま入ります。
-            書いていないことをAIが勝手に足すことはありません。
+            {mode === 'photo'
+              ? '写真に写っているものだけを読み取ります。写っていないものをAIが足すことはありません。量は必ず「150〜210g」のような幅で示され、そのまま登録されることはありません。'
+              : '食べたものをそのまま書いてください。量が分かるものは書いておくと、そのまま入ります。書いていないことをAIが勝手に足すことはありません。'}
           </p>
 
           {error !== null && (
@@ -168,9 +245,13 @@ export function AiTextPanel({
             className="button-primary compact"
             type="button"
             onClick={() => void run()}
-            disabled={busy || text.trim().length === 0}
+            disabled={busy || (mode === 'photo' ? photo === null : text.trim().length === 0)}
           >
-            {busy ? 'AIに聞いています…' : 'AIに分解してもらう'}
+            {busy
+              ? 'AIに聞いています…'
+              : mode === 'photo'
+                ? 'この写真を読み取ってもらう'
+                : 'AIに分解してもらう'}
           </button>
         </>
       )}
@@ -179,7 +260,11 @@ export function AiTextPanel({
         <>
           {result.guard.rejected.length > 0 && (
             <section className="card warn ai-rejected">
-              <h4 className="card-title">AIが足そうとした情報を取り除きました</h4>
+              <h4 className="card-title">
+                {mode === 'photo'
+                  ? '自信が低いため取り除いた項目'
+                  : 'AIが足そうとした情報を取り除きました'}
+              </h4>
               <ul className="note-list">
                 {result.guard.rejected.map((r, i) => (
                   <li key={i}>
@@ -188,10 +273,18 @@ export function AiTextPanel({
                 ))}
               </ul>
               <p className="note">
-                書いていないことをAIが補ったため、こちらで自動的に外しました。
-                必要なら手で足してください。
+                {mode === 'photo'
+                  ? '写真では根拠を機械的に確かめられないため、自信の低いものは自動的に外しています。必要なら手で足してください。'
+                  : '書いていないことをAIが補ったため、こちらで自動的に外しました。必要なら手で足してください。'}
               </p>
             </section>
+          )}
+
+          {mode === 'photo' && drafts.length > 0 && (
+            <p className="notice">
+              写真から読み取った<b>推定</b>です。実際の量と見比べて、必要なら直してください。
+              数字は幅で示しています。幅が広いものほど、AIの自信が低い項目です。
+            </p>
           )}
 
           {result.recognition.unidentified.length > 0 && (
@@ -305,9 +398,19 @@ function DraftRow({
         根拠: <span>{draft.evidence}</span>
       </p>
 
-      {draft.needsAmount && draft.question !== null && (
-        <p className="notice">{draft.question}</p>
+      {draft.estimated && (
+        <p className="ai-estimate">
+          <span className="badge wait">推定</span>
+          {draft.range !== null && <> AIの見立て: {draft.range}</>}
+        </p>
       )}
+
+      {/*
+        ★ 質問は、量が埋まっていても出します。
+          「皮は付いていましたか？」のように、量とは別のことを聞いている場合があり、
+          量が入ったからという理由で握りつぶすと、確認の機会が失われます。
+      */}
+      {draft.question !== null && <p className="notice">{draft.question}</p>}
 
       <div className="grid-2">
         <label className="field">
@@ -400,14 +503,30 @@ function DraftRow({
 
 // -----------------------------------------------------------------------------
 
-function toDraft(item: RecognizedItem, foods: Food[]): Draft {
+function toDraft(item: RecognizedItem, foods: Food[], estimated = false): Draft {
   // ★ 栄養値は食品マスタから引きます。AIには答えさせません（設計書 §13 / §37）。
   const match = foods.find((f) => f.name === item.name);
+
+  /**
+   * ★ 写真の場合だけ、推定値を最初から入れておきます。
+   *   「入れておく」ことと「確定させる」ことは違います。
+   *   画面には推定であることと幅を並べて出し、人が見比べて直せるようにしています。
+   *   逆に文章の場合は、書かれていない量を勝手に埋めません。
+   */
+  const prefill = estimated
+    ? item.quantity.value > 0
+      ? String(Math.round(item.quantity.value))
+      : ''
+    : item.needsUserInput || item.quantity.value === 0
+      ? ''
+      : String(item.quantity.value);
 
   return {
     key: `${item.name}-${item.evidence}-${Math.random().toString(36).slice(2, 8)}`,
     name: item.name,
-    grams: item.needsUserInput || item.quantity.value === 0 ? '' : String(item.quantity.value),
+    grams: prefill,
+    range: formatRange(item),
+    estimated,
     per100g:
       match === undefined
         ? { kcal: '', p: '', f: '', c: '' }
@@ -418,7 +537,7 @@ function toDraft(item: RecognizedItem, foods: Food[]): Draft {
             c: String(match.per100g.c),
           },
     evidence: item.evidence,
-    needsAmount: item.needsUserInput,
+    needsAmount: item.needsUserInput && prefill === '',
     question: item.question,
     confidence: item.confidence,
     fromMaster: match !== undefined,

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { aiTextResultSchema, toMealRecognition, toRecognizedItem, type AiItem } from './wire';
+import {
+  PHOTO_MIN_CONFIDENCE,
+  aiPhotoResultSchema,
+  aiTextResultSchema,
+  formatRange,
+  toMealRecognition,
+  toPhotoRecognition,
+  toRecognizedItem,
+  toRecognizedPhotoItem,
+  type AiItem,
+  type AiPhotoItem,
+} from './wire';
 import { guardRecognition } from './guard';
 
 function item(overrides: Partial<AiItem> = {}): AiItem {
@@ -181,5 +192,124 @@ describe('★ 勝手な補完を落とす（設計書 §12）', () => {
     });
     expect(recognition.items).toHaveLength(0);
     expect(recognition.unidentified[0]!.description).toBe('なにか茶色いもの');
+  });
+});
+
+describe('★ 写真からの認識（設計書 §10 / §39）', () => {
+  function photo(overrides: Partial<AiPhotoItem> = {}): AiPhotoItem {
+    return {
+      name: '白米',
+      amountGrams: 180,
+      amountMinGrams: 150,
+      amountMaxGrams: 210,
+      confidence: 0.85,
+      evidence: '手前の茶碗に盛られた白いごはん',
+      question: '',
+      ...overrides,
+    };
+  }
+
+  // ★ ここが写真解析の要。
+  //   写真から分かるのは推定までなので、そのまま登録される経路を作らない。
+  it('写真から来た項目は、例外なく人の確認を通す', () => {
+    const out = toRecognizedPhotoItem(photo({ confidence: 0.99 }));
+    expect(out.needsUserInput).toBe(true);
+    expect(out.quantityStatus).toBe('estimated');
+  });
+
+  it('確信度が高くても confirmed にはならない', () => {
+    const out = toRecognizedPhotoItem(photo({ confidence: 1 }));
+    expect(out.quantityStatus).not.toBe('confirmed');
+  });
+
+  // ★ 「180g」と言い切らせず、幅で答えさせる。
+  //   幅の広さが、そのまま自信の無さとして目に見える。
+  it('推定の幅を保持する', () => {
+    const out = toRecognizedPhotoItem(photo());
+    expect(out.quantityRange).toEqual({ min: 150, max: 210 });
+    expect(formatRange(out)).toBe('150〜210g');
+  });
+
+  it('上限と下限が逆でも正しい向きに直す', () => {
+    const out = toRecognizedPhotoItem(photo({ amountMinGrams: 210, amountMaxGrams: 150 }));
+    expect(out.quantityRange).toEqual({ min: 150, max: 210 });
+  });
+
+  it('幅が無ければ範囲を表示しない', () => {
+    const out = toRecognizedPhotoItem(photo({ amountMinGrams: 180, amountMaxGrams: 180 }));
+    expect(out.quantityRange).toBeNull();
+    expect(formatRange(out)).toBeNull();
+  });
+
+  it('栄養値の情報は一切入らない', () => {
+    const out = toRecognizedPhotoItem(photo());
+    expect(out.packageLabel).toBeNull();
+    expect(out.brand).toBeNull();
+    expect(out.cookingMethod).toBeNull();
+  });
+
+  // 原文照合という後ろ盾が無いぶん、入口の閾値をテキストより高くしてある。
+  it('写真の閾値は、テキストの閾値より厳しい', () => {
+    expect(PHOTO_MIN_CONFIDENCE).toBeGreaterThan(0.6);
+  });
+
+  it('自信の低い項目は、写真の閾値で落ちる', () => {
+    const recognition = toPhotoRecognition({
+      items: [photo({ confidence: 0.7 })],
+      unidentified: [],
+      notes: [],
+    });
+    // 写真では原文が無いので sourceText は null（照合はしない）
+    const guard = guardRecognition(recognition, {
+      minConfidence: PHOTO_MIN_CONFIDENCE,
+      sourceText: null,
+    });
+    expect(guard.accepted).toHaveLength(0);
+    expect(guard.flagged).toHaveLength(1);
+  });
+
+  it('確信度が高くても、写真の項目は accepted に入らない', () => {
+    const recognition = toPhotoRecognition({
+      items: [photo({ confidence: 0.95 })],
+      unidentified: [],
+      notes: [],
+    });
+    const guard = guardRecognition(recognition, {
+      minConfidence: PHOTO_MIN_CONFIDENCE,
+      sourceText: null,
+    });
+    // needsUserInput が立っているので flagged に回る
+    expect(guard.accepted).toHaveLength(0);
+    expect(guard.flagged).toHaveLength(1);
+  });
+
+  it('特定できなかったものは、食品として登録されない', () => {
+    const recognition = toPhotoRecognition({
+      items: [],
+      unidentified: ['奥の小鉢に入った茶色いもの'],
+      notes: [],
+    });
+    expect(recognition.items).toHaveLength(0);
+    expect(recognition.unidentified[0]!.description).toContain('小鉢');
+  });
+
+  it('スキーマ: 根拠が空の項目は受け付けない', () => {
+    expect(
+      aiPhotoResultSchema.safeParse({
+        items: [photo({ evidence: '' })],
+        unidentified: [],
+        notes: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('スキーマ: 負の量は受け付けない', () => {
+    expect(
+      aiPhotoResultSchema.safeParse({
+        items: [photo({ amountGrams: -1 })],
+        unidentified: [],
+        notes: [],
+      }).success,
+    ).toBe(false);
   });
 });

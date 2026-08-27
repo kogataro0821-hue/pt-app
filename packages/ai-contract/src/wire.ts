@@ -123,3 +123,97 @@ export function toMealRecognition(result: AiTextResult): MealRecognition {
     notes: result.notes,
   };
 }
+
+// -----------------------------------------------------------------------------
+// 写真からの認識（設計書 §10 / §39 / Phase 8B）
+// -----------------------------------------------------------------------------
+
+/**
+ * ★ 写真では「原文照合」が使えません。
+ *
+ *   テキスト解析では、AIが返した根拠が入力文に含まれるかを機械的に照合し、
+ *   含まれなければ捨てていました（§12 の第3層）。
+ *   写真には照合する原文が無いので、この防御が丸ごと使えません。
+ *
+ *   代わりに3つで受け止めます。
+ *
+ *   1. 量を必ず「幅」で答えさせる（150〜200g のように）
+ *      幅が広い＝自信が無い、が数字として現れます。
+ *      「180g」と1点で言い切らせると、推定が事実に見えてしまいます。
+ *
+ *   2. 写真から来た項目は、1つも自動で採用しない
+ *      すべて「確認待ち」として人に見せます。テキストの場合と違い、
+ *      そのまま登録される経路を作りません。
+ *
+ *   3. 自信の低いものは捨てる
+ *      根拠の照合ができないぶん、テキストより厳しい閾値にします。
+ */
+export const aiPhotoItemSchema = z.object({
+  name: z.string().min(1),
+  /** 推定の中心値（g） */
+  amountGrams: z.number().min(0),
+  /** 推定の下限・上限（g）。自信が無いほど幅が広くなる */
+  amountMinGrams: z.number().min(0),
+  amountMaxGrams: z.number().min(0),
+  confidence: z.number().min(0).max(1),
+  /** 写真のどこに、どう写っているか。人が見比べるための手がかり */
+  evidence: z.string().min(1),
+  question: z.string(),
+});
+
+export const aiPhotoResultSchema = z.object({
+  items: z.array(aiPhotoItemSchema),
+  /** 何か写っているが、食品として特定できなかったもの */
+  unidentified: z.array(z.string()),
+  notes: z.array(z.string()),
+});
+
+export type AiPhotoItem = z.infer<typeof aiPhotoItemSchema>;
+export type AiPhotoResult = z.infer<typeof aiPhotoResultSchema>;
+
+/** 写真から来た項目は、すべて確認待ちにする。 */
+export function toRecognizedPhotoItem(item: AiPhotoItem): RecognizedItem {
+  const min = Math.min(item.amountMinGrams, item.amountMaxGrams);
+  const max = Math.max(item.amountMinGrams, item.amountMaxGrams);
+
+  return {
+    name: item.name,
+    brand: null,
+    productName: null,
+    quantity: { value: item.amountGrams, unit: 'g' },
+    // ★ 'confirmed' には決してしません。写真から分かるのは推定までです。
+    quantityStatus: 'estimated',
+    quantityRange: max > min ? { min, max } : null,
+    cookingMethod: null,
+    packageLabel: null,
+    confidence: item.confidence,
+    evidence: item.evidence,
+    // ★ 写真から来たものは、例外なく人の確認を通します。
+    needsUserInput: true,
+    question: item.question.length > 0 ? item.question : null,
+  };
+}
+
+export function toPhotoRecognition(result: AiPhotoResult): MealRecognition {
+  return {
+    mealLabelSuggestion: null,
+    items: result.items.map(toRecognizedPhotoItem),
+    unidentified: result.unidentified.map((description) => ({ description, confidence: 0 })),
+    notes: result.notes,
+  };
+}
+
+/**
+ * 写真から来た項目に使う、確信度の下限。
+ *
+ * テキストの 0.6 より高くしてあります。
+ * 原文照合という後ろ盾が無いぶん、入口を厳しくして釣り合いを取ります。
+ */
+export const PHOTO_MIN_CONFIDENCE = 0.75;
+
+/** 推定幅を「150〜200g」の形にする。幅が無ければ null。 */
+export function formatRange(item: RecognizedItem): string | null {
+  if (item.quantityRange === null) return null;
+  const { min, max } = item.quantityRange;
+  return `${Math.round(min)}〜${Math.round(max)}g`;
+}

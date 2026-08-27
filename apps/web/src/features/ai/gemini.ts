@@ -1,4 +1,10 @@
-import { aiTextResultSchema, toMealRecognition, type MealRecognition } from '@pt/ai-contract';
+import {
+  aiPhotoResultSchema,
+  aiTextResultSchema,
+  toMealRecognition,
+  toPhotoRecognition,
+  type MealRecognition,
+} from '@pt/ai-contract';
 import { getAuthClient } from '@/lib/firebase';
 import { AI_RELAY_URL } from '@/config/firebase';
 
@@ -215,4 +221,178 @@ export async function parseMealText(text: string): Promise<MealRecognition> {
   if (!result.success) throw new AiError('invalid_output');
 
   return toMealRecognition(result.data);
+}
+
+// -----------------------------------------------------------------------------
+// 写真からの認識（設計書 §10 / Phase 8B）
+// -----------------------------------------------------------------------------
+
+const PHOTO_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          amountGrams: { type: 'number' },
+          amountMinGrams: { type: 'number' },
+          amountMaxGrams: { type: 'number' },
+          confidence: { type: 'number' },
+          evidence: { type: 'string' },
+          question: { type: 'string' },
+        },
+        required: [
+          'name',
+          'amountGrams',
+          'amountMinGrams',
+          'amountMaxGrams',
+          'confidence',
+          'evidence',
+          'question',
+        ],
+      },
+    },
+    unidentified: { type: 'array', items: { type: 'string' } },
+    notes: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['items', 'unidentified', 'notes'],
+} as const;
+
+/**
+ * 写真解析への指示（設計書 §10 / §12 / §39）。
+ *
+ * ★ テキストと違い、原文照合という後ろ盾がありません。
+ *   そのぶん指示を具体的にし、「幅で答えさせる」ことで
+ *   自信の無さが数字として見えるようにしています。
+ */
+const PHOTO_PROMPT = `あなたは食事の写真から、写っている食品と量を読み取る役です。
+
+■ もっとも大切な決まり
+
+写真に写っていないものを、絶対に足さないでください。
+
+・「定食の写真だから味噌汁もあるはず」と補ってはいけません。写っているものだけです。
+・見えない部分（丼の下、器の中身が見えない など）を推測してはいけません。
+・調味料、油、ドレッシングは、見えていなければ足さないでください。
+・ぼやけていて判別できないものは、items ではなく unidentified に入れてください。
+
+■ 量の答え方
+
+グラムで答えてください。ただし **必ず幅を付けてください**。
+
+  amountGrams     … もっとも近いと思う値
+  amountMinGrams  … 最低でもこれくらい
+  amountMaxGrams  … 多くてもこれくらい
+
+自信が無いほど、幅を広く取ってください。
+「たぶん180gだが100〜250gかもしれない」なら、正直にそう答えてください。
+幅を狭く見せる必要はありません。狭いほど良い、ということはありません。
+
+比較できるもの（茶碗、箸、スプーン、皿）が写っていれば、それを手がかりにしてください。
+手がかりが何も無ければ、幅を大きく取ってください。
+
+■ evidence（根拠）について
+
+写真のどこに、どう写っているかを書いてください。
+
+例: 「手前の茶碗に盛られた白いごはん」
+    「左奥の皿にある、焼き色のついた鶏肉」
+
+人がこれを読んで写真と見比べ、正しいか確かめます。
+どこを見て判断したのかが分かるように書いてください。
+
+■ 栄養価について
+
+カロリー、たんぱく質、脂質、炭水化物は、絶対に答えないでください。
+それらはこちらで計算します。あなたの仕事は「何が・どれだけ」までです。
+
+■ 名前について
+
+一般的な食材の名前にしてください。料理名ではなく、食材ごとに分けてください。
+ただし、分けられないもの（カレー、シチューなど）は無理に分解せず、
+料理名のまま1つの項目にして、question に「材料の内訳は分かりますか？」と書いてください。`;
+
+/**
+ * 写真から食品候補を作る。
+ *
+ * ★ 送るのは写真1枚と、利用者が添えた補足だけです。
+ *   誰の写真かをAIに伝えることはありません（設計書 §35）。
+ */
+export async function analyzeMealPhoto(
+  dataUrl: string,
+  hint: string,
+): Promise<MealRecognition> {
+  if (AI_RELAY_URL === null) throw new AiError('not_configured');
+
+  const user = getAuthClient().currentUser;
+  if (user === null) throw new AiError('unauthenticated');
+
+  // data:image/jpeg;base64,XXXX → mimeType と本体に分ける
+  const match = /^data:(image\/[a-z+]+);base64,(.+)$/.exec(dataUrl);
+  if (match === null) throw new AiError('invalid_output');
+  const [, mimeType, base64] = match as unknown as [string, string, string];
+
+  let idToken: string;
+  try {
+    idToken = await user.getIdToken();
+  } catch {
+    throw new AiError('unauthenticated');
+  }
+
+  const parts: unknown[] = [{ inline_data: { mime_type: mimeType, data: base64 } }];
+  if (hint.trim().length > 0) {
+    parts.push({ text: `補足: ${hint.trim()}` });
+  }
+
+  const body = {
+    systemInstruction: { parts: [{ text: PHOTO_PROMPT }] },
+    contents: [{ role: 'user', parts }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: PHOTO_RESPONSE_SCHEMA,
+      temperature: 0,
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(AI_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new AiError('network');
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) throw new AiError('unauthenticated');
+    if (response.status === 429) throw new AiError('rate_limited');
+    if (response.status === 413) throw new AiError('unavailable', '写真が大きすぎます');
+    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
+  }
+
+  let raw: GeminiResponse;
+  try {
+    raw = (await response.json()) as GeminiResponse;
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const jsonText = raw.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof jsonText !== 'string') throw new AiError('invalid_output');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const result = aiPhotoResultSchema.safeParse(parsed);
+  if (!result.success) throw new AiError('invalid_output');
+
+  return toPhotoRecognition(result.data);
 }
