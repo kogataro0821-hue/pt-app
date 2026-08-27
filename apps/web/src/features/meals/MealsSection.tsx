@@ -127,7 +127,17 @@ export function MealsSection({
       updatedAt: Date.now(),
     };
     void persist([...list, meal], meal);
-    setAddingTo(meal.id);
+
+    // ★ ここで手入力の欄を開いてはいけません。
+    //
+    //   以前は食事を足した瞬間に「＋食材」の入力欄を開いていました。
+    //   すると「文章から」「写真から」を選ぶ機会が飛ばされ、
+    //   手で打つしかないように見えます。
+    //   （画面を更新すると選べるようになる、という分かりにくい挙動でした）
+    //
+    //   どうやって入れるかは本人が選ぶところなので、選ばせます。
+    setAddingTo(null);
+    setAiFor(null);
   }
 
   function removeMeal(meal: Meal) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { currentMonthKey, isValidDateKey, isValidMonthKey } from '@pt/core';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
@@ -45,6 +45,21 @@ function Gate() {
    */
   const [changedUid, setChangedUid] = useState<string | null>(null);
 
+  /**
+   * 「ログアウト状態を通ったか」の目印。
+   *
+   * ★ この目印を Gate が持っているのには理由があります。
+   *   ログイン画面が出ている間、この下の AppRoutes は存在しません。
+   *   下に置くと、ログアウト状態を一度も見られないまま消えてしまい、
+   *   「ログインした直後かどうか」を判断できません。
+   *   ログイン前後で消えないここに置きます。
+   */
+  const sawSignedOut = useRef(false);
+
+  useEffect(() => {
+    if (state.status === 'signedOut') sawSignedOut.current = true;
+  }, [state.status]);
+
   if (state.status === 'loading') return <Splash />;
   if (state.status === 'signedOut') return <LoginScreen />;
 
@@ -88,7 +103,9 @@ function Gate() {
     );
   }
 
-  return <AppRoutes onChangePassword={() => setChangingPassword(true)} />;
+  return (
+    <AppRoutes onChangePassword={() => setChangingPassword(true)} sawSignedOut={sawSignedOut} />
+  );
 }
 
 /**
@@ -99,13 +116,21 @@ function Gate() {
  *   ・「この日を見て」とURLを共有できる
  *   ・ホーム画面に追加したときに、開きたい画面を指定できる
  */
-function AppRoutes({ onChangePassword }: { onChangePassword: () => void }) {
+function AppRoutes({
+  onChangePassword,
+  sawSignedOut,
+}: {
+  onChangePassword: () => void;
+  sawSignedOut: React.MutableRefObject<boolean>;
+}) {
   const { state } = useAuth();
   const user = state.status === 'signedIn' ? state.user : null;
   const isAdmin = user?.role === 'admin';
 
   return (
-    <Routes>
+    <>
+      <LandOnHomeAfterLogin sawSignedOut={sawSignedOut} />
+      <Routes>
       <Route
         path="/"
         element={
@@ -182,8 +207,41 @@ function AppRoutes({ onChangePassword }: { onChangePassword: () => void }) {
       />
 
       <Route path="*" element={<NotFoundRoute onChangePassword={onChangePassword} />} />
-    </Routes>
+      </Routes>
+    </>
   );
+}
+
+/**
+ * ログインした直後は、その人の「持ち場」から始める（設計書 §11.1）。
+ *
+ *   契約者 … 自分のカレンダー
+ *   管理者 … 契約者一覧
+ *
+ * ★ 判定に使うのは「ログアウト状態を経由したか」です。
+ *
+ *   ログイン画面から入ったときだけ移動し、
+ *   ページを開き直しただけのとき（ログイン状態が残っている）は移動しません。
+ *   常に飛ばしてしまうと、「この日を見て」と渡したURLを開いても
+ *   カレンダーに戻されてしまい、URLを共有できる利点が消えます。
+ *
+ *   行き先を '/' にしているのは、役割ごとの振り分けが
+ *   すでにそこに1か所だけ書いてあるためです。二重に持ちません。
+ */
+function LandOnHomeAfterLogin({
+  sawSignedOut,
+}: {
+  sawSignedOut: React.MutableRefObject<boolean>;
+}) {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!sawSignedOut.current) return;
+    sawSignedOut.current = false;
+    navigate('/', { replace: true });
+  }, [navigate, sawSignedOut]);
+
+  return null;
 }
 
 // -----------------------------------------------------------------------------
