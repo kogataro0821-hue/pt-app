@@ -1,5 +1,5 @@
 import { collection, deleteDoc, doc, getDocs, orderBy, query, setDoc } from 'firebase/firestore';
-import type { DateKey } from '@pt/core';
+import { isPhotoExpired, type DateKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 import type { ResizedPhoto } from './resize';
 
@@ -75,6 +75,53 @@ export async function deletePhoto(
   photoId: string,
 ): Promise<void> {
   await deleteDoc(doc(col(clientId, date), photoId));
+}
+
+/**
+ * その日の写真をすべて消す（管理者の「確認しました」で使う）。
+ *
+ * ★ 数値は消えません。消えるのは画像だけです。
+ *   食材・量・kcal・PFC は記録として残ります。
+ *   写真は「その数値が正しいか確かめるための材料」なので、
+ *   確認が済んだあとまで置いておく理由がありません（設計書 §8.2）。
+ */
+export async function deleteAllPhotos(clientId: string, date: DateKey): Promise<number> {
+  const snap = await getDocs(col(clientId, date));
+  for (const d of snap.docs) {
+    await deleteDoc(d.ref);
+  }
+  return snap.size;
+}
+
+/**
+ * 期限切れの写真を消す。
+ *
+ * ★ Cloud Functions が使えないので、自動では走りません。
+ *   誰かがその日の写真欄を開いたときに、そこだけ掃除します。
+ *   消し漏れは残りますが、それは「容量が減らない」だけで、
+ *   記録が壊れるわけではありません。
+ *
+ * 戻り値は消した枚数です。0 なら画面は何も変える必要がありません。
+ */
+export async function deleteExpiredPhotos(
+  clientId: string,
+  date: DateKey,
+  now: number = Date.now(),
+): Promise<number> {
+  const snap = await getDocs(col(clientId, date));
+  let removed = 0;
+
+  for (const d of snap.docs) {
+    const createdAt = num(d.data().createdAt, 0);
+    // createdAt が壊れている写真は消しません。
+    // 0 として扱うと「大昔の写真」になり、消えてはいけないものが消えます。
+    if (createdAt > 0 && isPhotoExpired(createdAt, now)) {
+      await deleteDoc(d.ref);
+      removed += 1;
+    }
+  }
+
+  return removed;
 }
 
 function newPhotoId(): string {

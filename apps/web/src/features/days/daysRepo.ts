@@ -1,5 +1,15 @@
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
-import { monthRange, type DateKey, type MonthKey } from '@pt/core';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { monthRange, photoWarnThreshold, type DateKey, type MonthKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 import { emptyDay, type Day, type DayStatus } from './dayTypes';
 
@@ -73,6 +83,9 @@ function toDay(id: string, data: Record<string, unknown>): Day {
     hasExercise: data.hasExercise === true,
     reviewedAt: num(data.reviewedAt),
     finalizedAt: num(data.finalizedAt),
+    checkedAt: num(data.checkedAt),
+    checkedBy: typeof data.checkedBy === 'string' ? data.checkedBy : null,
+    photoOldestAt: num(data.photoOldestAt),
     updatedAt: num(data.updatedAt),
   };
 }
@@ -159,4 +172,73 @@ export async function listRange(
     query(daysCol(clientId), where('date', '>=', from), where('date', '<=', to)),
   );
   return snap.docs.map((d) => toDay(d.id, d.data())).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * 写真の状況をカレンダーの印と期限の検索に反映する（設計書 §8.2 / Phase 11）。
+ *
+ * `photoOldestAt` は「もうすぐ消える写真」を1回のクエリで探すためのものです。
+ * 写真が1枚も無くなったら null にします。null の日は検索に引っかかりません。
+ */
+export async function syncDayPhotoState(
+  clientId: string,
+  date: DateKey,
+  oldestAt: number | null,
+): Promise<void> {
+  await setDoc(
+    doc(daysCol(clientId), date),
+    { date, photoOldestAt: oldestAt, updatedAt: Date.now() },
+    { merge: true },
+  );
+}
+
+/**
+ * 管理者が「確認しました」を押す（Phase 11）。
+ *
+ * ★ 1日確定とは別ものです。確定は契約者の意思表示、これはトレーナーの記録です。
+ *   取り消せるようにしてあります。押し間違いを直せないと、
+ *   写真が消えたうえに「確認済み」が残る、という一番困る状態になります。
+ */
+export async function setDayChecked(
+  clientId: string,
+  date: DateKey,
+  adminUid: string | null,
+): Promise<void> {
+  await setDoc(
+    doc(daysCol(clientId), date),
+    {
+      date,
+      checkedAt: adminUid === null ? null : Date.now(),
+      checkedBy: adminUid,
+      updatedAt: Date.now(),
+    },
+    { merge: true },
+  );
+}
+
+/**
+ * もうすぐ消える写真がある日を探す（設計書 §8.2 / Phase 11）。
+ *
+ * ★ 絞り込んでから読みます。
+ *   1年ぶんの日を読んでから絞り込むと、画面を開くたびに数百件の読み取りになり、
+ *   無料枠がそれだけで尽きます。`photoOldestAt` に絞り込みをかけ、
+ *   出てくる件数も上限をつけています。
+ *
+ * ★ 知らせる目的は「消える前に見返す機会を作る」ことです。
+ *   全部を並べる必要はないので、古いほうから数件で足ります。
+ */
+export async function listDaysWithExpiringPhotos(
+  clientId: string,
+  now: number = Date.now(),
+  max = 5,
+): Promise<Day[]> {
+  const snap = await getDocs(
+    query(
+      daysCol(clientId),
+      where('photoOldestAt', '<=', photoWarnThreshold(now)),
+      orderBy('photoOldestAt'),
+      limit(max),
+    ),
+  );
+  return snap.docs.map((d) => toDay(d.id, d.data()));
 }

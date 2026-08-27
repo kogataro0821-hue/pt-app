@@ -41,6 +41,30 @@ export interface Day {
   /** 1日確定した時刻。未確定は null */
   finalizedAt: number | null;
 
+  /**
+   * 管理者が中身を見て「確認しました」を押した時刻（Phase 11）。
+   *
+   * ★ 1日確定とは別ものです。
+   *   確定は契約者の「今日はもう食べません」という意思表示で、
+   *   本人がいつでも解除できます。
+   *   こちらはトレーナーが「見ました」と記録するもので、
+   *   押すと同時にその日の写真が消えます。
+   *   2つを1つにまとめると、どちらが起きたのか分からなくなります。
+   */
+  checkedAt: number | null;
+  /** 確認した管理者のUID */
+  checkedBy: string | null;
+
+  /**
+   * その日に残っている写真のうち、いちばん古いものが撮られた時刻。
+   *
+   * ★ 「もうすぐ消える写真」を1回のクエリで探すために置いています。
+   *   これが無いと、探すのに1年ぶんの日を読むことになり、
+   *   それだけで無料枠を使い切ります。
+   *   写真が1枚も無い日では null です。
+   */
+  photoOldestAt: number | null;
+
   updatedAt: number | null;
 }
 
@@ -54,6 +78,9 @@ export function emptyDay(date: DateKey): Day {
     hasExercise: false,
     reviewedAt: null,
     finalizedAt: null,
+    checkedAt: null,
+    checkedBy: null,
+    photoOldestAt: null,
     updatedAt: null,
   };
 }
@@ -75,7 +102,8 @@ export function markersOf(day: Day | undefined): DayMarkers {
     meals: day.hasMeals,
     exercise: day.hasExercise,
     weight: day.weightKg !== null,
-    done: day.status === 'finalized' || day.reviewedAt !== null,
+    // 確定・AI評価・トレーナーの確認のどれかが済んでいれば印を出す
+    done: day.status === 'finalized' || day.reviewedAt !== null || day.checkedAt !== null,
   };
 }
 

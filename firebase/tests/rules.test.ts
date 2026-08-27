@@ -32,6 +32,9 @@ const TODAY = jstDate(0);
 const YESTERDAY = jstDate(1);
 const THREE_DAYS_AGO = jstDate(3);
 const TEN_DAYS_AGO = jstDate(10);
+/** 写真の保存期間（49日）より前。掃除の対象になる日 */
+const FIFTY_DAYS_AGO = jstDate(50);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeAll(async () => {
   env = await initializeTestEnvironment({
@@ -810,6 +813,171 @@ describe('★ 1日確定（finalized）の保護（設計書 §7）', () => {
 
   it('確定済みの日でも、契約者は読める', async () => {
     await assertSucceeds(getDoc(doc(alice(), `clients/alice/days/${YESTERDAY}/meals/m1`)));
+  });
+});
+
+describe('★ トレーナーの確認と写真の保存期間（設計書 §8.2 / Phase 11）', () => {
+  const small = 'data:image/jpeg;base64,' + 'A'.repeat(1000);
+
+  /** n日前に撮られた写真を、Rules を迂回して置く */
+  async function seedPhoto(date: string, id: string, agoDays: number) {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${date}/photos/${id}`), {
+        dataUrl: small,
+        createdAt: Date.now() - agoDays * DAY_MS,
+      });
+    });
+  }
+
+  // ---- 確認済み（管理者だけ） ---------------------------------------------
+
+  it('管理者は確認済みにできる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(admin(), `clients/alice/days/${TODAY}`),
+        { checkedAt: Date.now(), checkedBy: 'admin-uid' },
+        { merge: true },
+      ),
+    );
+  });
+
+  // ★ ここが要。契約者が自分で確認済みにできると、
+  //   「トレーナーが見たか」の記録にならない。
+  it('契約者は確認済みにできない', async () => {
+    await assertFails(
+      setDoc(
+        doc(alice(), `clients/alice/days/${TODAY}`),
+        { checkedAt: Date.now(), checkedBy: 'alice-uid' },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('契約者は確認済みを取り消せない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TODAY}`), {
+        date: TODAY,
+        checkedAt: 1,
+        checkedBy: 'admin-uid',
+      });
+    });
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}`), { checkedAt: null }, { merge: true }),
+    );
+  });
+
+  it('確認済みを触らない書き込みは、契約者も今までどおりできる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), `clients/alice/days/${TODAY}`),
+        { date: TODAY, weightKg: 62.5 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('管理者は確認済みを取り消せる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(admin(), `clients/alice/days/${TODAY}`),
+        { checkedAt: null, checkedBy: null },
+        { merge: true },
+      ),
+    );
+  });
+
+  // ---- 写真の削除 -----------------------------------------------------------
+
+  it('管理者はいつの写真でも消せる（確認したとき）', async () => {
+    await seedPhoto(FIFTY_DAYS_AGO, 'p1', 50);
+    await assertSucceeds(
+      deleteDoc(doc(admin(), `clients/alice/days/${FIFTY_DAYS_AGO}/photos/p1`)));
+  });
+
+  it('契約者は期間内の自分の写真を消せる', async () => {
+    await seedPhoto(TODAY, 'p1', 0);
+    await assertSucceeds(deleteDoc(doc(alice(), `clients/alice/days/${TODAY}/photos/p1`)));
+  });
+
+  // ★ 掃除は「画面を開いた人」がやる。Cloud Functions が使えないため。
+  //   7週間前は編集ウィンドウ（7日）の外なので、期限切れという理由が要る。
+  it('契約者は期限切れ（49日超）の写真なら、ウィンドウ外でも消せる', async () => {
+    await seedPhoto(FIFTY_DAYS_AGO, 'p2', 50);
+    await assertSucceeds(
+      deleteDoc(doc(alice(), `clients/alice/days/${FIFTY_DAYS_AGO}/photos/p2`)));
+  });
+
+  // ★ 「古いから何でも消せる」にしてはいけない。
+  //   期限前の写真は、ウィンドウ外なら本人でも消せない。
+  it('契約者は期限前（10日前）の写真を、ウィンドウ外では消せない', async () => {
+    await seedPhoto(TEN_DAYS_AGO, 'p3', 10);
+    await assertFails(
+      deleteDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p3`)));
+  });
+
+  it('撮影時刻が壊れている写真は、ウィンドウ外では消せない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p4`), {
+        dataUrl: small,
+      });
+    });
+    await assertFails(
+      deleteDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p4`)));
+  });
+
+  it('契約者は他人の期限切れ写真は消せない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/bob/days/${FIFTY_DAYS_AGO}/photos/p5`), {
+        dataUrl: small,
+        createdAt: Date.now() - 50 * DAY_MS,
+      });
+    });
+    await assertFails(
+      deleteDoc(doc(alice(), `clients/bob/days/${FIFTY_DAYS_AGO}/photos/p5`)));
+  });
+
+  // ---- 掃除したあとの印 -----------------------------------------------------
+
+  // ★ これが通らないと、写真を消したあとも
+  //   「もうすぐ消える写真があります」が出続ける。
+  it('契約者はウィンドウ外の日でも photoOldestAt だけは直せる', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${FIFTY_DAYS_AGO}`), {
+        date: FIFTY_DAYS_AGO,
+        photoOldestAt: 1,
+      });
+    });
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), `clients/alice/days/${FIFTY_DAYS_AGO}`),
+        { date: FIFTY_DAYS_AGO, photoOldestAt: null, updatedAt: Date.now() },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('その抜け道で、ほかの項目までは書き換えられない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${FIFTY_DAYS_AGO}`), {
+        date: FIFTY_DAYS_AGO,
+        photoOldestAt: 1,
+        weightKg: 62,
+      });
+    });
+    await assertFails(
+      setDoc(
+        doc(alice(), `clients/alice/days/${FIFTY_DAYS_AGO}`),
+        { photoOldestAt: null, weightKg: 55 },
+        { merge: true },
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(alice(), `clients/alice/days/${FIFTY_DAYS_AGO}`),
+        { photoOldestAt: null, checkedAt: 1 },
+        { merge: true },
+      ),
+    );
   });
 });
 

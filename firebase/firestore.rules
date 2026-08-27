@@ -166,7 +166,36 @@ service cloud.firestore {
 
       match /days/{date} {
         allow get, list: if canRead(cid);
-        allow write: if mayEdit(cid, date);
+
+        // ★ トレーナーの「確認しました」（checkedAt / checkedBy）は管理者だけ（Phase 11）。
+        //
+        //   契約者が自分で確認済みにできてしまうと、
+        //   トレーナーが見たかどうかの記録になりません。
+        //
+        //   create と update を分けているのは、diff() のためです。
+        //   新規作成のときは比較相手（resource）が存在しないので、
+        //   1つの write にまとめると、その日の最初の書き込みで必ず失敗します。
+        allow create: if isAdmin()
+                      || (clientMayEdit(cid, date)
+                          && !request.resource.data.keys()
+                                .hasAny(['checkedAt', 'checkedBy']));
+
+        allow update: if isAdmin()
+                      || (clientMayEdit(cid, date)
+                          && !request.resource.data.diff(resource.data)
+                                .affectedKeys().hasAny(['checkedAt', 'checkedBy']));
+
+        allow delete: if mayEdit(cid, date);
+
+        // ★ 写真の掃除に伴う印の更新（Phase 11）。
+        //
+        //   契約者は期限切れの写真を消せます（下の photos を参照）。
+        //   消したあとに photoOldestAt を直せないと、
+        //   「もうすぐ消える写真があります」が消えたあとも出続けます。
+        //   直せるのはその1項目だけで、日付も確定状態も動かせません。
+        allow update: if isClient(cid)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['photoOldestAt', 'date', 'updatedAt']);
 
         // ★ 1日確定の「解除」だけは、確定済みの日でも本人が行えます（Q14の決定）。
         //
@@ -217,12 +246,31 @@ service cloud.firestore {
 
       // 写真は base64 で Firestore に格納します（設計書 §4.3）。
       // Storage Rules が使えないぶん、サイズ上限をここで守ります。
+      //
+      // ★ 削除だけ条件が3つあります（設計書 §8.2 / Phase 11）。
+      //
+      //   1. 管理者          … 「確認しました」でその日のぶんをまとめて消す
+      //   2. 契約者（期間内）… 自分が撮ったものを撮り直す
+      //   3. 契約者（期限切れ）… 保存期間を過ぎた写真の掃除
+      //
+      //   3 が要るのは、掃除を「画面を開いた人」がやるためです。
+      //   Cloud Functions にはカード登録が要るので、この構成では使えません。
+      //   7週間前の写真は編集ウィンドウ（既定7日）の外なので、
+      //   2 の条件だけでは契約者が自分の期限切れ写真を消せません。
+      //
+      //   撮影時刻は写真自身が持っているので、ここで判定できます。
+      //   「古いから何でも消せる」ではなく「期限を過ぎたものだけ」に限定します。
       match /days/{date}/photos/{photoId} {
         allow get, list: if canRead(cid);
         allow create: if mayEdit(cid, date)
                       && request.resource.data.dataUrl is string
                       && request.resource.data.dataUrl.size() < 400000;
-        allow delete: if mayEdit(cid, date);
+        allow delete: if isAdmin()
+                      || (isClient(cid) && inWindow(cid, date))
+                      || (isClient(cid)
+                          && resource.data.createdAt is number
+                          && request.time.toMillis()
+                             >= resource.data.createdAt + 49 * 24 * 60 * 60 * 1000);
         allow update: if false;   // 差し替えず、消して撮り直す
       }
 

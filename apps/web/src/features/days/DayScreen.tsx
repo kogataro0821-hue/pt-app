@@ -14,7 +14,15 @@ import { ExercisesSection } from '@/features/exercises/ExercisesSection';
 import { PhotosSection } from '@/features/photos/PhotosSection';
 import { NotesSection } from '@/features/notes/NotesSection';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { getDay, saveBodyMetrics, setDayStatus, validateBodyMetrics } from './daysRepo';
+import {
+  getDay,
+  saveBodyMetrics,
+  setDayChecked,
+  setDayStatus,
+  validateBodyMetrics,
+} from './daysRepo';
+import { deleteAllPhotos } from '@/features/photos/photosRepo';
+import { CheckCard } from './CheckCard';
 import { emptyDay, type Day } from './dayTypes';
 
 /**
@@ -39,6 +47,7 @@ export function DayScreen({
   const adminUid = state.status === 'signedIn' ? state.user.uid : '';
 
   const [day, setDay] = useState<Day | null>(null);
+  const [photoCount, setPhotoCount] = useState(0);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +105,45 @@ export function DayScreen({
           ? '保存に失敗しました。通信状態を確認してください。'
           : 'この日は編集できないため保存されませんでした。',
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * トレーナーの「確認しました」。
+   *
+   * ★ 写真を先に消し、そのあとで確認済みにします。
+   *   順番を逆にすると、写真の削除に失敗したときに
+   *   「確認済みなのに写真が残っている」状態になります。
+   *   写真が残っているだけなら、もう一度押せば済みます。
+   */
+  async function check() {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteAllPhotos(client.clientId, date);
+      await setDayChecked(client.clientId, date, adminUid);
+      setPhotoCount(0);
+      setDay((prev) =>
+        prev === null ? prev : { ...prev, checkedAt: Date.now(), checkedBy: adminUid, photoOldestAt: null },
+      );
+    } catch {
+      setError('確認を記録できませんでした。通信状態を確認してください。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 押し間違いを直せるようにしておく。消えた写真は戻りません。 */
+  async function uncheck() {
+    setBusy(true);
+    setError(null);
+    try {
+      await setDayChecked(client.clientId, date, null);
+      setDay((prev) => (prev === null ? prev : { ...prev, checkedAt: null, checkedBy: null }));
+    } catch {
+      setError('確認を取り消せませんでした。');
     } finally {
       setBusy(false);
     }
@@ -229,7 +277,12 @@ export function DayScreen({
             }
           />
 
-          <PhotosSection clientId={client.clientId} date={date} canEdit={canEdit} />
+          <PhotosSection
+            clientId={client.clientId}
+            date={date}
+            canEdit={canEdit}
+            onPhotosChanged={setPhotoCount}
+          />
 
           {/* ★ 確定カードより前に置きます。
               確定は「この日はおしまい」の合図なので、その下に読むものがあると
@@ -240,6 +293,17 @@ export function DayScreen({
             isAdmin={isAdmin}
             adminUid={adminUid}
           />
+
+          {/* ★ 管理者だけ。1日確定（契約者の意思表示）とは別ものです。 */}
+          {isAdmin && (
+            <CheckCard
+              checkedAt={day.checkedAt}
+              photoCount={photoCount}
+              busy={busy}
+              onCheck={() => void check()}
+              onUncheck={() => void uncheck()}
+            />
+          )}
 
           <FinalizeCard
             status={day.status}

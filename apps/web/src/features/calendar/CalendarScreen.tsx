@@ -6,12 +6,14 @@ import {
   formatMonth,
   isValidMonthKey,
   monthGrid,
+  photoExpiryLabel,
   todayKey,
   weekdayLabel,
+  formatDateLong,
   type DateKey,
   type MonthKey,
 } from '@pt/core';
-import { listMonth } from '@/features/days/daysRepo';
+import { listDaysWithExpiringPhotos, listMonth } from '@/features/days/daysRepo';
 import { hasAnyMarker, markersOf, type Day, type DayMarkers } from '@/features/days/dayTypes';
 
 /**
@@ -26,6 +28,7 @@ import { hasAnyMarker, markersOf, type Day, type DayMarkers } from '@/features/d
 export function CalendarScreen({ clientId, month }: { clientId: string; month: MonthKey }) {
   const navigate = useNavigate();
   const [days, setDays] = useState<Map<DateKey, Day> | null>(null);
+  const [expiring, setExpiring] = useState<Day[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const safeMonth = isValidMonthKey(month) ? month : currentMonthKey();
@@ -52,6 +55,35 @@ export function CalendarScreen({ clientId, month }: { clientId: string; month: M
       cancelled = true;
     };
   }, [clientId, safeMonth]);
+
+  /**
+   * もうすぐ消える写真がある日を探す（設計書 §8.2 / Phase 11）。
+   *
+   * ★ ここはカレンダー画面です。表示中の月とは関係なく探します。
+   *   期限が来るのは7週間前に撮った写真なので、
+   *   今月を見ている人には、そのままでは見えない場所にあります。
+   *   「今見ている月」だけを調べていたら、知らせる意味がありません。
+   *
+   * ★ 失敗しても黙ります。知らせは補助であって、
+   *   カレンダーが出ないほうが困ります。
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setExpiring([]);
+
+    void (async () => {
+      try {
+        const found = await listDaysWithExpiringPhotos(clientId);
+        if (!cancelled) setExpiring(found);
+      } catch {
+        // 知らせが出ないだけ。カレンダーの表示は続ける
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   const cells = monthGrid(safeMonth);
   const recordedDays = days === null ? 0 : [...days.values()].filter((d) => hasAnyMarker(markersOf(d))).length;
@@ -88,6 +120,30 @@ export function CalendarScreen({ clientId, month }: { clientId: string; month: M
         <p className="form-error" role="alert">
           {error}
         </p>
+      )}
+
+      {expiring.length > 0 && (
+        <div className="notice" role="status">
+          <p>
+            <b>もうすぐ消える写真があります。</b>
+            <br />
+            残しておきたいものは、その日を開いて端末に保存してください。
+            <br />
+            食材・量・kcal・PFCの記録は消えません。
+          </p>
+          <ul className="note-list">
+            {expiring.map((d) => (
+              <li key={d.date}>
+                <Link to={`/c/${clientId}/d/${d.date}`}>
+                  {formatDateLong(d.date)}
+                  {d.photoOldestAt !== null && (
+                    <> — {photoExpiryLabel(d.photoOldestAt, Date.now())}</>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <div className="calendar" role="grid">

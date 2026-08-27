@@ -20,3 +20,4 @@ export * from './date/day';
 export * from './meal/meal';
 export * from './chart/series';
 export * from './food/matching';
+export * from './photo/retention';

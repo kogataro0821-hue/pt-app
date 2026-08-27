@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import type { DateKey } from '@pt/core';
-import { addPhoto, deletePhoto, listPhotos, type Photo } from './photosRepo';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  PHOTO_RETENTION_DAYS,
+  isPhotoExpiringSoon,
+  photoExpiryLabel,
+  type DateKey,
+} from '@pt/core';
+import { syncDayPhotoState } from '@/features/days/daysRepo';
+import {
+  addPhoto,
+  deleteExpiredPhotos,
+  deletePhoto,
+  listPhotos,
+  type Photo,
+} from './photosRepo';
 import { PhotoResizeError, formatBytes, photoErrorMessage, resizePhoto } from './resize';
 
 /**
@@ -16,16 +28,38 @@ export function PhotosSection({
   clientId,
   date,
   canEdit,
+  onPhotosChanged,
 }: {
   clientId: string;
   date: DateKey;
   canEdit: boolean;
+  /** 写真の枚数が変わったことを親へ伝える（確認カードの表示に使う） */
+  onPhotosChanged?: (count: number) => void;
 }) {
   const [photos, setPhotos] = useState<Photo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [zoomed, setZoomed] = useState<Photo | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * 写真の状況を日ドキュメントへ写す。
+   *
+   * 「もうすぐ消える写真」を1回のクエリで探すために、
+   * その日でいちばん古い写真の時刻だけを持たせておきます。
+   * 失敗しても写真そのものは無事なので、握りつぶします。
+   */
+  const syncOldest = useCallback(
+    (list: Photo[]) => {
+      onPhotosChanged?.(list.length);
+      const oldest = list.reduce<number | null>(
+        (min, p) => (p.createdAt > 0 && (min === null || p.createdAt < min) ? p.createdAt : min),
+        null,
+      );
+      void syncDayPhotoState(clientId, date, oldest).catch(() => undefined);
+    },
+    [clientId, date, onPhotosChanged],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -34,8 +68,21 @@ export function PhotosSection({
 
     void (async () => {
       try {
+        // ★ 期限切れをここで消します。
+        //   Cloud Functions が使えないので、自動では走りません。
+        //   開いた人が掃除する形です（設計書 §8.2）。
+        //   消せなくても表示は続けます。権限や通信の問題で消せないことがあり、
+        //   そのために写真が1枚も見られなくなるほうが困ります。
+        try {
+          await deleteExpiredPhotos(clientId, date);
+        } catch {
+          // 掃除できなくても、写真の表示そのものは成立する
+        }
+
         const loaded = await listPhotos(clientId, date);
-        if (!cancelled) setPhotos(loaded);
+        if (cancelled) return;
+        setPhotos(loaded);
+        syncOldest(loaded);
       } catch {
         if (!cancelled) {
           setError('写真を読み込めませんでした。');
@@ -47,7 +94,7 @@ export function PhotosSection({
     return () => {
       cancelled = true;
     };
-  }, [clientId, date]);
+  }, [clientId, date, syncOldest]);
 
   async function onPick(files: FileList | null) {
     if (files === null || files.length === 0) return;
@@ -61,7 +108,11 @@ export function PhotosSection({
       try {
         const resized = await resizePhoto(file);
         const saved = await addPhoto(clientId, date, resized);
-        setPhotos((prev) => [...(prev ?? []), saved]);
+        setPhotos((prev) => {
+          const next = [...(prev ?? []), saved];
+          syncOldest(next);
+          return next;
+        });
       } catch (e) {
         setError(
           e instanceof PhotoResizeError
@@ -81,14 +132,19 @@ export function PhotosSection({
   async function remove(photo: Photo) {
     if (!window.confirm('この写真を削除します。よろしいですか？')) return;
     const previous = photos;
-    setPhotos((prev) => (prev ?? []).filter((p) => p.id !== photo.id));
+    const next = (photos ?? []).filter((p) => p.id !== photo.id);
+    setPhotos(next);
     try {
       await deletePhoto(clientId, date, photo.id);
+      syncOldest(next);
     } catch {
       setPhotos(previous);
       setError('写真を削除できませんでした。');
     }
   }
+
+  const now = Date.now();
+  const expiring = (photos ?? []).filter((p) => p.createdAt > 0 && isPhotoExpiringSoon(p.createdAt, now));
 
   if (photos === null) {
     return (
@@ -110,6 +166,17 @@ export function PhotosSection({
       )}
 
       {photos.length === 0 && <p className="note">この日の写真はありません。</p>}
+
+      {expiring.length > 0 && (
+        <p className="notice" role="status">
+          <b>{photoExpiryLabel(expiring[0]!.createdAt, Date.now())}。</b>
+          <br />
+          写真は{PHOTO_RETENTION_DAYS}日で消えます。残しておきたいものは、
+          写真を長押しして端末に保存してください。
+          <br />
+          食材・量・kcal・PFCの記録は消えません。
+        </p>
+      )}
 
       {photos.length > 0 && (
         <div className="photo-grid">
@@ -160,6 +227,9 @@ export function PhotosSection({
             撮った写真はこの端末の中で縮小してから保存します。通信量も保存容量も抑えられます。
             <br />
             写真は差し替えできません。撮り直すときは、いったん削除してください。
+            <br />
+            写真は{PHOTO_RETENTION_DAYS}日で消えます（トレーナーが確認したときも消えます）。
+            記録の数字は残ります。
           </p>
         </>
       )}
