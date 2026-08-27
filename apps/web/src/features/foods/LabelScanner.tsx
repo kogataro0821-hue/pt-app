@@ -51,6 +51,8 @@ export function LabelScanner({
     productName: string;
     note: string;
     photo: string;
+    /** 表示に書いてあった1回分のグラム数。書いていなければ null */
+    servingGrams: number | null;
   }) => void;
   onCancel: () => void;
 }) {
@@ -270,6 +272,8 @@ export function LabelScanner({
                   per100g: converted.per100g,
                   photo,
                   productName,
+                  servingGrams:
+                    effective.basis === 'perServing' ? effective.servingGrams : null,
                   note: [labelBasisLabel(effective), evidence, ...converted.notes]
                     .filter((s) => s.length > 0)
                     .join(' / ')

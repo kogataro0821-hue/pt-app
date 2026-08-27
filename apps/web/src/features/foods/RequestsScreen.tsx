@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { addAlias, clearFoodCache, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { firstCandidate, listRequests, resolveRequest, type FoodRequest } from './requestsRepo';
-import { replacePastRecords, replaceTargets, type ReplaceResult } from './bulkReplace';
+import { replacePastRecords, type ReplaceResult } from './bulkReplace';
 import { FoodEditor } from './FoodEditor';
 
 /**
@@ -103,9 +103,9 @@ type Step =
   | { kind: 'idle' }
   | { kind: 'create' }
   | { kind: 'absorb' }
-  /** 登録が済み、過去の置き換えを聞いている段階 */
-  | { kind: 'ask'; food: Food; how: 'created' | 'absorbed' }
-  | { kind: 'replaced'; result: ReplaceResult };
+  /** 登録が済み、記録へ反映している最中 */
+  | { kind: 'applying' }
+  | { kind: 'done'; food: Food; how: 'created' | 'absorbed'; result: ReplaceResult };
 
 function RequestCard({
   request,
@@ -129,7 +129,6 @@ function RequestCard({
   const [zoom, setZoom] = useState<string | null>(null);
 
   const candidates = findSimilarFoods(foods, request.name, 5);
-  const targets = replaceTargets(request);
   /** 契約者が成分表示を撮っていれば、その値を初期値に使う（Phase 12） */
   const label = firstCandidate(request);
 
@@ -143,22 +142,35 @@ function RequestCard({
       for (const variant of request.variants) {
         updated = await addAlias(updated, variant);
       }
-      setStep({ kind: 'ask', food: updated, how: 'absorbed' });
+      await applyToRecords(updated, 'absorbed');
     } catch (e) {
       setError(writeErrorMessage(e, '別名'));
-    } finally {
       setBusy(false);
     }
   }
 
-  async function replace(food: Food) {
+  /**
+   * 承認した値を、待っている記録に入れる（Phase 13）。
+   *
+   * ★ 以前は「過去も置き換えますか？」と聞いていました。やめました。
+   *
+   *   置き換わるのは pending（栄養値が 0 のまま）の記録だけです。
+   *   つまり、消えて困る数字が最初から存在しません。
+   *   聞く意味があるのは「入っている数字を上書きするとき」だけで、
+   *   ここはそれに当たりません。
+   *
+   *   むしろ聞くほうが害があります。押し忘れると、
+   *   契約者の合計は 0 のまま残り、本人には理由が分かりません。
+   */
+  async function applyToRecords(food: Food, how: 'created' | 'absorbed') {
+    setStep({ kind: 'applying' });
     setBusy(true);
-    setError(null);
     try {
       const result = await replacePastRecords(request, food, adminUid);
-      setStep({ kind: 'replaced', result });
+      setStep({ kind: 'done', food, how, result });
     } catch (e) {
-      setError(writeErrorMessage(e, '置き換えた記録'));
+      setError(writeErrorMessage(e, '記録への反映'));
+      setStep({ kind: 'done', food, how, result: { items: 0, meals: 0, days: 0 } });
     } finally {
       setBusy(false);
     }
@@ -315,12 +327,16 @@ function RequestCard({
               }}
               all={foods}
               nameOptions={request.variants}
-              onSaved={(food) => setStep({ kind: 'ask', food, how: 'created' })}
+              onSaved={(food) => void applyToRecords(food, 'created')}
               onCancel={() => setStep({ kind: 'idle' })}
             />
           )}
 
-          {step.kind === 'ask' && (
+          {step.kind === 'applying' && (
+            <p className="lede">記録に反映しています…</p>
+          )}
+
+          {step.kind === 'done' && (
             <div className="notice">
               <p>
                 <b>
@@ -335,56 +351,22 @@ function RequestCard({
                   </>
                 )}
               </p>
-              {targets.length === 0 ? (
-                <p>置き換える過去の記録はありません。</p>
-              ) : (
-                <p>
-                  この食材を使っている記録が<b>{request.count}件</b>あります（
-                  {targets.length}日分）。新しい値を入れますか？
-                  <br />
-                  押さなければ過去はそのままです。押した場合は変更履歴に残ります。
-                </p>
-              )}
-              <div className="item-form-actions">
-                {targets.length > 0 && (
-                  <button
-                    className="button-primary compact"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void replace(step.food)}
-                  >
-                    {busy ? '置き換えています…' : '過去も置き換える'}
-                  </button>
-                )}
-                <button
-                  className="button-quiet"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void finish()}
-                >
-                  {targets.length > 0 ? '置き換えない' : '閉じる'}
-                </button>
-              </div>
-            </div>
-          )}
 
-          {step.kind === 'replaced' && (
-            <div className="notice">
-              {step.result.items === 0 ? (
-                // 依頼には残っていても、その後に本人が直していれば置き換える対象はありません。
-                // 「0件を置き換えました」だと何が起きたのか分からないので、そう書きます。
+              {step.result.items > 0 ? (
                 <p>
-                  置き換える記録はありませんでした。
-                  <br />
-                  すでに本人が直したか、記録が消されたものと思われます。
-                </p>
-              ) : (
-                <p>
-                  <b>{step.result.items}件</b>の食材を置き換えました（{step.result.days}日分）。
+                  待っていた記録<b>{step.result.items}件</b>に、この値を入れました（
+                  {step.result.days}日分）。契約者の合計に反映されています。
                   <br />
                   変更履歴に残しました。
                 </p>
+              ) : (
+                <p>
+                  この値を待っている記録はありませんでした。
+                  <br />
+                  これから同じ食材を入れると、最初からこの値が使われます。
+                </p>
               )}
+
               <div className="item-form-actions">
                 <button
                   className="button-primary compact"

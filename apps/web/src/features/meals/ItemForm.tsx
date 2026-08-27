@@ -222,6 +222,9 @@ export function ItemForm({
               onCancel={() => setScanning(false)}
               onDone={(r) => {
                 setCandidate({ per100g: r.per100g, note: r.note, photo: r.photo });
+                if (grams.trim().length === 0 && r.servingGrams !== null) {
+                  setGrams(String(r.servingGrams));
+                }
                 if (name.trim().length === 0 && r.productName.length > 0) setName(r.productName);
                 setScanning(false);
               }}

@@ -19,6 +19,7 @@ import { AiTextPanel } from '@/features/ai/AiTextPanel';
 import { hasValidAiConsent, type AiConsent } from '@/features/clients/clientTypes';
 import { requestFood, type LabelCandidate } from '@/features/foods/requestsRepo';
 import { ItemForm } from './ItemForm';
+import { LabelItemPanel } from './LabelItemPanel';
 import { deleteMeal, listMeals, newMealId, saveMeal, syncDayMealFlag } from './mealsRepo';
 
 /**
@@ -55,6 +56,8 @@ export function MealsSection({
   const [error, setError] = useState<string | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [aiFor, setAiFor] = useState<{ mealId: string; mode: 'text' | 'photo' } | null>(null);
+  /** 成分表示から入力している食事 */
+  const [labelFor, setLabelFor] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ mealId: string; item: MealItem } | null>(null);
   const [busy, setBusy] = useState(false);
   /** 登録依頼が届かなかったとき。記録は成立しているので、止めずに知らせるだけ */
@@ -66,6 +69,7 @@ export function MealsSection({
     setError(null);
     setAddingTo(null);
     setAiFor(null);
+    setLabelFor(null);
     setEditing(null);
     setRequestFailed(false);
 
@@ -144,6 +148,7 @@ export function MealsSection({
     //   どうやって入れるかは本人が選ぶところなので、選ばせます。
     setAddingTo(null);
     setAiFor(null);
+    setLabelFor(null);
   }
 
   function removeMeal(meal: Meal) {
@@ -329,6 +334,16 @@ export function MealsSection({
             </>
           )}
 
+          {canEdit && labelFor === meal.id && (
+            <LabelItemPanel
+              onClose={() => setLabelFor(null)}
+              onAdd={(item, requestName, candidate) => {
+                addItem(meal.id, item, requestName, candidate);
+                setLabelFor(null);
+              }}
+            />
+          )}
+
           {canEdit && aiFor?.mealId === meal.id && (
             <AiTextPanel
               mode={aiFor.mode}
@@ -344,6 +359,7 @@ export function MealsSection({
           {canEdit &&
             addingTo !== meal.id &&
             aiFor?.mealId !== meal.id &&
+            labelFor !== meal.id &&
             (aiAvailable ? (
               <div className="add-actions">
                 <button
@@ -369,6 +385,16 @@ export function MealsSection({
                   disabled={busy}
                 >
                   写真から
+                </button>
+                {/* ★ 既製品を食べたとき、手にしているのはパッケージです。
+                    名前を打たせてから撮らせるのは順番が逆なので、入口を分けました。 */}
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setLabelFor(meal.id)}
+                  disabled={busy}
+                >
+                  成分表示から
                 </button>
               </div>
             ) : (
