@@ -167,6 +167,15 @@ function RequestCard({
     setBusy(true);
     try {
       const result = await replacePastRecords(request, food, adminUid);
+
+      // ★ 依頼もここで閉じます。
+      //
+      //   以前は「保存する」のあとに「完了」を押さないと依頼が残りました。
+      //   登録し終えたのに一覧に残っているのは、やり残しがあるようにしか見えません。
+      //   押し忘れれば、同じ食材の依頼をもう一度開くことになります。
+      //   登録が済んだ時点で、その依頼の役目は終わりです。
+      await resolveRequest(request);
+
       setStep({ kind: 'done', food, how, result });
     } catch (e) {
       setError(writeErrorMessage(e, '記録への反映'));
@@ -224,43 +233,47 @@ function RequestCard({
             </p>
           )}
 
+          {/* ★ 成分表示は、依頼を開いている間ずっと出します。
+              以前は最初の画面にしか出していませんでした。
+              「新しく登録する」を押した瞬間に消えるので、
+              **数字を直しているあいだ、見比べる相手がいない**という
+              いちばん必要な場面で消えていました。
+              依頼を閉じれば写真も消えます。それまでは残します。 */}
+          {label !== null && (
+            <div className="notice">
+              <p>
+                <b>契約者が撮った成分表示</b>
+                <br />
+                読み取った値: {label.per100g.kcal}kcal · P{label.per100g.p} F{label.per100g.f} C
+                {label.per100g.c}（100gあたり）
+              </p>
+              {label.note.length > 0 && <p className="field-hint">{label.note}</p>}
+
+              {label.photo.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    className="label-photo"
+                    onClick={() => setZoom(label.photo)}
+                    aria-label="成分表示を拡大"
+                  >
+                    <img src={label.photo} alt="" loading="lazy" />
+                  </button>
+                  <p className="field-hint">
+                    タップで拡大できます。数字が表示と合っているか、下の欄と見比べてください。
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
           {step.kind === 'idle' && (
             <>
               {label !== null && (
-                <div className="notice">
-                  <p>
-                    <b>契約者が成分表示を撮っています。</b>
-                    <br />
-                    {label.per100g.kcal}kcal · P{label.per100g.p} F{label.per100g.f} C
-                    {label.per100g.c}（100gあたり）
-                  </p>
-                  {label.note.length > 0 && <p className="field-hint">{label.note}</p>}
-
-                  {/* ★ 写真そのものを見せます。
-                      数字だけでは、参考値のほうを拾っていても気づけません。
-                      判断できるのは表示を見たときだけで、
-                      そのころ契約者はパッケージを捨てています。 */}
-                  {label.photo.length > 0 && (
-                    <>
-                      <button
-                        type="button"
-                        className="label-photo"
-                        onClick={() => setZoom(label.photo)}
-                        aria-label="成分表示を拡大"
-                      >
-                        <img src={label.photo} alt="" loading="lazy" />
-                      </button>
-                      <p className="field-hint">
-                        タップで拡大できます。数字が表示と合っているか確かめてください。
-                      </p>
-                    </>
-                  )}
-
-                  <p className="field-hint">
-                    「新しく登録する」を押すと、この値が最初から入っています。
-                    確認して、必要なら直してください。
-                  </p>
-                </div>
+                <p className="field-hint">
+                  「新しく登録する」を押すと、この値が最初から入っています。
+                  上の写真と見比べて、必要なら直してください。
+                </p>
               )}
 
               {candidates.length > 0 && (
@@ -358,12 +371,16 @@ function RequestCard({
                   {step.result.days}日分）。契約者の合計に反映されています。
                   <br />
                   変更履歴に残しました。
+                  <br />
+                  この依頼は処理済みとして閉じました。
                 </p>
               ) : (
                 <p>
                   この値を待っている記録はありませんでした。
                   <br />
                   これから同じ食材を入れると、最初からこの値が使われます。
+                  <br />
+                  この依頼は処理済みとして閉じました。
                 </p>
               )}
 
@@ -372,9 +389,9 @@ function RequestCard({
                   className="button-primary compact"
                   type="button"
                   disabled={busy}
-                  onClick={() => void finish()}
+                  onClick={onDone}
                 >
-                  完了
+                  閉じる
                 </button>
               </div>
             </div>
