@@ -19,3 +19,4 @@ export * from './client/targets';
 export * from './date/day';
 export * from './meal/meal';
 export * from './chart/series';
+export * from './food/matching';

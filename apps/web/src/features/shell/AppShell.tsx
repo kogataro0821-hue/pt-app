@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { APP_NAME } from '@/config/firebase';
 import { useAuth } from '@/features/auth/AuthProvider';
 
@@ -41,6 +41,15 @@ export function AppShell({
         </div>
       </header>
 
+      {/* 管理者だけの行き先。契約者には出しません（本当の制限は Rules 側）*/}
+      {isAdmin && (
+        <nav className="admin-nav">
+          <AdminLink to="/clients" label="契約者" />
+          <AdminLink to="/foods" label="食品マスタ" />
+          <AdminLink to="/foods/requests" label="登録依頼" />
+        </nav>
+      )}
+
       {isAdmin && viewing !== undefined && (
         <div className="viewing-bar">
           <span className="viewing-label">閲覧中</span>
@@ -55,5 +64,17 @@ export function AppShell({
 
       <main className="main">{children}</main>
     </div>
+  );
+}
+
+/** 現在地に印を付けるリンク。/foods と /foods/requests を取り違えないように。 */
+function AdminLink({ to, label }: { to: string; label: string }) {
+  const { pathname } = useLocation();
+  const current = to === '/foods' ? pathname === '/foods' : pathname.startsWith(to);
+
+  return (
+    <Link className={current ? 'admin-link current' : 'admin-link'} to={to}>
+      {label}
+    </Link>
   );
 }

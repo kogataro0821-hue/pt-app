@@ -1716,3 +1716,55 @@ select.input {
   font-size: 13.5px;
   padding: 10px 6px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Phase 9 — 共通食品マスタと登録依頼（管理者だけの画面）
+ * ------------------------------------------------------------------------- */
+
+/* 管理者の行き先。契約者には出ないので、契約者の画面は今までどおりの高さです */
+.admin-nav {
+  display: flex;
+  gap: var(--space-xs);
+  padding: 6px var(--space-lg);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-link {
+  flex: none;
+  padding: 6px var(--space-md);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  /* タップ領域を44px確保しない代わりに、余白で押しやすくしています */
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.admin-link.current {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 依頼カードの中の段組み（.stack は既にあるので、余白だけ足します） */
+.client-row-wrap .stack {
+  margin-top: var(--space-md);
+}
+
+/* 表記のゆれは全部見えないと判断できないので、省略せずに折り返す */
+.client-row-wrap .client-meta {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 依頼の判断に使う数値は省略しない。C の値が見えないと決められない */
+.client-row-wrap .suggestion-meta {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}

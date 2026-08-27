@@ -107,11 +107,6 @@ service cloud.firestore {
 
     // 契約者ごとの「できること」（設計書 §6.5 permissions）。
     // 既定は true。設定が無い古いデータでも動くようにしておく。
-    function mayCreateFood(cid) {
-      return get(/databases/$(database)/documents/clients/$(cid))
-               .data.permissions.get('allowFoodCreate', true) == true;
-    }
-
     function mayCreateRecipe(cid) {
       return get(/databases/$(database)/documents/clients/$(cid))
                .data.permissions.get('allowRecipeCreate', true) == true;
@@ -217,12 +212,18 @@ service cloud.firestore {
       // ---- 個人スコープのマスタ類 -------------------------------------------
       // 日付に紐づかないため編集ウィンドウの対象外
 
-      // 個人の食品マスタ。
-      // ★ 管理者は「自分で食品を登録できる」権限を契約者ごとに切れます（設計書 §21）。
-      //   画面で隠すだけでは対策にならないので、ここでも見ます。
+      // 個人の食品マスタ（廃止済み。Phase 9）。
+      //
+      // ★ 契約者ごとに栄養値を持てる状態をやめました。
+      //   同じ「白米」が人によって 156kcal と 168kcal になり、
+      //   トレーナーが数字を根拠に指導できなくなるためです。
+      //   いまは共通マスタ /foods 一本で、決めるのは管理者だけです。
+      //
+      //   読み取りだけ残してあるのは、移行前に作られたデータを
+      //   管理者が確認・整理できるようにするためです。新規の書き込みは通しません。
       match /foods/{foodId} {
         allow read: if canRead(cid);
-        allow write: if isAdmin() || (isClient(cid) && mayCreateFood(cid));
+        allow write: if isAdmin();
       }
 
       match /recipes/{recipeId} {
@@ -270,6 +271,53 @@ service cloud.firestore {
     match /config/{docId} {
       allow read: if isKnownUser();
       allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // foodRequests/{key} — 食品の登録依頼（設計書 §21 / Phase 9）
+    //
+    // ★ 契約者は「書けるが読めない」。ここが設計の要です。
+    //
+    //   依頼を1つのドキュメントにまとめ、その中に clientIds の配列を持たせると、
+    //   配列に自分を足すために契約者がそのドキュメントを読む必要が出ます。
+    //   読めるということは、他の契約者が何を食べたかを推測できるということです。
+    //   契約者Aが契約者Bの情報を見られない、という前提が崩れます（設計書 §2）。
+    //
+    //   そこで「誰が使ったか」は下位の from/{clientId} に分け、
+    //   契約者は自分の1件だけを書く形にしました。
+    //   増分は increment / arrayUnion を使うので、書く前に読む必要もありません。
+    //
+    // ★ 名前の長さを制限しています。
+    //   ここは契約者が自由に文字を入れられる数少ない場所です。
+    //   管理者の画面が長大な文字列で埋まらないようにしておきます。
+    // -------------------------------------------------------------------------
+    match /foodRequests/{key} {
+      allow get, list: if isAdmin();
+      allow delete: if isAdmin();
+
+      allow create, update: if isAdmin()
+        || (isKnownUser()
+            && request.resource.data.keys().hasOnly(['name', 'key', 'updatedAt'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() > 0
+            && request.resource.data.name.size() <= 60
+            && request.resource.data.key == key);
+
+      match /from/{clientId} {
+        // 自分の1件だけは読めます。他人のぶんは管理者しか読めません。
+        allow get: if isAdmin() || isClient(clientId);
+        allow list, delete: if isAdmin();
+
+        allow create, update: if isAdmin()
+          || (isClient(clientId)
+              && request.resource.data.keys().hasOnly(['variant', 'count', 'dates', 'updatedAt'])
+              && request.resource.data.variant is string
+              && request.resource.data.variant.size() > 0
+              && request.resource.data.variant.size() <= 60
+              && request.resource.data.count is int
+              && request.resource.data.dates is list
+              && request.resource.data.dates.size() <= 400);
+      }
     }
   }
 }

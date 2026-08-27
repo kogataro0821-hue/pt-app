@@ -1,0 +1,193 @@
+import {
+  arrayUnion,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  increment,
+  setDoc,
+} from 'firebase/firestore';
+import { foodKey, type DateKey } from '@pt/core';
+import { getDb } from '@/lib/firebase';
+
+/**
+ * 食品の登録依頼（設計書 §21 / Phase 9）。
+ *
+ * 契約者が使った食材が共通マスタに無いとき、ここに積まれます。
+ * 管理者が正しい栄養値を入れて公開すると、以後は全員がその値を使います。
+ *
+ * ★ ドキュメントIDに照合キーを使っています。
+ *
+ *   「サラダチキン」「サラダ チキン」「ｻﾗﾀﾞﾁｷﾝ」は同じIDになるので、
+ *   **同じ食材の依頼が自動的に1件にまとまります**。
+ *   別々に積まれると、管理者の画面が同じ食材で埋まってしまいます。
+ *
+ * ★ 「誰が使ったか」は下位コレクション from/{clientId} に分けてあります。
+ *
+ *   ここが今回いちばん考えたところです。
+ *   1つのドキュメントに clientIds の配列を持たせると、配列に足すために
+ *   **契約者がそのドキュメントを読める必要が出ます**。
+ *   読めるということは、他の契約者が何を食べたかを推測できるということです。
+ *   契約者Aが契約者Bの情報を見られない、という前提が崩れます。
+ *
+ *   そこで、契約者は「自分のぶんの1件」だけを書き、他人のぶんは読めない形にしました。
+ *   増分は increment / arrayUnion を使うので、書く前に読む必要もありません。
+ *   集計するのは管理者だけです。
+ *
+ * ★ 使った日付も記録します。
+ *   あとで「登録できたので過去の記録も置き換えますか」を出すとき、
+ *   全員の全日分を調べ直さずに済むようにするためです（無料枠を守る）。
+ */
+
+/** 依頼1件（管理者の画面で使う、集計済みの形） */
+export interface FoodRequest {
+  /** 照合キー。ドキュメントIDと同じ */
+  id: string;
+  /** 代表の表記。管理者が登録するときの初期値になる */
+  name: string;
+  /** 実際に使われた表記のゆれ。別名の候補になる */
+  variants: string[];
+  /** 使った契約者と、その人が使った日 */
+  from: RequestEntry[];
+  /** 使われた回数の合計 */
+  count: number;
+  updatedAt: number;
+}
+
+export interface RequestEntry {
+  clientId: string;
+  variant: string;
+  count: number;
+  dates: DateKey[];
+}
+
+function requestsCol() {
+  return collection(getDb(), 'foodRequests');
+}
+
+/**
+ * 依頼のID。
+ *
+ * ★ 食品マスタのIDと同じ作り方です。
+ *   ここを別々にすると、依頼のIDと照合キーが食い違い、
+ *   あとから過去の記録を置き換えるときに取りこぼします。
+ */
+export function requestId(name: string): string {
+  return foodKey(name);
+}
+
+// -----------------------------------------------------------------------------
+// 契約者側（書くだけ。読まない）
+// -----------------------------------------------------------------------------
+
+/**
+ * 依頼を積む。
+ *
+ * ★ 失敗しても食事の記録は止めません。
+ *   依頼は「管理者に伝える」ための仕組みであって、記録の本体ではないためです。
+ *   ここで例外を投げると、食材を1つ追加できないだけで記録全体が止まります。
+ */
+export async function requestFood(
+  name: string,
+  clientId: string,
+  date: DateKey,
+): Promise<void> {
+  const key = requestId(name);
+  if (key.length === 0) return;
+
+  const trimmed = name.trim().slice(0, 60);
+  const now = Date.now();
+
+  try {
+    const parent = doc(requestsCol(), key);
+    // 読まずに書きます。読めてしまうと、他人が何を食べたかが漏れます。
+    await setDoc(parent, { name: trimmed, key, updatedAt: now }, { merge: true });
+    await setDoc(
+      doc(parent, 'from', clientId),
+      {
+        variant: trimmed,
+        count: increment(1),
+        dates: arrayUnion(date),
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+  } catch {
+    // 依頼を積めなくても、食事の記録そのものは成立している
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 管理者側（読む・消す）
+// -----------------------------------------------------------------------------
+
+/**
+ * 依頼を一覧する（管理者のみ）。
+ *
+ * 依頼1件につき下位コレクションを1回読みます。
+ * 依頼は数十件を想定しているので、この読み方で足ります。
+ */
+export async function listRequests(): Promise<FoodRequest[]> {
+  const snap = await getDocs(requestsCol());
+
+  const out = await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data();
+      const fromSnap = await getDocs(collection(d.ref, 'from'));
+      const from = fromSnap.docs.map((f) => toEntry(f.id, f.data()));
+
+      return {
+        id: d.id,
+        name: typeof data.name === 'string' ? data.name : d.id,
+        variants: uniqueVariants(
+          typeof data.name === 'string' ? data.name : d.id,
+          from.map((e) => e.variant),
+        ),
+        from,
+        count: from.reduce((n, e) => n + e.count, 0),
+        updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+      } satisfies FoodRequest;
+    }),
+  );
+
+  return out.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** 処理済みの依頼を消す（管理者のみ）。 */
+export async function resolveRequest(request: FoodRequest): Promise<void> {
+  // ★ 下位を先に、しかも読み直してから消します。
+  //
+  //   画面に出したあとで別の契約者が同じ食材を使うと、from が1件増えています。
+  //   画面の情報だけを頼りに消すと、その1件が取り残されます。
+  //   親を消したあとの取り残しは一覧に出てこないため、
+  //   次に同じ食材の依頼が来たときに古い日付が混ざって復活します。
+  const parent = doc(requestsCol(), request.id);
+  const fromSnap = await getDocs(collection(parent, 'from'));
+  for (const entry of fromSnap.docs) {
+    await deleteDoc(entry.ref);
+  }
+  await deleteDoc(parent);
+}
+
+// -----------------------------------------------------------------------------
+
+function toEntry(clientId: string, data: Record<string, unknown>): RequestEntry {
+  return {
+    clientId,
+    variant: typeof data.variant === 'string' ? data.variant : '',
+    count: typeof data.count === 'number' && Number.isFinite(data.count) ? data.count : 0,
+    dates: Array.isArray(data.dates)
+      ? data.dates.filter((v): v is DateKey => typeof v === 'string')
+      : [],
+  };
+}
+
+/** 代表の表記を先頭に、重複を除いた表記のゆれ一覧 */
+function uniqueVariants(name: string, variants: string[]): string[] {
+  const out: string[] = [];
+  for (const v of [name, ...variants]) {
+    const t = v.trim();
+    if (t.length > 0 && !out.includes(t)) out.push(t);
+  }
+  return out;
+}

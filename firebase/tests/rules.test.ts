@@ -393,32 +393,192 @@ describe('★ 食事の記録（設計書 §14 / Phase 6A）', () => {
   });
 });
 
-describe('★ 食品マスタの自己登録（設計書 §21）', () => {
-  const food = { name: 'ゆで卵', per100g: { kcal: 142, p: 12.2, f: 10.2, c: 0.4 }, usedCount: 1 };
+describe('★ 食品マスタは共通の1本だけ（設計書 §21 / Phase 9）', () => {
+  const food = { name: 'ゆで卵', per100g: { kcal: 142, p: 12.2, f: 10.2, c: 0.4 } };
 
-  it('既定では契約者が自分の食品を登録できる', async () => {
-    await assertSucceeds(setDoc(doc(alice(), 'clients/alice/foods/new1'), food));
-  });
-
-  // ★ 画面で隠すだけでは対策にならない。Rules 側でも止まることを確認する。
-  it('allowFoodCreate が false の契約者は登録できない', async () => {
-    await assertFails(setDoc(doc(dave(), 'clients/dave/foods/new1'), food));
-  });
-
-  it('登録を止められていても、読むことはできる', async () => {
-    await assertSucceeds(getDocs(collection(dave(), 'clients/dave/foods')));
-  });
-
-  it('止められていても管理者は代わりに登録できる', async () => {
-    await assertSucceeds(setDoc(doc(admin(), 'clients/dave/foods/new1'), food));
-  });
-
-  it('契約者は他人の食品マスタに書けない', async () => {
-    await assertFails(setDoc(doc(alice(), 'clients/bob/foods/new1'), food));
-  });
-
+  // ★ ここがこのアプリの数字の土台。
+  //   契約者が自分で栄養値を決められる状態にすると、同じ「白米」が
+  //   人によって 156kcal と 168kcal になり、指導の根拠にならなくなる。
   it('契約者は共通マスタに書けない', async () => {
     await assertFails(setDoc(doc(alice(), 'foods/common-2'), food));
+  });
+
+  it('契約者は共通マスタの値を書き換えられない', async () => {
+    await assertFails(setDoc(doc(alice(), 'foods/common-1'), { name: '白米', per100g: { kcal: 9999 } }));
+  });
+
+  it('契約者は共通マスタを消せない', async () => {
+    await assertFails(deleteDoc(doc(alice(), 'foods/common-1')));
+  });
+
+  it('契約者は共通マスタを読める（入力候補に使うため）', async () => {
+    await assertSucceeds(getDocs(collection(alice(), 'foods')));
+  });
+
+  it('管理者は共通マスタに書ける', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'foods/common-2'), food));
+  });
+
+  // ★ 個人マスタは Phase 9 で廃止した。読み取りだけ残し、新規の書き込みは通さない。
+  it('契約者は個人マスタに書けなくなった（廃止済み）', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/alice/foods/new1'), food));
+  });
+
+  it('移行前のデータを管理者が整理できるよう、読み取りは残してある', async () => {
+    await assertSucceeds(getDocs(collection(alice(), 'clients/alice/foods')));
+    await assertSucceeds(setDoc(doc(admin(), 'clients/alice/foods/new1'), food));
+  });
+
+  it('契約者は他人の個人マスタを読めない', async () => {
+    await assertFails(getDocs(collection(bob(), 'clients/alice/foods')));
+  });
+
+  // ★ allowFoodCreate という設定は Phase 9 で意味を失った。
+  //   設定が残っている契約者でも、他の人と同じ扱いになることを確かめる。
+  //   （設定の有無で挙動が変わると、あとから読む人が混乱する）
+  it('allowFoodCreate の設定が残っていても、扱いは他の契約者と同じ', async () => {
+    await assertFails(setDoc(doc(dave(), 'clients/dave/foods/new1'), food));
+    await assertFails(setDoc(doc(dave(), 'foods/common-2'), food));
+    await assertSucceeds(getDocs(collection(dave(), 'foods')));
+  });
+});
+
+describe('★ 食品の登録依頼（設計書 §21 / Phase 9）', () => {
+  const parent = { name: 'サラダチキン', key: 'さらだちきん', updatedAt: 1 };
+  const entry = { variant: 'サラダチキン', count: 1, dates: [TODAY], updatedAt: 1 };
+
+  it('契約者は依頼を積める', async () => {
+    await assertSucceeds(setDoc(doc(alice(), 'foodRequests/さらだちきん'), parent));
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), entry),
+    );
+  });
+
+  it('すでにある依頼にも積める（別の人が同じ食材を使ったとき）', async () => {
+    await assertSucceeds(setDoc(doc(alice(), 'foodRequests/さらだちきん'), parent));
+    await assertSucceeds(setDoc(doc(bob(), 'foodRequests/さらだちきん'), parent));
+    await assertSucceeds(setDoc(doc(bob(), 'foodRequests/さらだちきん/from/bob'), entry));
+  });
+
+  // ★★ ここが今回いちばん重要なテスト。
+  //
+  //   依頼を1つのドキュメントにまとめて clientIds の配列を持たせると、
+  //   配列に自分を足すために契約者がそれを読める必要が出る。
+  //   読めるということは、他の契約者が何を食べたかを推測できるということ。
+  //   だから「書けるが読めない」形にしてある。
+  it('契約者は依頼を読めない（他人が何を食べたか推測できてはいけない）', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん'), parent);
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん/from/bob'), entry);
+    });
+
+    await assertFails(getDoc(doc(alice(), 'foodRequests/さらだちきん')));
+    await assertFails(getDocs(collection(alice(), 'foodRequests')));
+  });
+
+  it('契約者は他人が積んだ1件も読めない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん/from/bob'), entry);
+    });
+
+    await assertFails(getDoc(doc(alice(), 'foodRequests/さらだちきん/from/bob')));
+    await assertFails(getDocs(collection(alice(), 'foodRequests/さらだちきん/from')));
+  });
+
+  it('契約者は他人になりすまして積めない', async () => {
+    await assertFails(setDoc(doc(alice(), 'foodRequests/さらだちきん/from/bob'), entry));
+  });
+
+  it('契約者は自分が積んだ1件だけは読める', async () => {
+    await assertSucceeds(setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), entry));
+    await assertSucceeds(getDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice')));
+  });
+
+  it('契約者は依頼を消せない（管理者の作業を消せてはいけない）', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん'), parent);
+    });
+    await assertFails(deleteDoc(doc(alice(), 'foodRequests/さらだちきん')));
+  });
+
+  it('管理者は依頼を読んで消せる', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん'), parent);
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん/from/alice'), entry);
+    });
+
+    await assertSucceeds(getDocs(collection(admin(), 'foodRequests')));
+    await assertSucceeds(getDocs(collection(admin(), 'foodRequests/さらだちきん/from')));
+    await assertSucceeds(deleteDoc(doc(admin(), 'foodRequests/さらだちきん/from/alice')));
+    await assertSucceeds(deleteDoc(doc(admin(), 'foodRequests/さらだちきん')));
+  });
+
+  // ★ ここは契約者が自由に文字を入れられる数少ない場所。
+  //   長大な文字列や余計な項目で管理者の画面を壊されないようにしておく。
+  it('決められた項目以外は書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん'), { ...parent, role: 'admin' }),
+    );
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), { ...entry, clientId: 'bob' }),
+    );
+  });
+
+  it('長すぎる名前は書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん'), { ...parent, name: 'あ'.repeat(61) }),
+    );
+  });
+
+  it('空の名前は書けない', async () => {
+    await assertFails(setDoc(doc(alice(), 'foodRequests/さらだちきん'), { ...parent, name: '' }));
+  });
+
+  it('IDと合わない key は書けない（別の依頼に化けさせない）', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん'), { ...parent, key: 'べつのもの' }),
+    );
+  });
+
+  it('無効化された契約者は積めない', async () => {
+    await assertFails(setDoc(doc(carol(), 'foodRequests/さらだちきん'), parent));
+  });
+
+  it('ログインしていなければ積めない', async () => {
+    const anon = env.unauthenticatedContext().firestore();
+    await assertFails(setDoc(doc(anon, 'foodRequests/さらだちきん'), parent));
+  });
+});
+
+describe('★ 一括置き換えの変更履歴（設計書 §19 / Phase 9）', () => {
+  const audit = {
+    type: 'food-bulk-replace',
+    foodId: 'torimune',
+    foodName: '鶏むね肉',
+    requestKey: '鶏むね肉',
+    dates: [TODAY],
+    by: 'admin-uid',
+    at: 1,
+  };
+
+  it('管理者は変更履歴を残せる', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'clients/alice/audits/a1'), audit));
+  });
+
+  // ★ 履歴は追記のみ。書き換えられたら履歴の意味がない。
+  it('管理者でも履歴は書き換えられない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'clients/alice/audits/a1'), audit);
+    });
+    await assertFails(setDoc(doc(admin(), 'clients/alice/audits/a1'), { ...audit, at: 2 }));
+    await assertFails(deleteDoc(doc(admin(), 'clients/alice/audits/a1')));
+  });
+
+  it('契約者は他人の履歴を読めない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'clients/alice/audits/a1'), audit);
+    });
+    await assertFails(getDoc(doc(bob(), 'clients/alice/audits/a1')));
   });
 });
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  countPending,
   dayTotals,
   diffFromTarget,
   formatNutrients,
@@ -11,13 +12,12 @@ import {
   type Meal,
   type MealItem,
   type Nutrients,
-  type Per100gInput,
   type Targets,
 } from '@pt/core';
 import { AI_RELAY_URL } from '@/config/firebase';
 import { AiTextPanel } from '@/features/ai/AiTextPanel';
 import { hasValidAiConsent, type AiConsent } from '@/features/clients/clientTypes';
-import { rememberFood } from './foodsRepo';
+import { requestFood } from '@/features/foods/requestsRepo';
 import { ItemForm } from './ItemForm';
 import { deleteMeal, listMeals, newMealId, saveMeal, syncDayMealFlag } from './mealsRepo';
 
@@ -33,7 +33,7 @@ export function MealsSection({
   date,
   targets,
   canEdit,
-  allowFoodCreate,
+  isAdmin,
   aiConsent,
   onMealsChanged,
 }: {
@@ -41,7 +41,8 @@ export function MealsSection({
   date: DateKey;
   targets: Targets;
   canEdit: boolean;
-  allowFoodCreate: boolean;
+  /** 管理者なら、その場で栄養値を決められる（設計書 §21） */
+  isAdmin: boolean;
   /** AI利用への同意。同意が無ければAIのボタンを出さない（設計書 §35） */
   aiConsent: AiConsent;
   /** カレンダーの印を更新するために、食事の有無を親へ伝える */
@@ -147,7 +148,7 @@ export function MealsSection({
     void persist(list, found);
   }
 
-  function addItem(mealId: string, item: MealItem, source: { name: string; per100g: Per100gInput }) {
+  function addItem(mealId: string, item: MealItem, requestName: string | null) {
     const list = meals ?? [];
     const target = list.find((m) => m.id === mealId);
     if (target === undefined) return;
@@ -157,11 +158,11 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    void rememberFood(clientId, source, allowFoodCreate);
+    if (requestName !== null) void requestFood(requestName, clientId, date);
     setAddingTo(null);
   }
 
-  function updateItem(mealId: string, item: MealItem, source: { name: string; per100g: Per100gInput }) {
+  function updateItem(mealId: string, item: MealItem, requestName: string | null) {
     const list = meals ?? [];
     const target = list.find((m) => m.id === mealId);
     if (target === undefined) return;
@@ -171,16 +172,12 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    void rememberFood(clientId, source, allowFoodCreate);
+    if (requestName !== null) void requestFood(requestName, clientId, date);
     setEditing(null);
   }
 
   /** AIが起こした下書きを、人が確認したうえでまとめて追加する（設計書 §47）。 */
-  function addItems(
-    mealId: string,
-    newItems: MealItem[],
-    sources: { name: string; per100g: Per100gInput }[],
-  ) {
+  function addItems(mealId: string, newItems: MealItem[], requestNames: string[]) {
     const list = meals ?? [];
     const target = list.find((m) => m.id === mealId);
     if (target === undefined || newItems.length === 0) return;
@@ -190,7 +187,7 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    for (const source of sources) void rememberFood(clientId, source, allowFoodCreate);
+    for (const requestName of requestNames) void requestFood(requestName, clientId, date);
     setAiFor(null);
   }
 
@@ -217,6 +214,7 @@ export function MealsSection({
 
   const totals = dayTotals(meals);
   const hasAnyItem = meals.some((m) => m.items.length > 0);
+  const pendingCount = countPending(meals);
   // 中継役が未設定なら、そもそもAIは動かないのでボタンも出さない
   const aiAvailable = AI_RELAY_URL !== null && hasValidAiConsent(aiConsent);
 
@@ -261,9 +259,9 @@ export function MealsSection({
             editing?.mealId === meal.id && editing.item.id === item.id ? (
               <ItemForm
                 key={item.id}
-                clientId={clientId}
                 initial={item}
-                onSubmit={(next, source) => updateItem(meal.id, next, source)}
+                canEditNutrition={isAdmin}
+                onSubmit={(next, requestName) => updateItem(meal.id, next, requestName)}
                 onCancel={() => setEditing(null)}
               />
             ) : (
@@ -286,9 +284,8 @@ export function MealsSection({
 
           {canEdit && aiFor?.mealId === meal.id && (
             <AiTextPanel
-              clientId={clientId}
               mode={aiFor.mode}
-              onAdd={(items, sources) => addItems(meal.id, items, sources)}
+              onAdd={(items, requestNames) => addItems(meal.id, items, requestNames)}
               onClose={() => setAiFor(null)}
             />
           )}
@@ -336,8 +333,8 @@ export function MealsSection({
 
           {canEdit && addingTo === meal.id && (
             <ItemForm
-              clientId={clientId}
-              onSubmit={(item, source) => addItem(meal.id, item, source)}
+              canEditNutrition={isAdmin}
+              onSubmit={(item, requestName) => addItem(meal.id, item, requestName)}
               onCancel={() => setAddingTo(null)}
             />
           )}
@@ -357,7 +354,12 @@ export function MealsSection({
         </section>
       )}
 
-      <TotalsCard totals={totals} targets={targets} hasAnyItem={hasAnyItem} />
+      <TotalsCard
+        totals={totals}
+        targets={targets}
+        hasAnyItem={hasAnyItem}
+        pendingCount={pendingCount}
+      />
     </>
   );
 }
@@ -377,17 +379,23 @@ function ItemRow({
 }) {
   const f = formatNutrients(item.nutrients);
   return (
-    <div className="row item-row">
+    <div className={item.pending ? 'row item-row pending' : 'row item-row'}>
       <div className="row-label">
         <span className="item-name">{item.name}</span>
         <span className="item-grams">{item.grams}g</span>
       </div>
-      <div className="macros">
-        <span className="kcal">{f.kcal}kcal</span>
-        <span className="macro p">P {f.p}</span>
-        <span className="macro f">F {f.f}</span>
-        <span className="macro c">C {f.c}</span>
-      </div>
+      {item.pending ? (
+        <div className="macros">
+          <span className="badge wait">栄養値は登録待ち</span>
+        </div>
+      ) : (
+        <div className="macros">
+          <span className="kcal">{f.kcal}kcal</span>
+          <span className="macro p">P {f.p}</span>
+          <span className="macro f">F {f.f}</span>
+          <span className="macro c">C {f.c}</span>
+        </div>
+      )}
       {canEdit && (
         <div className="item-actions">
           <button className="button-quiet compact" type="button" onClick={onEdit}>
@@ -435,10 +443,13 @@ function TotalsCard({
   totals,
   targets,
   hasAnyItem,
+  pendingCount,
 }: {
   totals: Nutrients;
   targets: Targets;
   hasAnyItem: boolean;
+  /** 栄養値がまだ確定していない食材の数 */
+  pendingCount: number;
 }) {
   const target = targetsToNutrients(targets);
   const diff = diffFromTarget(totals, target);
@@ -479,6 +490,19 @@ function TotalsCard({
           <span className={signClass(diff.c)}>C {signed(d.c)}</span>
         </div>
       </div>
+
+      {/*
+        ★ 未確定があることは必ず伝えます。
+          伝えないと「合計が実際より少ない」ことに気づけず、
+          その数字を根拠に判断してしまいます。
+      */}
+      {pendingCount > 0 && (
+        <p className="notice">
+          栄養値が未確定の食材が{pendingCount}件あります。
+          <b>その分は合計に含まれていません。</b>
+          トレーナーが登録すると反映されます。
+        </p>
+      )}
 
       {!hasAnyItem && <p className="note">まだ食事が記録されていないため、合計は0です。</p>}
 

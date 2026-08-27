@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { toInternal } from '../nutrition/convert';
 import { sumNutrients } from '../nutrition/sum';
-import { NUTRIENT_KEYS, type Nutrients } from '../nutrition/types';
+import { NUTRIENT_KEYS, ZERO, type Nutrients } from '../nutrition/types';
 import {
+  applyFoodToPending,
   computeItemNutrients,
+  countPending,
   dayTotals,
   flatItemTotals,
   kcalMismatchWarning,
@@ -35,6 +37,7 @@ function item(name: keyof typeof PER_100G, grams: number): MealItem {
     per100g: PER_100G[name],
     nutrients: computeItemNutrients(PER_100G[name], grams),
     foodId: null,
+    pending: false,
   };
 }
 
@@ -110,6 +113,36 @@ describe('★ 食材合計 == 食事合計 == 日合計（設計書 §15 の絶�
     for (const key of NUTRIENT_KEYS) {
       expect(totals[key]).toBe(0);
     }
+  });
+});
+
+describe('★ 栄養値が未確定の食材（設計書 §13 / Phase 9）', () => {
+  const pendingItem: MealItem = {
+    id: 'p1',
+    name: 'サラダチキン',
+    grams: 120,
+    per100g: { kcal: 0, p: 0, f: 0, c: 0, fiber: 0, salt: 0 },
+    nutrients: { kcal: 0, p: 0, f: 0, c: 0, fiber: 0, salt: 0 },
+    foodId: null,
+    pending: true,
+  };
+
+  // ★ 未確定は0として扱う。適当な数字で埋めると、合計が嘘になる。
+  it('未確定の食材は合計に影響しない', () => {
+    const withPending = meal(0, [item('白米', 180), pendingItem]);
+    const withoutPending = meal(0, [item('白米', 180)]);
+    expect(mealTotals(withPending)).toEqual(mealTotals(withoutPending));
+  });
+
+  // ★ そのぶん「合計が実際より少ない」ことは必ず伝える必要がある。
+  it('未確定の件数を数えられる', () => {
+    expect(countPending([meal(0, [item('白米', 180), pendingItem])])).toBe(1);
+    expect(countPending([meal(0, [item('白米', 180)])])).toBe(0);
+    expect(countPending([])).toBe(0);
+  });
+
+  it('複数の食事にまたがっても数えられる', () => {
+    expect(countPending([meal(0, [pendingItem]), meal(1, [pendingItem, item('卵', 55)])])).toBe(2);
   });
 });
 
@@ -205,5 +238,135 @@ describe('カロリーとPFCの食い違いの警告', () => {
 
   it('カロリー未入力なら警告しない（別の検証で止まるため）', () => {
     expect(kcalMismatchWarning({ kcal: 0, p: 10, f: 10, c: 10 })).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 未確定の食材への後追い反映（Phase 9）
+// -----------------------------------------------------------------------------
+
+describe('未確定の食材にあとから栄養値を入れる', () => {
+  const CHICKEN = {
+    id: 'torimune',
+    name: '鶏むね肉',
+    per100g: toInternal({ kcal: 105, p: 23.3, f: 1.9, c: 0.1 }),
+  };
+
+  /** 未確定の食材1件だけを持つ食事を作る */
+  function pendingMeal(name: string, grams: number, rest: MealItem[] = []): Meal {
+    return {
+      id: 'm1',
+      order: 0,
+      label: '1食目',
+      memo: '',
+      items: [
+        {
+          id: 'i1',
+          name,
+          grams,
+          per100g: ZERO,
+          nutrients: ZERO,
+          foodId: null,
+          pending: true,
+        },
+        ...rest,
+      ],
+      createdAt: null,
+      updatedAt: null,
+    };
+  }
+
+  it('照合キーが一致する未確定の食材に値が入る', () => {
+    const { meal, changed } = applyFoodToPending(pendingMeal('鶏むね肉', 200), '鶏むね肉', CHICKEN);
+
+    expect(changed).toBe(1);
+    expect(meal.items[0]?.pending).toBe(false);
+    expect(meal.items[0]?.foodId).toBe('torimune');
+    expect(meal.items[0]?.nutrients).toEqual(computeItemNutrients(CHICKEN.per100g, 200));
+  });
+
+  // ★ ここが「予測変換のぶれ」対策の効き目。
+  //   別の書き方で記録されていても、同じキーになるので拾えます。
+  it('書き方が違っても、同じ照合キーなら拾う（鶏ムネ肉 → 鶏むね肉）', () => {
+    const { meal, changed } = applyFoodToPending(pendingMeal('鶏ムネ肉', 100), '鶏むね肉', CHICKEN);
+
+    expect(changed).toBe(1);
+    // 名前もマスタ側に揃える。一覧に2つの書き方が並び続けないように。
+    expect(meal.items[0]?.name).toBe('鶏むね肉');
+  });
+
+  it('照合キーが違う食材には触らない', () => {
+    const { meal, changed } = applyFoodToPending(pendingMeal('白米', 150), '鶏むね肉', CHICKEN);
+
+    expect(changed).toBe(0);
+    expect(meal.items[0]?.pending).toBe(true);
+    expect(meal.items[0]?.name).toBe('白米');
+  });
+
+  // ★ すでに誰かが確認して入った数字を、あとから黙って変えてはいけない。
+  it('確定済みの食材は、名前が同じでも書き換えない', () => {
+    const confirmed: MealItem = {
+      id: 'i2',
+      name: '鶏むね肉',
+      grams: 100,
+      per100g: toInternal({ kcal: 999, p: 1, f: 1, c: 1 }),
+      nutrients: computeItemNutrients(toInternal({ kcal: 999, p: 1, f: 1, c: 1 }), 100),
+      foodId: 'べつのなにか',
+      pending: false,
+    };
+
+    const meal: Meal = { ...pendingMeal('白米', 150), items: [confirmed] };
+    const { changed, meal: after } = applyFoodToPending(meal, '鶏むね肉', CHICKEN);
+
+    expect(changed).toBe(0);
+    expect(after.items[0]).toEqual(confirmed);
+  });
+
+  it('変化が無ければ同じ食事をそのまま返す（保存を省けるように）', () => {
+    const meal = pendingMeal('白米', 150);
+    expect(applyFoodToPending(meal, '鶏むね肉', CHICKEN).meal).toBe(meal);
+  });
+
+  it('1つの食事に同じ食材が2件あれば、どちらも入る', () => {
+    const second: MealItem = {
+      id: 'i2',
+      name: '鶏ムネ肉',
+      grams: 50,
+      per100g: ZERO,
+      nutrients: ZERO,
+      foodId: null,
+      pending: true,
+    };
+
+    const { changed } = applyFoodToPending(
+      pendingMeal('鶏むね肉', 100, [second]),
+      '鶏むね肉',
+      CHICKEN,
+    );
+
+    expect(changed).toBe(2);
+  });
+
+  // ★ 置き換えたあとも「食材合計 == 食事合計」が崩れないことを確かめる（設計書 §15）
+  it('置き換えたあとも食事の合計が食材の積み上げと一致する', () => {
+    const { meal } = applyFoodToPending(pendingMeal('鶏むね肉', 175), '鶏むね肉', CHICKEN);
+
+    expect(mealTotals(meal)).toEqual(sumNutrients(meal.items.map((i) => i.nutrients)));
+  });
+
+  it('置き換えたぶんが日合計にも反映される', () => {
+    const before = pendingMeal('鶏むね肉', 200);
+    expect(dayTotals([before]).kcal).toBe(0);
+
+    const { meal } = applyFoodToPending(before, '鶏むね肉', CHICKEN);
+    expect(dayTotals([meal]).kcal).toBe(computeItemNutrients(CHICKEN.per100g, 200).kcal);
+  });
+
+  it('置き換えると未確定の件数が減る', () => {
+    const before = pendingMeal('鶏むね肉', 200);
+    expect(countPending([before])).toBe(1);
+
+    const { meal } = applyFoodToPending(before, '鶏むね肉', CHICKEN);
+    expect(countPending([meal])).toBe(0);
   });
 });

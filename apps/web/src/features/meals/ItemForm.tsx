@@ -1,113 +1,124 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   computeItemNutrients,
+  findExactFood,
+  findSimilarFoods,
   formatNutrients,
-  kcalMismatchWarning,
   toInternal,
-  validateItemInput,
+  ZERO,
   type MealItem,
   type Per100gInput,
 } from '@pt/core';
-import { loadFoods, searchFoods, type Food } from './foodsRepo';
+import { loadFoods, type Food } from '@/features/foods/foodsRepo';
 import { newItemId } from './mealsRepo';
 
 /**
- * 食材1件の入力（設計書 §14 / Q13）。
+ * 食材1件の入力（設計書 §13 / §21 / Phase 9）。
  *
- * 流れ:
- *   名前を打つ → マスタに候補があれば選ぶ（栄養値が自動で入る）
- *              → 無ければ 100gあたりの値を手で入れる
- *   量(g)を入れる → その場で「実際に食べたぶん」の数字が出る
+ * ★ 契約者が決められるのは「量(g)」だけです。
  *
- * ★ 計算しているのは @pt/core の決定論的な関数です。
- *   AI も推測も入りません（設計書 §37）。
+ *   100gあたりの kcal / P / F / C は共通マスタの値をそのまま使い、
+ *   契約者は編集できません。ここを開けてしまうと、
+ *   同じ食材の数値が人によって違う状態が生まれ、
+ *   トレーナーが数字を根拠に指導できなくなります。
+ *
+ *   量は本人しか知らない情報なので、本人が入れます。
+ *   栄養値は調べる人が決める情報なので、管理者が決めます。
+ *   それぞれ、知っている側が担当する形です。
+ *
+ * ★ マスタに無い食材も記録できます。
+ *   その場合は「栄養値は未確定」として記録し、管理者へ登録依頼を出します。
+ *   記録を止めると続かなくなるので、止めません。
  */
 export function ItemForm({
-  clientId,
   initial,
+  canEditNutrition,
   onSubmit,
   onCancel,
 }: {
-  clientId: string;
   /** 編集のときだけ渡す */
   initial?: MealItem;
-  onSubmit: (item: MealItem, source: { name: string; per100g: Per100gInput }) => void;
+  /** 管理者なら true。その場で栄養値を決められる */
+  canEditNutrition: boolean;
+  onSubmit: (item: MealItem, requestName: string | null) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [grams, setGrams] = useState(initial === undefined ? '' : String(initial.grams));
-  const [per100g, setPer100g] = useState<Record<keyof Per100gInput, string>>(() =>
-    initial === undefined
-      ? { kcal: '', p: '', f: '', c: '' }
-      : {
-          kcal: String(round1(initial.per100g.kcal / 1000)),
-          p: String(round1(initial.per100g.p / 1000)),
-          f: String(round1(initial.per100g.f / 1000)),
-          c: String(round1(initial.per100g.c / 1000)),
-        },
-  );
-  const [foodId, setFoodId] = useState<string | null>(initial?.foodId ?? null);
   const [foods, setFoods] = useState<Food[]>([]);
-  const [picked, setPicked] = useState(initial !== undefined);
+  const [picked, setPicked] = useState<Food | null>(null);
+  /** 管理者がその場で入れた栄養値 */
+  const [manual, setManual] = useState<Record<keyof Per100gInput, string>>({
+    kcal: '',
+    p: '',
+    f: '',
+    c: '',
+  });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadFoods(clientId)
+    void loadFoods()
       .then(setFoods)
       .catch(() => setFoods([]));
-  }, [clientId]);
+  }, []);
 
-  const suggestions = useMemo(
-    () => (picked ? [] : searchFoods(foods, name)),
-    [foods, name, picked],
+  // ★ 打った名前を、まず既存マスタに当てにいきます（別名も見ます）。
+  //   「鶏ムネ肉」と打っても既存の「鶏むね肉」に当たるので、
+  //   ぶれの大半はここで消えます。
+  const exact = useMemo(() => (picked !== null ? picked : findExactFood(foods, name)), [foods, name, picked]);
+  const similar = useMemo(
+    () => (exact !== null ? [] : findSimilarFoods(foods, name, 4)),
+    [foods, name, exact],
   );
 
-  const numbers: Partial<Per100gInput> = {
-    ...maybe('kcal', per100g.kcal),
-    ...maybe('p', per100g.p),
-    ...maybe('f', per100g.f),
-    ...maybe('c', per100g.c),
-  };
   const gramsNum = parse(grams);
-  const issues = validateItemInput({ name, grams: gramsNum, per100g: numbers });
-  const complete = issues.length === 0;
+  const manualNumbers: Per100gInput = {
+    kcal: parse(manual.kcal) ?? 0,
+    p: parse(manual.p) ?? 0,
+    f: parse(manual.f) ?? 0,
+    c: parse(manual.c) ?? 0,
+  };
+  const manualFilled =
+    canEditNutrition && (['kcal', 'p', 'f', 'c'] as const).every((k) => manual[k].trim().length > 0);
+
+  const per100g: Per100gInput | null =
+    exact !== null ? exact.per100g : manualFilled ? manualNumbers : null;
+
+  const nameOk = name.trim().length > 0;
+  const gramsOk = gramsNum !== null && gramsNum > 0 && gramsNum <= 5000;
+  const canSubmit = nameOk && gramsOk;
 
   const preview =
-    complete && gramsNum !== null
-      ? computeItemNutrients(toInternal(numbers as Per100gInput), gramsNum)
+    per100g !== null && gramsNum !== null && gramsOk
+      ? computeItemNutrients(toInternal(per100g), gramsNum)
       : null;
 
-  const warning = complete ? kcalMismatchWarning(numbers as Per100gInput) : null;
-
-  function choose(food: Food) {
-    setName(food.name);
-    setPer100g({
-      kcal: String(food.per100g.kcal),
-      p: String(food.per100g.p),
-      f: String(food.per100g.f),
-      c: String(food.per100g.c),
-    });
-    setFoodId(food.scope === 'personal' ? food.id : null);
-    setPicked(true);
-  }
-
   function submit() {
-    if (!complete || gramsNum === null) {
-      setError(issues[0]?.message ?? '入力を確認してください。');
+    if (!nameOk) {
+      setError('食材の名前を入力してください。');
       return;
     }
-    const source = { name: name.trim(), per100g: numbers as Per100gInput };
-    const internal = toInternal(source.per100g);
+    if (!gramsOk || gramsNum === null) {
+      setError('量は0より大きく、5000g以内で入力してください。');
+      return;
+    }
+
+    const trimmed = name.trim();
+    const pending = per100g === null;
+    const internal = per100g === null ? ZERO : toInternal(per100g);
+
     onSubmit(
       {
         id: initial?.id ?? newItemId(),
-        name: source.name,
+        name: exact !== null ? exact.name : trimmed,
         grams: gramsNum,
         per100g: internal,
-        nutrients: computeItemNutrients(internal, gramsNum),
-        foodId,
+        nutrients: pending ? ZERO : computeItemNutrients(internal, gramsNum),
+        foodId: exact?.id ?? null,
+        pending,
       },
-      source,
+      // 未確定なら、管理者へ登録依頼を出す
+      pending ? trimmed : null,
     );
   }
 
@@ -121,28 +132,38 @@ export function ItemForm({
           value={name}
           onChange={(e) => {
             setName(e.target.value);
-            setPicked(false);
-            setFoodId(null);
+            setPicked(null);
           }}
           placeholder="鶏むね肉"
           autoFocus
         />
       </label>
 
-      {suggestions.length > 0 && (
-        <ul className="suggestions">
-          {suggestions.map((f) => (
-            <li key={`${f.scope}-${f.id}`}>
-              <button type="button" className="suggestion" onClick={() => choose(f)}>
-                <span className="suggestion-name">{f.name}</span>
-                <span className="suggestion-meta">
-                  100gあたり {f.per100g.kcal}kcal · P{f.per100g.p} F{f.per100g.f} C{f.per100g.c}
-                </span>
-                {f.scope === 'common' && <span className="badge">共通</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {similar.length > 0 && (
+        <>
+          <p className="field-hint">似た食材があります。同じものならこちらを選んでください。</p>
+          <ul className="suggestions">
+            {similar.map((m) => (
+              <li key={m.food.id}>
+                <button
+                  type="button"
+                  className="suggestion"
+                  onClick={() => {
+                    setPicked(m.food);
+                    setName(m.food.name);
+                  }}
+                >
+                  <span className="suggestion-name">{m.food.name}</span>
+                  <span className="suggestion-meta">
+                    {m.matchedName !== m.food.name && <>「{m.matchedName}」· </>}
+                    {m.food.per100g.kcal}kcal · P{m.food.per100g.p} F{m.food.per100g.f} C
+                    {m.food.per100g.c}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <label className="field">
@@ -158,21 +179,13 @@ export function ItemForm({
         />
       </label>
 
-      <fieldset className="per100g">
-        <legend className="field-label">100gあたりの栄養値</legend>
-        <div className="grid-4">
-          <Small label="kcal" value={per100g.kcal} onChange={(v) => setPer100g({ ...per100g, kcal: v })} />
-          <Small label="P" accent="p" value={per100g.p} onChange={(v) => setPer100g({ ...per100g, p: v })} />
-          <Small label="F" accent="f" value={per100g.f} onChange={(v) => setPer100g({ ...per100g, f: v })} />
-          <Small label="C" accent="c" value={per100g.c} onChange={(v) => setPer100g({ ...per100g, c: v })} />
-        </div>
-        <span className="field-hint">
-          食品パッケージの栄養成分表示や、文部科学省の食品成分データベースの値を入れてください。
-          一度入れれば、次回から名前を打つだけで候補に出ます。
-        </span>
-      </fieldset>
-
-      {warning !== null && <p className="notice">{warning}</p>}
+      <NutritionBlock
+        food={exact}
+        name={name}
+        canEditNutrition={canEditNutrition}
+        manual={manual}
+        onManualChange={setManual}
+      />
 
       {preview !== null && (
         <div className="preview">
@@ -193,7 +206,7 @@ export function ItemForm({
       )}
 
       <div className="item-form-actions">
-        <button className="button-primary compact" type="button" onClick={submit} disabled={!complete}>
+        <button className="button-primary compact" type="button" onClick={submit} disabled={!canSubmit}>
           {initial === undefined ? '追加する' : '変更する'}
         </button>
         <button className="button-quiet" type="button" onClick={onCancel}>
@@ -204,46 +217,81 @@ export function ItemForm({
   );
 }
 
-function Small({
-  label,
-  value,
-  onChange,
-  accent,
+/**
+ * 栄養値の欄。
+ *
+ * マスタにあれば表示だけ（編集不可）。
+ * 無ければ、管理者はその場で入れられ、契約者は「未確定」として記録します。
+ */
+function NutritionBlock({
+  food,
+  name,
+  canEditNutrition,
+  manual,
+  onManualChange,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  accent?: 'p' | 'f' | 'c';
+  food: Food | null;
+  name: string;
+  canEditNutrition: boolean;
+  manual: Record<keyof Per100gInput, string>;
+  onManualChange: (v: Record<keyof Per100gInput, string>) => void;
 }) {
-  return (
-    <label className="field">
-      <span className={accent === undefined ? 'field-label small' : `field-label small macro ${accent}`}>
-        {label}
-      </span>
-      <input
-        className="input"
-        type="number"
-        inputMode="decimal"
-        step="0.1"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </label>
-  );
-}
+  if (food !== null) {
+    return (
+      <div className="nutrition-fixed">
+        <span className="field-label small">100gあたり（共通マスタ）</span>
+        <div className="macros">
+          <span className="kcal">{food.per100g.kcal}kcal</span>
+          <span className="macro p">P {food.per100g.p}</span>
+          <span className="macro f">F {food.per100g.f}</span>
+          <span className="macro c">C {food.per100g.c}</span>
+        </div>
+        {food.note.length > 0 && <span className="field-hint">{food.note}</span>}
+      </div>
+    );
+  }
 
-/** 未入力なら、そのキー自体を作らない（validateItemInput が「未入力」として扱えるように） */
-function maybe(key: keyof Per100gInput, raw: string): Partial<Per100gInput> {
-  const n = parse(raw);
-  return n === null ? {} : ({ [key]: n } as Partial<Per100gInput>);
+  if (name.trim().length === 0) return null;
+
+  if (!canEditNutrition) {
+    return (
+      <p className="notice">
+        この食材はまだ登録されていません。<b>量だけ記録し、トレーナーに登録を依頼します。</b>
+        <br />
+        登録されるまで、この食材は合計に含まれません。
+      </p>
+    );
+  }
+
+  return (
+    <fieldset className="per100g">
+      <legend className="field-label">100gあたりの栄養値（新しく登録します）</legend>
+      <div className="grid-4">
+        {(['kcal', 'p', 'f', 'c'] as const).map((key) => (
+          <label className="field" key={key}>
+            <span className={key === 'kcal' ? 'field-label small' : `field-label small macro ${key}`}>
+              {key === 'kcal' ? 'kcal' : key.toUpperCase()}
+            </span>
+            <input
+              className="input"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={manual[key]}
+              onChange={(e) => onManualChange({ ...manual, [key]: e.target.value })}
+            />
+          </label>
+        ))}
+      </div>
+      <span className="field-hint">
+        空欄のままでも記録できます。その場合は「未確定」として残り、あとから登録できます。
+      </span>
+    </fieldset>
+  );
 }
 
 function parse(value: string): number | null {
   if (value.trim().length === 0) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
 }

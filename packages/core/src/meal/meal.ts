@@ -1,3 +1,4 @@
+import { foodKey } from '../food/matching';
 import { scaleByGrams } from '../nutrition/convert';
 import { sumNutrients } from '../nutrition/sum';
 import { ZERO, type Nutrients } from '../nutrition/types';
@@ -42,8 +43,26 @@ export interface MealItem {
    *   （設計書 §47「確定 → 保存」）。
    */
   nutrients: Nutrients;
-  /** 元になった食品マスタのID。手入力なら null */
+  /**
+   * 元になった共通食品マスタのID。
+   * まだマスタに登録されていない食材（＝管理者へ登録依頼中）は null。
+   */
   foodId: string | null;
+
+  /**
+   * 栄養値がまだ確定していないか（設計書 §13 / Phase 9）。
+   *
+   * ★ 栄養値を決められるのは管理者だけです（共通マスタ）。
+   *   契約者が使った食材がマスタに無い場合、その場では栄養値が分かりません。
+   *
+   *   そこで「名前と量だけ記録し、栄養値は未確定」という状態を許します。
+   *   記録を止めてしまうと続かなくなるからです。
+   *
+   *   未確定の食材は nutrients が 0 なので、合計には影響しません。
+   *   ただし画面には「未確定が◯件あります」と必ず出し、
+   *   合計が実際より少ないことが分かるようにします。
+   */
+  pending: boolean;
 }
 
 /** 1回の食事。「1食目」「2食目」…と自由に増やせる（Q12の決定）。 */
@@ -80,6 +99,11 @@ export function dayTotals(meals: readonly Pick<Meal, 'items'>[]): Nutrients {
 /** 食材をすべて平らに並べた合計。日合計と一致することの検証に使う。 */
 export function flatItemTotals(meals: readonly Pick<Meal, 'items'>[]): Nutrients {
   return sumNutrients(meals.flatMap((m) => m.items.map((i) => i.nutrients)));
+}
+
+/** 栄養値がまだ確定していない食材の数。 */
+export function countPending(meals: readonly Pick<Meal, 'items'>[]): number {
+  return meals.reduce((sum, m) => sum + m.items.filter((i) => i.pending).length, 0);
 }
 
 /** 次に使う既定のラベル。「1食目」「2食目」… */
@@ -189,3 +213,45 @@ export function kcalMismatchWarning(per100g: Per100gInput): string | null {
 
 /** 空の合計。食事が1件も無い日に使う。 */
 export const EMPTY_TOTALS: Nutrients = ZERO;
+
+/**
+ * 未確定の食材に、あとから決まった栄養値を入れる（設計書 §21 / Phase 9）。
+ *
+ * 契約者がマスタに無い食材を記録すると、量だけが入って栄養値は 0 のまま残ります。
+ * 管理者がその食材を登録したあと、過去のぶんに正しい値を入れるための処理です。
+ *
+ * ★ 触るのは pending の食材だけです。
+ *   すでに数値が入っている食材は、名前が同じでも書き換えません。
+ *   誰かが確認して入った数字を、あとから黙って変える根拠がないためです。
+ *
+ * ★ 名前も揃えます。
+ *   「鶏ムネ肉」で記録されていたものはマスタの「鶏むね肉」になります。
+ *   ここで揃えておかないと、一覧に同じ食材が2つの書き方で並び続けます。
+ *
+ * 変化が無ければ changed が 0 になります。呼び出し側は保存を省けます。
+ */
+export function applyFoodToPending(
+  meal: Meal,
+  /** 照合キー（foodKey で作ったもの）。この値と一致する食材だけを対象にする */
+  key: string,
+  food: { id: string; name: string; per100g: Nutrients },
+): { meal: Meal; changed: number } {
+  let changed = 0;
+
+  const items = meal.items.map((item) => {
+    if (!item.pending) return item;
+    if (foodKey(item.name) !== key) return item;
+
+    changed += 1;
+    return {
+      ...item,
+      name: food.name,
+      per100g: food.per100g,
+      nutrients: computeItemNutrients(food.per100g, item.grams),
+      foodId: food.id,
+      pending: false,
+    };
+  });
+
+  return changed === 0 ? { meal, changed: 0 } : { meal: { ...meal, items }, changed };
+}

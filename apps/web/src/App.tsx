@@ -8,6 +8,8 @@ import { ClientListScreen } from '@/features/clients/ClientListScreen';
 import { ClientCreateScreen } from '@/features/clients/ClientCreateScreen';
 import { ClientEditScreen } from '@/features/clients/ClientEditScreen';
 import { ClientGate } from '@/features/clients/ClientGate';
+import { FoodsScreen } from '@/features/foods/FoodsScreen';
+import { RequestsScreen } from '@/features/foods/RequestsScreen';
 import type { Client } from '@/features/clients/clientTypes';
 import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { DayScreen } from '@/features/days/DayScreen';
@@ -141,6 +143,24 @@ function AppRoutes({ onChangePassword }: { onChangePassword: () => void }) {
         element={
           <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
             <ClientEditRoute />
+          </AdminOnly>
+        }
+      />
+
+      {/* 共通食品マスタと登録依頼。数字の出どころなので管理者だけが触れます（設計書 §21） */}
+      <Route
+        path="/foods"
+        element={
+          <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
+            <FoodsScreen />
+          </AdminOnly>
+        }
+      />
+      <Route
+        path="/foods/requests"
+        element={
+          <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
+            <RequestsScreen />
           </AdminOnly>
         }
       />

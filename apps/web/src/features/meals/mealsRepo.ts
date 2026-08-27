@@ -96,6 +96,7 @@ function toItem(raw: unknown, index: number): MealItem {
     per100g: toNutrients(data.per100g),
     nutrients: toNutrients(data.nutrients),
     foodId: typeof data.foodId === 'string' ? data.foodId : null,
+    pending: data.pending === true,
   };
 }
 
@@ -126,6 +127,7 @@ function toFirestore(meal: Meal): Record<string, unknown> {
       per100g: plain(i.per100g),
       nutrients: plain(i.nutrients),
       foodId: i.foodId,
+      pending: i.pending,
     })),
     // 合計も一緒に保存します。読むときは items から計算し直すので、
     // これは Firebase のコンソールから確認するためのものです。
