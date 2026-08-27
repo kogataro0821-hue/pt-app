@@ -14,6 +14,7 @@ import {
   findSimilarFoods,
   formatNutrients,
   toInternal,
+  type DateKey,
   type MealItem,
 } from '@pt/core';
 import { loadFoods, type Food } from '@/features/foods/foodsRepo';
@@ -23,7 +24,9 @@ import {
   formatBytes,
   photoErrorMessage,
   resizePhoto,
+  type ResizedPhoto,
 } from '@/features/photos/resize';
+import { addPhoto, deletePhoto } from '@/features/photos/photosRepo';
 import { AiError, aiErrorMessage, analyzeMealPhoto, parseMealText } from './gemini';
 
 /**
@@ -38,6 +41,19 @@ import { AiError, aiErrorMessage, analyzeMealPhoto, parseMealText } from './gemi
  *   6. 人が確認して確定 → 決定論的に計算して保存
  *
  * ★ 栄養値は共通マスタからしか来ません。AIも契約者も決められません。
+ *
+ * ★ AIに送った写真は、写真欄に残します（Phase 13）。
+ *
+ *   残さないと、あとからトレーナーが見たときに
+ *   「AIは何を見てこの数字を出したのか」を確かめる手段がありません。
+ *   量の推定が妥当だったかは、写真が無いと判断できません。
+ *
+ *   保存するのは「送った時点」です。追加をやめた場合も残ります。
+ *   ただし撮り直したときは、前の1枚を消してから保存します。
+ *   何度も撮り直すと、その回数だけ写真が積み上がってしまうためです。
+ *
+ * ★ 契約者IDや日付はAIに送りません（設計書 §35）。
+ *   下で受け取っているのは、写真を保存する先を決めるためだけです。
  */
 
 interface Draft {
@@ -56,16 +72,31 @@ interface Draft {
 
 export function AiTextPanel({
   mode,
+  clientId,
+  date,
+  mealId,
   onAdd,
+  onPhotoSaved,
   onClose,
 }: {
   /** 'text' = 文章から / 'photo' = 写真から */
   mode: 'text' | 'photo';
+  /** 写真の保存先。AIには送りません（設計書 §35） */
+  clientId: string;
+  date: DateKey;
+  /** どの食事に紐づく写真か */
+  mealId: string;
   onAdd: (items: MealItem[], requestNames: string[]) => void;
+  /** 写真欄をその場で更新させるための合図 */
+  onPhotoSaved?: () => void;
   onClose: () => void;
 }) {
   const [text, setText] = useState('');
   const [photo, setPhoto] = useState<{ dataUrl: string; bytes: number } | null>(null);
+  /** 送るために縮小した写真。保存にも使う */
+  const resizedRef = useRef<ResizedPhoto | null>(null);
+  /** 写真欄に保存した1枚。撮り直したときに消すため覚えておく */
+  const [savedPhotoId, setSavedPhotoId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +118,18 @@ export function AiTextPanel({
     setBusy(true);
     try {
       const resized = await resizePhoto(files[0]!);
+
+      // ★ 撮り直したら、前に保存した1枚を消します。
+      //   消さないと、撮り直した回数だけ写真欄に積み上がります。
+      if (savedPhotoId !== null) {
+        const stale = savedPhotoId;
+        setSavedPhotoId(null);
+        void deletePhoto(clientId, date, stale)
+          .then(() => onPhotoSaved?.())
+          .catch(() => undefined);
+      }
+
+      resizedRef.current = resized;
       setPhoto({ dataUrl: resized.dataUrl, bytes: resized.bytes });
     } catch (e) {
       setError(
@@ -124,6 +167,22 @@ export function AiTextPanel({
 
       setResult({ guard, recognition });
       setDrafts([...guard.accepted, ...guard.flagged].map((item) => toDraft(item, foods, isPhoto)));
+
+      // ★ AIに送った写真を、写真欄に残します。
+      //   失敗しても下書きは使えるので、握りつぶします。
+      //   ここで例外を投げると、読み取れているのに先へ進めなくなります。
+      if (isPhoto && resizedRef.current !== null && savedPhotoId === null) {
+        try {
+          const saved = await addPhoto(clientId, date, resizedRef.current, {
+            mealId,
+            caption: 'AIで読み取った写真',
+          });
+          setSavedPhotoId(saved.id);
+          onPhotoSaved?.();
+        } catch {
+          // 写真が残せなくても、下書きそのものは成立している
+        }
+      }
     } catch (e) {
       setError(
         e instanceof AiError ? aiErrorMessage(e.kind, e.detail) : 'AIの呼び出しに失敗しました。',

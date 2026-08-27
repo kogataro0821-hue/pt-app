@@ -48,6 +48,8 @@ export function DayScreen({
 
   const [day, setDay] = useState<Day | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
+  /** AIに送った写真が保存されたら、写真欄を読み直させる */
+  const [photoRefresh, setPhotoRefresh] = useState(0);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -266,6 +268,7 @@ export function DayScreen({
             isAdmin={isAdmin}
             aiConsent={client.aiConsent}
             onMealsChanged={(hasMeals) => setDay((prev) => (prev === null ? prev : { ...prev, hasMeals }))}
+            onPhotoSaved={() => setPhotoRefresh((n) => n + 1)}
           />
 
           <ExercisesSection
@@ -282,6 +285,7 @@ export function DayScreen({
             date={date}
             canEdit={canEdit}
             onPhotosChanged={setPhotoCount}
+            refreshToken={photoRefresh}
           />
 
           {/* ★ 確定カードより前に置きます。

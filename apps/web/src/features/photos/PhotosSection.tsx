@@ -29,12 +29,20 @@ export function PhotosSection({
   date,
   canEdit,
   onPhotosChanged,
+  refreshToken = 0,
 }: {
   clientId: string;
   date: DateKey;
   canEdit: boolean;
   /** 写真の枚数が変わったことを親へ伝える（確認カードの表示に使う） */
   onPhotosChanged?: (count: number) => void;
+  /**
+   * 読み直しの合図。
+   * AIに送った写真は別の場所（AiTextPanel）で保存されるので、
+   * この数字が変わったときに読み直します。
+   * これが無いと、保存したのに写真欄に出てこない状態になります。
+   */
+  refreshToken?: number;
 }) {
   const [photos, setPhotos] = useState<Photo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +102,7 @@ export function PhotosSection({
     return () => {
       cancelled = true;
     };
-  }, [clientId, date, syncOldest]);
+  }, [clientId, date, syncOldest, refreshToken]);
 
   async function onPick(files: FileList | null) {
     if (files === null || files.length === 0) return;
