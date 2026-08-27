@@ -12,6 +12,8 @@ import type { Client } from '@/features/clients/clientTypes';
 import { MealsSection } from '@/features/meals/MealsSection';
 import { ExercisesSection } from '@/features/exercises/ExercisesSection';
 import { PhotosSection } from '@/features/photos/PhotosSection';
+import { NotesSection } from '@/features/notes/NotesSection';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { getDay, saveBodyMetrics, setDayStatus, validateBodyMetrics } from './daysRepo';
 import { emptyDay, type Day } from './dayTypes';
 
@@ -33,6 +35,9 @@ export function DayScreen({
   date: DateKey;
   isAdmin: boolean;
 }) {
+  const { state } = useAuth();
+  const adminUid = state.status === 'signedIn' ? state.user.uid : '';
+
   const [day, setDay] = useState<Day | null>(null);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
@@ -225,6 +230,16 @@ export function DayScreen({
           />
 
           <PhotosSection clientId={client.clientId} date={date} canEdit={canEdit} />
+
+          {/* ★ 確定カードより前に置きます。
+              確定は「この日はおしまい」の合図なので、その下に読むものがあると
+              目に入りません。トレーナーの言葉は記録の一部として上に置きます。 */}
+          <NotesSection
+            clientId={client.clientId}
+            date={date}
+            isAdmin={isAdmin}
+            adminUid={adminUid}
+          />
 
           <FinalizeCard
             status={day.status}

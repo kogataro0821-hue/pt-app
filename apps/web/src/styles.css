@@ -1775,3 +1775,43 @@ select.input {
   color: var(--accent);
   background: var(--accent-soft);
 }
+
+/* ---------------------------------------------------------------------------
+ * Phase 10 — トレーナーのコメント
+ * ------------------------------------------------------------------------- */
+
+.note-item {
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.note-item:last-of-type {
+  border-bottom: none;
+}
+
+/* 改行をそのまま出す。書いたとおりに読めないと、伝わり方が変わる */
+.note-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.note-input {
+  /* iOS で拡大されないよう16px以上を保つ（設計書 §11.4） */
+  font-size: 16px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  width: 100%;
+}

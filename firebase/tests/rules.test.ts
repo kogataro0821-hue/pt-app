@@ -443,6 +443,89 @@ describe('★ 食品マスタは共通の1本だけ（設計書 §21 / Phase 9�
   });
 });
 
+describe('★ トレーナーのコメント（設計書 §11.3 A-8 / Phase 10）', () => {
+  const note = { text: 'よく続いています。あと少しPを増やしましょう。', by: 'admin-uid', createdAt: 1, updatedAt: 1 };
+
+  it('管理者はコメントを書ける', async () => {
+    await assertSucceeds(setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), note));
+  });
+
+  // ★ ここが要。トレーナーが言ったことを契約者が書き換えられてはいけない。
+  it('契約者はコメントを書けない', async () => {
+    await assertFails(setDoc(doc(alice(), `clients/alice/days/${TODAY}/notes/n1`), note));
+  });
+
+  it('契約者はコメントを書き換えられない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TODAY}/notes/n1`), note);
+    });
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/notes/n1`), { ...note, text: '書き換え' }),
+    );
+  });
+
+  it('契約者はコメントを消せない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TODAY}/notes/n1`), note);
+    });
+    await assertFails(deleteDoc(doc(alice(), `clients/alice/days/${TODAY}/notes/n1`)));
+  });
+
+  it('契約者は自分あてのコメントを読める', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TODAY}/notes/n1`), note);
+    });
+    await assertSucceeds(getDocs(collection(alice(), `clients/alice/days/${TODAY}/notes`)));
+  });
+
+  it('契約者は他人あてのコメントを読めない', async () => {
+    await assertFails(getDocs(collection(bob(), `clients/alice/days/${TODAY}/notes`)));
+  });
+
+  // ★ 確定は「今日はもう食べません」という意思表示であって、
+  //   トレーナーが黙る合図ではない。
+  it('確定済みの日にも管理者は書ける', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${YESTERDAY}/notes/n1`), note),
+    );
+  });
+
+  it('編集ウィンドウの外の日にも管理者は書ける', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TEN_DAYS_AGO}/notes/n1`), note),
+    );
+  });
+
+  it('管理者は自分のコメントを直せる・消せる', async () => {
+    await assertSucceeds(setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), note));
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), { ...note, text: '直しました' }),
+    );
+    await assertSucceeds(deleteDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`)));
+  });
+
+  it('空のコメントは書けない', async () => {
+    await assertFails(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), { ...note, text: '' }),
+    );
+  });
+
+  it('長すぎるコメントは書けない', async () => {
+    await assertFails(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), {
+        ...note,
+        text: 'あ'.repeat(2001),
+      }),
+    );
+  });
+
+  it('決められた項目以外は書けない', async () => {
+    await assertFails(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), { ...note, role: 'admin' }),
+    );
+  });
+});
+
 describe('★ 食品の登録依頼（設計書 §21 / Phase 9）', () => {
   const parent = { name: 'サラダチキン', key: 'さらだちきん', updatedAt: 1 };
   const entry = { variant: 'サラダチキン', count: 1, dates: [TODAY], updatedAt: 1 };

@@ -193,9 +193,26 @@ service cloud.firestore {
         allow write: if mayEdit(cid, date);
       }
 
+      // トレーナーのコメント（設計書 §11.3 A-8 / Phase 10）。
+      //
+      // ★ 書けるのは管理者だけです。
+      //
+      //   以前はここが mayEdit でした。つまり契約者も書けて、消せました。
+      //   トレーナーが言ったことを契約者が書き換えられる状態では、
+      //   これは指導の記録になりません。読むだけに限定します。
+      //
+      // ★ 日付の条件を付けていません。
+      //   1日の確定は「今日はもう食べません」という契約者の意思表示であって、
+      //   トレーナーが黙る合図ではありません。確定後に書くほうがむしろ自然です。
       match /days/{date}/notes/{noteId} {
         allow get, list: if canRead(cid);
-        allow write: if mayEdit(cid, date);
+        allow delete: if isAdmin();
+        allow create, update: if isAdmin()
+                              && request.resource.data.keys()
+                                   .hasOnly(['text', 'by', 'createdAt', 'updatedAt'])
+                              && request.resource.data.text is string
+                              && request.resource.data.text.size() > 0
+                              && request.resource.data.text.size() <= 2000;
       }
 
       // 写真は base64 で Firestore に格納します（設計書 §4.3）。
