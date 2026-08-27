@@ -610,6 +610,51 @@ describe('★ 食品の登録依頼（設計書 §21 / Phase 9）', () => {
     );
   });
 
+  // ---- 成分表示から読み取った候補（Phase 12）--------------------------------
+
+  const candidate = {
+    ...entry,
+    candidatePer100g: { kcal: 461.4, p: 11.6, f: 19.6, c: 59.6 },
+    candidateNote: '1回分(57g)当たり',
+  };
+
+  it('契約者は成分表示の候補を添えられる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), candidate),
+    );
+  });
+
+  it('候補が文字列などおかしな形なら書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...entry,
+        candidatePer100g: 'たくさん',
+      }),
+    );
+  });
+
+  it('候補の説明が長すぎると書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...candidate,
+        candidateNote: 'あ'.repeat(201),
+      }),
+    );
+  });
+
+  // ★ 候補はあくまで候補。ここから直接マスタへ入る経路は無い。
+  it('候補を書けても、共通マスタには書けないまま', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), candidate),
+    );
+    await assertFails(
+      setDoc(doc(alice(), 'foods/さらだちきん'), {
+        name: 'サラダチキン',
+        per100g: candidate.candidatePer100g,
+      }),
+    );
+  });
+
   it('長すぎる名前は書けない', async () => {
     await assertFails(
       setDoc(doc(alice(), 'foodRequests/さらだちきん'), { ...parent, name: 'あ'.repeat(61) }),

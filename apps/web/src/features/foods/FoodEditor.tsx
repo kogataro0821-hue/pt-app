@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { findSimilarFoods, foodKey, kcalMismatchWarning, type Per100gInput } from '@pt/core';
+import { AI_RELAY_URL } from '@/config/firebase';
 import { writeErrorMessage } from '@/lib/firestoreError';
+import { LabelScanner } from './LabelScanner';
 import { emptyFood, newFoodId, saveFood, type Food } from './foodsRepo';
 
 /**
@@ -50,6 +52,7 @@ export function FoodEditor({
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   // 新規のときだけ、似た名前を警告します。
   // 既存を編集しているときに自分自身が出ても意味がありません。
@@ -158,6 +161,37 @@ export function FoodEditor({
             ))}
           </ul>
         </>
+      )}
+
+      {/* ★ 成分表示から読み取る（設計書 §47 / Phase 12）。
+          読み取った値は、下の欄に入るだけです。そのまま保存はされません。
+          最後に数字を決めるのは管理者のままです。 */}
+      {AI_RELAY_URL !== null && !scanning && (
+        <button
+          className="button-secondary"
+          type="button"
+          onClick={() => setScanning(true)}
+          disabled={busy}
+        >
+          成分表示を撮って入れる
+        </button>
+      )}
+
+      {scanning && (
+        <LabelScanner
+          onCancel={() => setScanning(false)}
+          onDone={(r) => {
+            setValues({
+              kcal: String(r.per100g.kcal),
+              p: String(r.per100g.p),
+              f: String(r.per100g.f),
+              c: String(r.per100g.c),
+            });
+            if (name.trim().length === 0 && r.productName.length > 0) setName(r.productName);
+            if (note.trim().length === 0) setNote(r.note);
+            setScanning(false);
+          }}
+        />
       )}
 
       <fieldset className="per100g">

@@ -9,7 +9,10 @@ import {
   type MealItem,
   type Per100gInput,
 } from '@pt/core';
+import { AI_RELAY_URL } from '@/config/firebase';
 import { loadFoods, type Food } from '@/features/foods/foodsRepo';
+import { LabelScanner } from '@/features/foods/LabelScanner';
+import type { LabelCandidate } from '@/features/foods/requestsRepo';
 import { newItemId } from './mealsRepo';
 
 /**
@@ -33,6 +36,7 @@ import { newItemId } from './mealsRepo';
 export function ItemForm({
   initial,
   canEditNutrition,
+  aiAvailable = false,
   onSubmit,
   onCancel,
 }: {
@@ -40,7 +44,13 @@ export function ItemForm({
   initial?: MealItem;
   /** 管理者なら true。その場で栄養値を決められる */
   canEditNutrition: boolean;
-  onSubmit: (item: MealItem, requestName: string | null) => void;
+  /** AIが使えるか（同意済み＆中継役が設定済み） */
+  aiAvailable?: boolean;
+  onSubmit: (
+    item: MealItem,
+    requestName: string | null,
+    candidate: LabelCandidate | null,
+  ) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
@@ -55,6 +65,9 @@ export function ItemForm({
     c: '',
   });
   const [error, setError] = useState<string | null>(null);
+  /** 成分表示から読み取った候補。管理者へ一緒に送る（Phase 12） */
+  const [candidate, setCandidate] = useState<LabelCandidate | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     void loadFoods()
@@ -119,6 +132,7 @@ export function ItemForm({
       },
       // 未確定なら、管理者へ登録依頼を出す
       pending ? trimmed : null,
+      pending ? candidate : null,
     );
   }
 
@@ -186,6 +200,47 @@ export function ItemForm({
         manual={manual}
         onManualChange={setManual}
       />
+
+      {/* ★ マスタに無い食材のときだけ出します（設計書 §47 / Phase 12）。
+          読み取った値は、この場では使いません。
+          管理者への登録依頼に「候補」として添えるだけです。
+          栄養値を決めるのは管理者、という前提は変えません。 */}
+      {exact === null && nameOk && aiAvailable && AI_RELAY_URL !== null && !canEditNutrition && (
+        <>
+          {candidate === null && !scanning && (
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => setScanning(true)}
+            >
+              成分表示を撮って伝える
+            </button>
+          )}
+
+          {scanning && (
+            <LabelScanner
+              onCancel={() => setScanning(false)}
+              onDone={(r) => {
+                setCandidate({ per100g: r.per100g, note: r.note });
+                if (name.trim().length === 0 && r.productName.length > 0) setName(r.productName);
+                setScanning(false);
+              }}
+            />
+          )}
+
+          {candidate !== null && (
+            <p className="notice" role="status">
+              <b>成分表示を読み取りました。</b>
+              トレーナーに数値の候補として伝えます。
+              <br />
+              {candidate.per100g.kcal}kcal · P{candidate.per100g.p} F{candidate.per100g.f} C
+              {candidate.per100g.c}（100gあたり）
+              <br />
+              この値が使われるかどうかは、トレーナーが決めます。
+            </p>
+          )}
+        </>
+      )}
 
       {preview !== null && (
         <div className="preview">

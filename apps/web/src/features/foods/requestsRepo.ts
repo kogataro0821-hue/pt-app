@@ -7,7 +7,13 @@ import {
   increment,
   setDoc,
 } from 'firebase/firestore';
-import { foodKey, orderedVariants, preferredVariant, type DateKey } from '@pt/core';
+import {
+  foodKey,
+  orderedVariants,
+  preferredVariant,
+  type DateKey,
+  type DecimalNutrients,
+} from '@pt/core';
 import { getDb } from '@/lib/firebase';
 
 /**
@@ -59,6 +65,23 @@ export interface RequestEntry {
   variant: string;
   count: number;
   dates: DateKey[];
+  /** 成分表示から読み取った候補（Phase 12）。撮っていなければ null */
+  candidate: LabelCandidate | null;
+}
+
+/**
+ * 成分表示から読み取った100gあたりの候補（設計書 §47 / Phase 12）。
+ *
+ * ★ これは「候補」であって、確定値ではありません。
+ *   契約者が撮って、契約者が画面で確認した値です。
+ *   マスタに入れるかどうかを決めるのは管理者のままです。
+ *   ここを自動採用にすると、栄養値を管理者だけが決めるという
+ *   Phase 9 の前提が崩れます。
+ */
+export interface LabelCandidate {
+  per100g: DecimalNutrients;
+  /** 何を基準にどう換算したか。管理者が判断するための手がかり */
+  note: string;
 }
 
 function requestsCol() {
@@ -91,6 +114,7 @@ export async function requestFood(
   name: string,
   clientId: string,
   date: DateKey,
+  candidate: LabelCandidate | null = null,
 ): Promise<void> {
   const key = requestId(name);
   if (key.length === 0) return;
@@ -120,6 +144,11 @@ export async function requestFood(
         count: increment(1),
         dates: arrayUnion(date),
         updatedAt: now,
+        // ★ 候補は上書きします。あとから撮り直したほうが新しいためです。
+        //   撮っていない回では触りません（merge なので前の候補が残ります）。
+        ...(candidate === null
+          ? {}
+          : { candidatePer100g: candidate.per100g, candidateNote: candidate.note.slice(0, 200) }),
       },
       { merge: true },
     );
@@ -201,5 +230,30 @@ function toEntry(clientId: string, data: Record<string, unknown>): RequestEntry 
     dates: Array.isArray(data.dates)
       ? data.dates.filter((v): v is DateKey => typeof v === 'string')
       : [],
+    candidate: toCandidate(data.candidatePer100g, data.candidateNote),
   };
+}
+
+function toCandidate(raw: unknown, note: unknown): LabelCandidate | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const d = raw as Record<string, unknown>;
+  const pick = (k: string): number =>
+    typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : 0;
+
+  // kcalが0の候補は、読み取りに失敗したものとみなして無視します。
+  const kcal = pick('kcal');
+  if (kcal <= 0) return null;
+
+  return {
+    per100g: { kcal, p: pick('p'), f: pick('f'), c: pick('c'), fiber: pick('fiber'), salt: pick('salt') },
+    note: typeof note === 'string' ? note : '',
+  };
+}
+
+/** 依頼に付いている候補のうち、最初に見つかったもの。 */
+export function firstCandidate(request: FoodRequest): LabelCandidate | null {
+  for (const entry of request.from) {
+    if (entry.candidate !== null) return entry.candidate;
+  }
+  return null;
 }

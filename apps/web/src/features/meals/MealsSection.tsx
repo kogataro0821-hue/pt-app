@@ -17,7 +17,7 @@ import {
 import { AI_RELAY_URL } from '@/config/firebase';
 import { AiTextPanel } from '@/features/ai/AiTextPanel';
 import { hasValidAiConsent, type AiConsent } from '@/features/clients/clientTypes';
-import { requestFood } from '@/features/foods/requestsRepo';
+import { requestFood, type LabelCandidate } from '@/features/foods/requestsRepo';
 import { ItemForm } from './ItemForm';
 import { deleteMeal, listMeals, newMealId, saveMeal, syncDayMealFlag } from './mealsRepo';
 
@@ -158,7 +158,12 @@ export function MealsSection({
     void persist(list, found);
   }
 
-  function addItem(mealId: string, item: MealItem, requestName: string | null) {
+  function addItem(
+    mealId: string,
+    item: MealItem,
+    requestName: string | null,
+    candidate: LabelCandidate | null = null,
+  ) {
     const list = meals ?? [];
     const target = list.find((m) => m.id === mealId);
     if (target === undefined) return;
@@ -168,11 +173,16 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    if (requestName !== null) void requestFood(requestName, clientId, date);
+    if (requestName !== null) void requestFood(requestName, clientId, date, candidate);
     setAddingTo(null);
   }
 
-  function updateItem(mealId: string, item: MealItem, requestName: string | null) {
+  function updateItem(
+    mealId: string,
+    item: MealItem,
+    requestName: string | null,
+    candidate: LabelCandidate | null = null,
+  ) {
     const list = meals ?? [];
     const target = list.find((m) => m.id === mealId);
     if (target === undefined) return;
@@ -182,7 +192,7 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    if (requestName !== null) void requestFood(requestName, clientId, date);
+    if (requestName !== null) void requestFood(requestName, clientId, date, candidate);
     setEditing(null);
   }
 
@@ -271,7 +281,10 @@ export function MealsSection({
                 key={item.id}
                 initial={item}
                 canEditNutrition={isAdmin}
-                onSubmit={(next, requestName) => updateItem(meal.id, next, requestName)}
+                aiAvailable={aiAvailable}
+              onSubmit={(next, requestName, candidate) =>
+                updateItem(meal.id, next, requestName, candidate)
+              }
                 onCancel={() => setEditing(null)}
               />
             ) : (
@@ -344,7 +357,10 @@ export function MealsSection({
           {canEdit && addingTo === meal.id && (
             <ItemForm
               canEditNutrition={isAdmin}
-              onSubmit={(item, requestName) => addItem(meal.id, item, requestName)}
+              aiAvailable={aiAvailable}
+              onSubmit={(item, requestName, candidate) =>
+                addItem(meal.id, item, requestName, candidate)
+              }
               onCancel={() => setAddingTo(null)}
             />
           )}

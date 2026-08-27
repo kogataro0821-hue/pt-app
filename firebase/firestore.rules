@@ -373,15 +373,26 @@ service cloud.firestore {
         allow get: if isAdmin() || isClient(clientId);
         allow list, delete: if isAdmin();
 
+        // ★ candidatePer100g は「成分表示から読み取った候補」です（Phase 12）。
+        //   契約者が書けますが、これはあくまで候補で、確定値ではありません。
+        //   マスタへ入れるかどうかを決めるのは管理者のままです（foods は管理者のみ書込可）。
+        //   ここが直接マスタに反映される経路は作っていません。
         allow create, update: if isAdmin()
           || (isClient(clientId)
-              && request.resource.data.keys().hasOnly(['variant', 'count', 'dates', 'updatedAt'])
+              && request.resource.data.keys().hasOnly(
+                   ['variant', 'count', 'dates', 'updatedAt',
+                    'candidatePer100g', 'candidateNote'])
               && request.resource.data.variant is string
               && request.resource.data.variant.size() > 0
               && request.resource.data.variant.size() <= 60
               && request.resource.data.count is int
               && request.resource.data.dates is list
-              && request.resource.data.dates.size() <= 400);
+              && request.resource.data.dates.size() <= 400
+              && (!('candidatePer100g' in request.resource.data)
+                  || request.resource.data.candidatePer100g is map)
+              && (!('candidateNote' in request.resource.data)
+                  || (request.resource.data.candidateNote is string
+                      && request.resource.data.candidateNote.size() <= 200)));
       }
     }
   }

@@ -217,3 +217,52 @@ export function formatRange(item: RecognizedItem): string | null {
   const { min, max } = item.quantityRange;
   return `${Math.round(min)}〜${Math.round(max)}g`;
 }
+
+// -----------------------------------------------------------------------------
+// 栄養成分表示の読み取り（設計書 §47 / Phase 12）
+// -----------------------------------------------------------------------------
+
+/**
+ * ★ AIには「表示に何と書いてあるか」だけを答えさせます。
+ *   100gあたりへの換算はこちらでやります（@pt/core の labelToPer100g）。
+ *
+ *   AIに換算までやらせると、263kcal が 461kcal になった理由が
+ *   説明できなくなります。間違っていたときに気づけない数字は、
+ *   全員のマスタに入れてはいけません。
+ *
+ * ★ 読めなかった項目は null にさせます。0 にさせません。
+ *   「書いていない」と「0と書いてある」は別のことです。
+ *   0で埋められると、脂質0gの食品として登録されてしまいます。
+ */
+const nullableNumber = z.preprocess(
+  (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null),
+  z.number().nullable(),
+);
+
+export const aiLabelResultSchema = z.object({
+  /** 'per100g' | 'per100ml' | 'perServing' | 'unknown' */
+  basis: z.preprocess(
+    (v) => (v === 'per100g' || v === 'per100ml' || v === 'perServing' ? v : 'unknown'),
+    z.enum(['per100g', 'per100ml', 'perServing', 'unknown']),
+  ),
+  servingGrams: nullableNumber,
+  kcal: nullableNumber,
+  p: nullableNumber,
+  f: nullableNumber,
+  c: nullableNumber,
+  sugar: nullableNumber,
+  fiber: nullableNumber,
+  salt: nullableNumber,
+  sodiumMg: nullableNumber,
+  /** 商品名。読めなければ空文字 */
+  productName: z.preprocess((v) => (typeof v === 'string' ? v : ''), z.string()),
+  /** どの欄を読んだか。人が確認するために必ず書かせる */
+  evidence: z.preprocess((v) => (typeof v === 'string' ? v : ''), z.string()),
+  /** 読み取れなかったこと・迷ったこと */
+  notes: z.preprocess(
+    (v) => (Array.isArray(v) ? v.filter((n) => typeof n === 'string') : []),
+    z.array(z.string()),
+  ),
+});
+
+export type AiLabelResult = z.infer<typeof aiLabelResultSchema>;

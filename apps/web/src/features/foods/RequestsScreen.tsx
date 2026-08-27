@@ -4,7 +4,7 @@ import { findSimilarFoods, foodKey } from '@pt/core';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { addAlias, clearFoodCache, emptyFood, loadFoods, type Food } from './foodsRepo';
-import { listRequests, resolveRequest, type FoodRequest } from './requestsRepo';
+import { firstCandidate, listRequests, resolveRequest, type FoodRequest } from './requestsRepo';
 import { replacePastRecords, replaceTargets, type ReplaceResult } from './bulkReplace';
 import { FoodEditor } from './FoodEditor';
 
@@ -128,6 +128,8 @@ function RequestCard({
 
   const candidates = findSimilarFoods(foods, request.name, 5);
   const targets = replaceTargets(request);
+  /** 契約者が成分表示を撮っていれば、その値を初期値に使う（Phase 12） */
+  const label = firstCandidate(request);
 
   async function absorbInto(food: Food) {
     setBusy(true);
@@ -198,6 +200,22 @@ function RequestCard({
 
           {step.kind === 'idle' && (
             <>
+              {label !== null && (
+                <div className="notice">
+                  <p>
+                    <b>契約者が成分表示を撮っています。</b>
+                    <br />
+                    {label.per100g.kcal}kcal · P{label.per100g.p} F{label.per100g.f} C
+                    {label.per100g.c}（100gあたり）
+                  </p>
+                  {label.note.length > 0 && <p className="field-hint">{label.note}</p>}
+                  <p className="field-hint">
+                    「新しく登録する」を押すと、この値が最初から入っています。
+                    確認して、必要なら直してください。
+                  </p>
+                </div>
+              )}
+
               {candidates.length > 0 && (
                 <>
                   <p className="field-hint">
@@ -249,6 +267,8 @@ function RequestCard({
             <FoodEditor
               initial={{
                 ...emptyFood(request.name),
+                // 契約者が撮った成分表示の値を初期値に。決めるのは管理者のまま。
+                ...(label === null ? {} : { per100g: label.per100g, note: label.note }),
                 // ★ 照合キーが同じ表記は、別名に入れません。
                 //   「サラダチキン」と全角スペース入りは、別名が無くても
                 //   すでに同じものとして当たります。入れても増えるものがなく、

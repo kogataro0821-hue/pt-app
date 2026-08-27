@@ -1,8 +1,10 @@
 import {
+  aiLabelResultSchema,
   aiPhotoResultSchema,
   aiTextResultSchema,
   toMealRecognition,
   toPhotoRecognition,
+  type AiLabelResult,
   type MealRecognition,
 } from '@pt/ai-contract';
 import { getAuthClient } from '@/lib/firebase';
@@ -395,4 +397,172 @@ export async function analyzeMealPhoto(
   if (!result.success) throw new AiError('invalid_output');
 
   return toPhotoRecognition(result.data);
+}
+
+// -----------------------------------------------------------------------------
+// 栄養成分表示の読み取り（設計書 §47 / Phase 12）
+// -----------------------------------------------------------------------------
+
+const LABEL_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    basis: { type: 'string' },
+    servingGrams: { type: 'number', nullable: true },
+    kcal: { type: 'number', nullable: true },
+    p: { type: 'number', nullable: true },
+    f: { type: 'number', nullable: true },
+    c: { type: 'number', nullable: true },
+    sugar: { type: 'number', nullable: true },
+    fiber: { type: 'number', nullable: true },
+    salt: { type: 'number', nullable: true },
+    sodiumMg: { type: 'number', nullable: true },
+    productName: { type: 'string' },
+    evidence: { type: 'string' },
+    notes: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['basis', 'productName', 'evidence', 'notes'],
+} as const;
+
+/**
+ * 成分表示の読み取りへの指示（設計書 §12 / §47）。
+ *
+ * ★ 読むだけです。計算はさせません。
+ *   割り算をAIにやらせると、途中が見えなくなり、
+ *   間違っていたときに気づけません。
+ *
+ * ★ いちばん気をつけているのは「複数の数字が並んでいる表示」です。
+ *   カップ麺には「1食(57g)当たり 263kcal」の下に
+ *   「参考値: めん・かやく 243kcal / スープ 20kcal」が並びます。
+ *   下の数字を拾うと、まるごと1食ぶんの値が2割ほど小さくなります。
+ */
+const LABEL_PROMPT = `あなたは食品パッケージの「栄養成分表示」を読み取る役です。
+
+■ もっとも大切な決まり
+
+書いてある数字を、そのまま読んでください。計算はしないでください。
+
+・100gあたりに直さないでください。こちらで計算します。
+・「1食(57g)当たり 263kcal」と書いてあれば、servingGrams=57、kcal=263 と答えてください。
+・読めない項目は null にしてください。0 にしないでください。
+  「書いていない」と「0と書いてある」は別のことです。
+
+■ どの欄を読むか
+
+「栄養成分表示」の本体（主たる表示）だけを読んでください。
+
+★ 参考値・内訳・注釈は読まないでください。
+
+  例: カップ麺には次のように並んでいることがあります。
+
+      栄養成分表示 1食(57g)当たり
+        熱量 263kcal ...          ← これを読む
+      参考値: めん・かやく 243kcal / スープ 20kcal   ← これは読まない
+
+  内訳を読むと、1食ぶんの合計より小さい値になってしまいます。
+  迷ったら、いちばん大きい「合計」の欄を選んでください。
+
+■ basis（基準量）
+
+  per100g    … 「100g当たり」「100gあたり」
+  per100ml   … 「100ml当たり」
+  perServing … 「1食当たり」「1袋当たり」「1本当たり」「1個当たり」など
+
+perServing のとき、括弧などに1回分のグラム数が書いてあれば servingGrams に入れてください。
+書いていなければ servingGrams は null にしてください。**推測しないでください。**
+どれにも当てはまらない、または読み取れない場合は basis を "unknown" にしてください。
+
+■ 炭水化物
+
+「炭水化物」と書いてあれば c に入れてください。
+「糖質」「食物繊維」に分かれている場合は、足さずに sugar と fiber にそれぞれ入れてください。
+
+■ 食塩
+
+「食塩相当量」は salt（g）に入れてください。
+「ナトリウム」しか書いていない場合は sodiumMg（mg）に入れてください。両者は別物です。
+
+■ evidence（根拠）
+
+読み取った欄の見出しを、そのまま書き写してください。
+例:「栄養成分表示 1食(57g)当たり」
+
+■ notes
+
+ぼやけて読めなかった項目、複数の欄があってどれを選んだか、
+迷った点があれば書いてください。`;
+
+/**
+ * 成分表示の写真から、表示されている数値を読み取る。
+ *
+ * ★ 戻り値は「表示そのまま」です。100gあたりへの換算は
+ *   @pt/core の labelToPer100g が行います（設計書 §47）。
+ */
+export async function readNutritionLabel(dataUrl: string): Promise<AiLabelResult> {
+  if (AI_RELAY_URL === null) throw new AiError('not_configured');
+
+  const user = getAuthClient().currentUser;
+  if (user === null) throw new AiError('unauthenticated');
+
+  const match = /^data:(image\/[a-z+]+);base64,(.+)$/.exec(dataUrl);
+  if (match === null) throw new AiError('invalid_output');
+  const [, mimeType, base64] = match as unknown as [string, string, string];
+
+  let idToken: string;
+  try {
+    idToken = await user.getIdToken();
+  } catch {
+    throw new AiError('unauthenticated');
+  }
+
+  const body = {
+    systemInstruction: { parts: [{ text: LABEL_PROMPT }] },
+    contents: [
+      { role: 'user', parts: [{ inline_data: { mime_type: mimeType, data: base64 } }] },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: LABEL_RESPONSE_SCHEMA,
+      temperature: 0,
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(AI_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new AiError('network');
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) throw new AiError('unauthenticated');
+    if (response.status === 429) throw new AiError('rate_limited');
+    if (response.status === 413) throw new AiError('unavailable', '写真が大きすぎます');
+    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
+  }
+
+  let raw: GeminiResponse;
+  try {
+    raw = (await response.json()) as GeminiResponse;
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const jsonText = raw.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof jsonText !== 'string') throw new AiError('invalid_output');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const result = aiLabelResultSchema.safeParse(parsed);
+  if (!result.success) throw new AiError('invalid_output');
+
+  return result.data;
 }
