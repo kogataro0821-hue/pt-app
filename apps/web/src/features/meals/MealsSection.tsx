@@ -38,6 +38,7 @@ export function MealsSection({
   aiConsent,
   onMealsChanged,
   onPhotoSaved,
+  onSummary,
 }: {
   clientId: string;
   date: DateKey;
@@ -51,6 +52,16 @@ export function MealsSection({
   onMealsChanged?: (hasMeals: boolean) => void;
   /** AIに送った写真を保存したときに、写真欄を更新させる */
   onPhotoSaved?: () => void;
+  /**
+   * その日の集計を親へ伝える。
+   * AI評価に渡す数字は、画面に出ているものと同じでなければなりません。
+   * 別々に計算すると、見えている数字と評価の前提がずれます。
+   */
+  onSummary?: (summary: {
+    totals: Nutrients;
+    mealCount: number;
+    pendingCount: number;
+  }) => void;
 }) {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +73,20 @@ export function MealsSection({
   const [busy, setBusy] = useState(false);
   /** 登録依頼が届かなかったとき。記録は成立しているので、止めずに知らせるだけ */
   const [requestFailed, setRequestFailed] = useState(false);
+
+  // ★ 集計は描画のたびに変わるので、useEffect で伝えます。
+  //   描画の途中で親を更新すると、React が警告を出します。
+  useEffect(() => {
+    if (meals === null) return;
+    onSummary?.({
+      totals: dayTotals(meals),
+      mealCount: meals.length,
+      pendingCount: countPending(meals),
+    });
+    // ★ 依存は meals だけです。
+    //   onSummary を入れると、親が毎回関数を作り直すたびに再実行され、
+    //   親の更新 → 再実行 → 親の更新 … と往復します。
+  }, [meals]);
 
   useEffect(() => {
     let cancelled = false;

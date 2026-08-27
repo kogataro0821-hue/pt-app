@@ -22,3 +22,4 @@ export * from './chart/series';
 export * from './food/matching';
 export * from './food/label';
 export * from './photo/retention';
+export * from './review/safety';

@@ -446,6 +446,92 @@ describe('★ 食品マスタは共通の1本だけ（設計書 §21 / Phase 9�
   });
 });
 
+describe('★ AI評価（設計書 §26 / Phase 14）', () => {
+  const review = { text: 'たんぱく質は目標に届いています。', mode: 'standard', by: 'alice-uid', createdAt: 1 };
+
+  it('契約者は自分の評価を作れる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), review),
+    );
+  });
+
+  it('管理者も作れる', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/review/latest`), review),
+    );
+  });
+
+  // ★ ここが要。評価は個人の記録に対する言葉なので、他人には届かない。
+  it('契約者は他人の評価を読めない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TODAY}/review/latest`), review);
+    });
+    await assertFails(getDoc(doc(bob(), `clients/alice/days/${TODAY}/review/latest`)));
+  });
+
+  it('契約者は他人の評価を作れない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/bob/days/${TODAY}/review/latest`), review),
+    );
+  });
+
+  // ★ 1日1件。履歴を溜めない（設計書 §8.2 の考え方）。
+  it('latest 以外のIDでは作れない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/r2`), review),
+    );
+  });
+
+  it('長すぎる評価は保存できない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), {
+        ...review,
+        text: 'あ'.repeat(1201),
+      }),
+    );
+  });
+
+  it('空の評価は保存できない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), { ...review, text: '' }),
+    );
+  });
+
+  it('決められた項目以外は書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), {
+        ...review,
+        role: 'admin',
+      }),
+    );
+  });
+
+  // ★ 過去を振り返って評価をもらうのは自然な使い方なので、日付では縛らない。
+  it('編集ウィンドウの外の日でも作れる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/review/latest`), review),
+    );
+  });
+
+  it('本人も管理者も消せる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), review),
+    );
+    await assertSucceeds(deleteDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`)));
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/review/latest`), review),
+    );
+    await assertSucceeds(deleteDoc(doc(admin(), `clients/alice/days/${TODAY}/review/latest`)));
+  });
+
+  it('契約者は他人の評価を消せない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `clients/alice/days/${TODAY}/review/latest`), review);
+    });
+    await assertFails(deleteDoc(doc(bob(), `clients/alice/days/${TODAY}/review/latest`)));
+  });
+});
+
 describe('★ トレーナーのコメント（設計書 §11.3 A-8 / Phase 10）', () => {
   const note = { text: 'よく続いています。あと少しPを増やしましょう。', by: 'admin-uid', createdAt: 1, updatedAt: 1 };
 

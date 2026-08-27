@@ -6,13 +6,18 @@ import {
   isWithinEditWindow,
   monthOf,
   todayKey,
+  ZERO,
   type DateKey,
+  type Nutrients,
 } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
 import { MealsSection } from '@/features/meals/MealsSection';
 import { ExercisesSection } from '@/features/exercises/ExercisesSection';
 import { PhotosSection } from '@/features/photos/PhotosSection';
 import { NotesSection } from '@/features/notes/NotesSection';
+import { ReviewSection } from '@/features/review/ReviewSection';
+import { AI_RELAY_URL } from '@/config/firebase';
+import { hasValidAiConsent } from '@/features/clients/clientTypes';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
   getDay,
@@ -50,6 +55,13 @@ export function DayScreen({
   const [photoCount, setPhotoCount] = useState(0);
   /** AIに送った写真が保存されたら、写真欄を読み直させる */
   const [photoRefresh, setPhotoRefresh] = useState(0);
+  /** AI評価に渡すための、その日の集計 */
+  const [summary, setSummary] = useState<{
+    totals: Nutrients;
+    mealCount: number;
+    pendingCount: number;
+  }>({ totals: ZERO, mealCount: 0, pendingCount: 0 });
+  const [exerciseMinutes, setExerciseMinutes] = useState(0);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -269,15 +281,17 @@ export function DayScreen({
             aiConsent={client.aiConsent}
             onMealsChanged={(hasMeals) => setDay((prev) => (prev === null ? prev : { ...prev, hasMeals }))}
             onPhotoSaved={() => setPhotoRefresh((n) => n + 1)}
+            onSummary={setSummary}
           />
 
           <ExercisesSection
             clientId={client.clientId}
             date={date}
             canEdit={canEdit}
-            onExercisesChanged={(hasExercise) =>
-              setDay((prev) => (prev === null ? prev : { ...prev, hasExercise }))
-            }
+            onExercisesChanged={(hasExercise, minutes) => {
+              setDay((prev) => (prev === null ? prev : { ...prev, hasExercise }));
+              setExerciseMinutes(minutes);
+            }}
           />
 
           <PhotosSection
@@ -296,6 +310,22 @@ export function DayScreen({
             date={date}
             isAdmin={isAdmin}
             adminUid={adminUid}
+          />
+
+          {/* ★ AI評価は、トレーナーのコメントの「下」に置きます。
+              人が書いた言葉が先に目に入る並びにするためです。 */}
+          <ReviewSection
+            clientId={client.clientId}
+            date={date}
+            totals={summary.totals}
+            targets={client.targets}
+            exerciseMinutes={exerciseMinutes}
+            mealCount={summary.mealCount}
+            pendingCount={summary.pendingCount}
+            reviewMode={client.reviewMode}
+            aiAvailable={AI_RELAY_URL !== null && hasValidAiConsent(client.aiConsent)}
+            canEdit={canEdit || isAdmin}
+            uid={adminUid}
           />
 
           {/* ★ 管理者だけ。1日確定（契約者の意思表示）とは別ものです。 */}

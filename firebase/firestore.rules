@@ -222,6 +222,33 @@ service cloud.firestore {
         allow write: if mayEdit(cid, date);
       }
 
+      // AI評価（設計書 §26 / Phase 14）。
+      //
+      // ★ 1日につき1件だけです（ドキュメントIDは 'latest' 固定）。
+      //   評価は「いまの記録に対する言葉」なので、履歴に意味がありません。
+      //   溜めると無料枠も食います。
+      //
+      // ★ 契約者も作れます。
+      //   その場で反応が返るほうが続くためです（Q: Phase 14）。
+      //   ただし文章は必ずAIから来たものに限りたいので、
+      //   長さの上限だけはここで守ります。
+      //   中身の検査（病名・危険なやり方）は画面側の決定論的な処理で行い、
+      //   通らなかったものはそもそも保存しません。
+      //
+      // ★ 日付の条件を付けていません。
+      //   過去の日を振り返って評価をもらうのは自然な使い方です。
+      match /days/{date}/review/{docId} {
+        allow get, list: if canRead(cid);
+        allow delete: if canRead(cid);
+        allow create, update: if canRead(cid)
+                              && docId == 'latest'
+                              && request.resource.data.keys()
+                                   .hasOnly(['text', 'mode', 'by', 'createdAt'])
+                              && request.resource.data.text is string
+                              && request.resource.data.text.size() > 0
+                              && request.resource.data.text.size() <= 1200;
+      }
+
       // トレーナーのコメント（設計書 §11.3 A-8 / Phase 10）。
       //
       // ★ 書けるのは管理者だけです。

@@ -566,3 +566,181 @@ export async function readNutritionLabel(dataUrl: string): Promise<AiLabelResult
 
   return result.data;
 }
+
+// -----------------------------------------------------------------------------
+// AI評価（設計書 §26 / §9.4 / Phase 14）
+// -----------------------------------------------------------------------------
+
+const REVIEW_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: { text: { type: 'string' } },
+  required: ['text'],
+} as const;
+
+/** 評価モードごとの言い方の指定。渡すのはこの文字列だけ。 */
+const TONE: Record<string, string> = {
+  gentle: 'できている点を中心に、前向きに伝えてください。改善点は最後に1つだけ、やわらかく添えてください。',
+  standard: 'できている点と、改善できる点を同じくらいの分量で伝えてください。',
+  strict: '改善点をはっきり指摘してください。できている点にも1文だけ触れてください。',
+  very_strict:
+    '妥協せず、目標との差を厳しく指摘してください。ただし人格を否定する言い方はしないでください。',
+};
+
+/**
+ * AI評価への指示（設計書 §13 リスク12 / §26）。
+ *
+ * ★ 医療の話をさせません。
+ *
+ *   トレーナーは医師ではありません。病名や検査値に踏み込んだ文章が
+ *   契約者に届くと、受け取った側はそれを医療的な助言として読みます。
+ *
+ *   ただし、この指示文は第1層でしかありません。
+ *   守られることを期待しているだけで、確かめてはいないからです。
+ *   生成後に @pt/core の checkReviewText で機械的に検査し、
+ *   引っかかったら表示しません。期待ではなく判定にします。
+ *
+ * ★ 数字も作らせません。
+ *   合計や差はすべてこちら側で計算済みのものを渡します。
+ *   AIがやるのは「その数字をどう言葉にするか」だけです。
+ */
+const REVIEW_PROMPT = `あなたはパーソナルトレーナーの補助として、1日の食事と運動の記録に短い講評を書く役です。
+
+■ 絶対にしてはいけないこと
+
+・病名、診断、検査値の解釈に触れないでください。
+  （糖尿病、高血圧、血糖値、コレステロール値 などの言葉を使わない）
+・受診、通院、服薬、サプリメントをすすめないでください。
+・断食、絶食、食事を抜く、極端に減らす、といったやり方をすすめないでください。
+  厳しく言うことと、体に負担のかかるやり方をすすめることは違います。
+
+あなたが扱うのは、食事の内容と量、運動、そして目標との差だけです。
+
+■ 数字について
+
+渡された数字をそのまま使ってください。計算し直さないでください。
+新しい数字を作らないでください。渡されていない項目（体重の増減など）に触れないでください。
+
+■ 書き方
+
+・200〜300文字。長くしないでください。
+・「〜してください」「〜しましょう」のような、次にやることが分かる言い方で終えてください。
+・記録が空、または極端に少ない日は、それを指摘して終えてください。
+  食べていない日の献立を推測してはいけません。
+
+■ 出力
+
+text に講評だけを入れてください。見出しや箇条書きは要りません。`;
+
+export interface ReviewInput {
+  /** 実績（人間の単位） */
+  actual: { kcal: number; p: number; f: number; c: number };
+  /** 目標（人間の単位） */
+  target: { kcal: number; p: number; f: number; c: number };
+  /** その日の運動時間（分）。無ければ 0 */
+  exerciseMinutes: number;
+  /** 食事の件数。0 なら記録が無い日 */
+  mealCount: number;
+  /** 栄養値がまだ確定していない食材の数 */
+  pendingCount: number;
+  /** 'gentle' | 'standard' | 'strict' | 'very_strict' */
+  reviewMode: string;
+}
+
+/**
+ * その日の記録に講評をもらう。
+ *
+ * ★ 送るのは数字と評価モードだけです（設計書 §9.4 / §35）。
+ *   契約者ID・氏名・生年月日・体重・他の日の記録は送りません。
+ *   AIから見れば、誰のものか分からない数字の組です。
+ */
+export async function requestDayReview(input: ReviewInput): Promise<string> {
+  if (AI_RELAY_URL === null) throw new AiError('not_configured');
+
+  const user = getAuthClient().currentUser;
+  if (user === null) throw new AiError('unauthenticated');
+
+  let idToken: string;
+  try {
+    idToken = await user.getIdToken();
+  } catch {
+    throw new AiError('unauthenticated');
+  }
+
+  const tone = TONE[input.reviewMode] ?? TONE.standard!;
+
+  // ★ 文章にして渡します。ここに名前の入る余地がないことが、
+  //   目で見て分かる形にしておきたいためです。
+  const facts = [
+    `【言い方の指定】${tone}`,
+    '',
+    '【この日の記録】',
+    `食事の件数: ${input.mealCount}件`,
+    `摂取: ${round(input.actual.kcal)}kcal / P ${round(input.actual.p)}g / F ${round(input.actual.f)}g / C ${round(input.actual.c)}g`,
+    `目標: ${round(input.target.kcal)}kcal / P ${round(input.target.p)}g / F ${round(input.target.f)}g / C ${round(input.target.c)}g`,
+    `目標との差: ${signed(input.actual.kcal - input.target.kcal)}kcal / P ${signed(input.actual.p - input.target.p)}g / F ${signed(input.actual.f - input.target.f)}g / C ${signed(input.actual.c - input.target.c)}g`,
+    `運動: ${input.exerciseMinutes}分`,
+    input.pendingCount > 0
+      ? `※ 栄養値がまだ登録されていない食材が${input.pendingCount}件あり、上の摂取量には含まれていません。実際はこれより多く食べています。その前提で書いてください。`
+      : '',
+  ]
+    .filter((line) => line.length > 0)
+    .join('\n');
+
+  const body = {
+    systemInstruction: { parts: [{ text: REVIEW_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: facts }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: REVIEW_RESPONSE_SCHEMA,
+      temperature: 0.4,
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(AI_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new AiError('network');
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) throw new AiError('unauthenticated');
+    if (response.status === 429) throw new AiError('rate_limited');
+    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
+  }
+
+  let raw: GeminiResponse;
+  try {
+    raw = (await response.json()) as GeminiResponse;
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const jsonText = raw.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof jsonText !== 'string') throw new AiError('invalid_output');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const text = (parsed as { text?: unknown }).text;
+  if (typeof text !== 'string') throw new AiError('invalid_output');
+
+  return text.trim();
+}
+
+function round(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+function signed(v: number): string {
+  const r = round(v);
+  return r > 0 ? `+${r}` : String(r);
+}

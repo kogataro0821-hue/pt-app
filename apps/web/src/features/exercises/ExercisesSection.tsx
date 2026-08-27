@@ -25,7 +25,11 @@ export function ExercisesSection({
   clientId: string;
   date: DateKey;
   canEdit: boolean;
-  onExercisesChanged?: (hasExercise: boolean) => void;
+  /**
+   * その日の運動の状況を親へ伝える。
+   * AI評価に「何分動いたか」を渡すために、分数も一緒に出します。
+   */
+  onExercisesChanged?: (hasExercise: boolean, totalMinutes: number) => void;
 }) {
   const [list, setList] = useState<Exercise[] | null>(null);
   const [draft, setDraft] = useState<Exercise | null>(null);
@@ -41,7 +45,12 @@ export function ExercisesSection({
     void (async () => {
       try {
         const loaded = await listExercises(clientId, date);
-        if (!cancelled) setList(loaded);
+        if (!cancelled) {
+          setList(loaded);
+          // 読み込んだ時点でも伝えます。これが無いと、
+          // その日を開いただけでは運動時間が親に届きません。
+          onExercisesChanged?.(loaded.length > 0, loaded.reduce((s, e) => s + (e.minutes ?? 0), 0));
+        }
       } catch {
         if (!cancelled) {
           setError('運動の記録を読み込めませんでした。');
@@ -55,6 +64,11 @@ export function ExercisesSection({
     };
   }, [clientId, date]);
 
+  /** 分が入っていないものは 0 として数えます（未入力と 0分 を区別しません）。 */
+  function totalMinutes(items: Exercise[]): number {
+    return items.reduce((sum, e) => sum + (e.minutes ?? 0), 0);
+  }
+
   async function persist(next: Exercise[], changed: Exercise | null, removedId?: string) {
     const previous = list;
     setList(next);
@@ -65,7 +79,7 @@ export function ExercisesSection({
       if (changed !== null) await saveExercise(clientId, date, changed);
 
       const has = next.length > 0;
-      onExercisesChanged?.(has);
+      onExercisesChanged?.(has, totalMinutes(next));
       try {
         await syncDayExerciseFlag(clientId, date, has);
       } catch {
