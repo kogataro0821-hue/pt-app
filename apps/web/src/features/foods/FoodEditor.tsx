@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { findSimilarFoods, kcalMismatchWarning, type Per100gInput } from '@pt/core';
+import { writeErrorMessage } from '@/lib/firestoreError';
 import { emptyFood, newFoodId, saveFood, type Food } from './foodsRepo';
 
 /**
@@ -90,8 +91,8 @@ export function FoodEditor({
         note: note.trim(),
       });
       onSaved(saved);
-    } catch {
-      setError('保存できませんでした。通信状態を確認してもう一度お試しください。');
+    } catch (e) {
+      setError(writeErrorMessage(e, 'この食材'));
     } finally {
       setBusy(false);
     }

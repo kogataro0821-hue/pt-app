@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { findSimilarFoods } from '@pt/core';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { addAlias, clearFoodCache, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { listRequests, resolveRequest, type FoodRequest } from './requestsRepo';
 import { replacePastRecords, replaceTargets, type ReplaceResult } from './bulkReplace';
@@ -39,8 +40,8 @@ export function RequestsScreen() {
       const [reqs, all] = await Promise.all([listRequests(), loadFoods(true)]);
       setRequests(reqs);
       setFoods(all);
-    } catch {
-      setError('登録依頼を読み込めませんでした。通信状態を確認してください。');
+    } catch (e) {
+      setError(readErrorMessage(e, '登録依頼'));
       setRequests([]);
     }
   }, []);
@@ -139,8 +140,8 @@ function RequestCard({
         updated = await addAlias(updated, variant);
       }
       setStep({ kind: 'ask', food: updated, how: 'absorbed' });
-    } catch {
-      setError('別名を追加できませんでした。');
+    } catch (e) {
+      setError(writeErrorMessage(e, '別名'));
     } finally {
       setBusy(false);
     }
@@ -152,8 +153,8 @@ function RequestCard({
     try {
       const result = await replacePastRecords(request, food, adminUid);
       setStep({ kind: 'replaced', result });
-    } catch {
-      setError('過去の記録を置き換えられませんでした。もう一度お試しください。');
+    } catch (e) {
+      setError(writeErrorMessage(e, '置き換えた記録'));
     } finally {
       setBusy(false);
     }
@@ -164,8 +165,8 @@ function RequestCard({
     try {
       await resolveRequest(request);
       onDone();
-    } catch {
-      setError('依頼を閉じられませんでした。');
+    } catch (e) {
+      setError(writeErrorMessage(e, '依頼の削除'));
       setBusy(false);
     }
   }

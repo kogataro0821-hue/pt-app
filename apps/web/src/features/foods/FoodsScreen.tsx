@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { foodKey } from '@pt/core';
+import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { clearFoodCache, deleteFood, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { FoodEditor } from './FoodEditor';
 
@@ -24,8 +25,8 @@ export function FoodsScreen() {
     setError(null);
     try {
       setFoods(await loadFoods(true));
-    } catch {
-      setError('食品マスタを読み込めませんでした。通信状態を確認してください。');
+    } catch (e) {
+      setError(readErrorMessage(e, '食品マスタ'));
       setFoods([]);
     }
   }, []);
@@ -53,8 +54,8 @@ export function FoodsScreen() {
       await deleteFood(food.id);
       setConfirmDelete(null);
       await load();
-    } catch {
-      setError('削除できませんでした。');
+    } catch (e) {
+      setError(writeErrorMessage(e, '削除'));
     }
   }
 
