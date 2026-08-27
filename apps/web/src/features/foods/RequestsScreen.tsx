@@ -125,6 +125,8 @@ function RequestCard({
   const [step, setStep] = useState<Step>({ kind: 'idle' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 拡大表示している成分表示の写真 */
+  const [zoom, setZoom] = useState<string | null>(null);
 
   const candidates = findSimilarFoods(foods, request.name, 5);
   const targets = replaceTargets(request);
@@ -175,6 +177,18 @@ function RequestCard({
 
   return (
     <section className="card client-row-wrap">
+      {zoom !== null && (
+        <div className="photo-zoom" role="dialog" aria-modal="true" onClick={() => setZoom(null)}>
+          <img src={zoom} alt="" />
+          <div className="photo-zoom-bar">
+            <span>成分表示</span>
+            <button className="button-quiet" type="button" onClick={() => setZoom(null)}>
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="client-row">
         <div className="client-main">
           <span className="client-name">{request.name}</span>
@@ -209,6 +223,27 @@ function RequestCard({
                     {label.per100g.c}（100gあたり）
                   </p>
                   {label.note.length > 0 && <p className="field-hint">{label.note}</p>}
+
+                  {/* ★ 写真そのものを見せます。
+                      数字だけでは、参考値のほうを拾っていても気づけません。
+                      判断できるのは表示を見たときだけで、
+                      そのころ契約者はパッケージを捨てています。 */}
+                  {label.photo.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="label-photo"
+                        onClick={() => setZoom(label.photo)}
+                        aria-label="成分表示を拡大"
+                      >
+                        <img src={label.photo} alt="" loading="lazy" />
+                      </button>
+                      <p className="field-hint">
+                        タップで拡大できます。数字が表示と合っているか確かめてください。
+                      </p>
+                    </>
+                  )}
+
                   <p className="field-hint">
                     「新しく登録する」を押すと、この値が最初から入っています。
                     確認して、必要なら直してください。

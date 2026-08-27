@@ -82,6 +82,18 @@ export interface LabelCandidate {
   per100g: DecimalNutrients;
   /** 何を基準にどう換算したか。管理者が判断するための手がかり */
   note: string;
+  /**
+   * 撮った成分表示そのもの（data URL）。無ければ空文字。
+   *
+   * ★ 数字だけでは、受け取った管理者が確かめられません。
+   *   カップ麺のように「1食263kcal」と「参考値めん243kcal」が
+   *   並んでいる表示では、どちらを読んだかで2割ずれます。
+   *   それを見抜けるのは表示そのものを見たときだけです。
+   *
+   * ★ 依頼を片付けると、この写真も一緒に消えます。
+   *   確かめ終わったら役目が終わるので、溜め込みません（設計書 §8.2）。
+   */
+  photo: string;
 }
 
 function requestsCol() {
@@ -155,7 +167,11 @@ export async function requestFood(
         //   撮っていない回では触りません（merge なので前の候補が残ります）。
         ...(candidate === null
           ? {}
-          : { candidatePer100g: candidate.per100g, candidateNote: candidate.note.slice(0, 200) }),
+          : {
+              candidatePer100g: candidate.per100g,
+              candidateNote: candidate.note.slice(0, 200),
+              candidatePhoto: candidate.photo,
+            }),
       },
       { merge: true },
     );
@@ -239,11 +255,11 @@ function toEntry(clientId: string, data: Record<string, unknown>): RequestEntry 
     dates: Array.isArray(data.dates)
       ? data.dates.filter((v): v is DateKey => typeof v === 'string')
       : [],
-    candidate: toCandidate(data.candidatePer100g, data.candidateNote),
+    candidate: toCandidate(data.candidatePer100g, data.candidateNote, data.candidatePhoto),
   };
 }
 
-function toCandidate(raw: unknown, note: unknown): LabelCandidate | null {
+function toCandidate(raw: unknown, note: unknown, photo: unknown): LabelCandidate | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const d = raw as Record<string, unknown>;
   const pick = (k: string): number =>
@@ -256,6 +272,7 @@ function toCandidate(raw: unknown, note: unknown): LabelCandidate | null {
   return {
     per100g: { kcal, p: pick('p'), f: pick('f'), c: pick('c'), fiber: pick('fiber'), salt: pick('salt') },
     note: typeof note === 'string' ? note : '',
+    photo: typeof photo === 'string' ? photo : '',
   };
 }
 

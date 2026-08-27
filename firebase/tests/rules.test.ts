@@ -656,6 +656,36 @@ describe('★ 食品の登録依頼（設計書 §21 / Phase 9）', () => {
     );
   });
 
+  // ★ 数字だけでは、受け取った管理者が確かめられない。
+  //   参考値のほうを拾っていても気づけないので、写真も一緒に送る。
+  it('成分表示の写真も一緒に送れる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...candidate,
+        candidatePhoto: 'data:image/jpeg;base64,' + 'A'.repeat(1000),
+      }),
+    );
+  });
+
+  it('大きすぎる写真は送れない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...candidate,
+        candidatePhoto: 'A'.repeat(400_000),
+      }),
+    );
+  });
+
+  it('契約者は他人の依頼に添えられた写真を読めない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'foodRequests/さらだちきん/from/bob'), {
+        ...candidate,
+        candidatePhoto: 'data:image/jpeg;base64,AAAA',
+      });
+    });
+    await assertFails(getDoc(doc(alice(), 'foodRequests/さらだちきん/from/bob')));
+  });
+
   it('候補が文字列などおかしな形なら書けない', async () => {
     await assertFails(
       setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {

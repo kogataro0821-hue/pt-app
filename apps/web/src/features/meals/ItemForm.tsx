@@ -221,7 +221,7 @@ export function ItemForm({
             <LabelScanner
               onCancel={() => setScanning(false)}
               onDone={(r) => {
-                setCandidate({ per100g: r.per100g, note: r.note });
+                setCandidate({ per100g: r.per100g, note: r.note, photo: r.photo });
                 if (name.trim().length === 0 && r.productName.length > 0) setName(r.productName);
                 setScanning(false);
               }}

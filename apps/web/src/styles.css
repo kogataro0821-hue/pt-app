@@ -1815,3 +1815,23 @@ select.input {
   font-family: inherit;
   width: 100%;
 }
+
+/* 登録依頼に添えられた成分表示の写真（Phase 12） */
+.label-photo {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.label-photo img {
+  display: block;
+  width: 100%;
+  /* 全体を切らずに見せる。数字を読める必要があるので、切り抜かない */
+  max-height: 320px;
+  object-fit: contain;
+}

@@ -395,7 +395,7 @@ service cloud.firestore {
           || (isClient(clientId)
               && request.resource.data.keys().hasOnly(
                    ['variant', 'count', 'dates', 'updatedAt',
-                    'candidatePer100g', 'candidateNote'])
+                    'candidatePer100g', 'candidateNote', 'candidatePhoto'])
               && request.resource.data.variant is string
               && request.resource.data.variant.size() > 0
               && request.resource.data.variant.size() <= 60
@@ -406,7 +406,13 @@ service cloud.firestore {
                   || request.resource.data.candidatePer100g is map)
               && (!('candidateNote' in request.resource.data)
                   || (request.resource.data.candidateNote is string
-                      && request.resource.data.candidateNote.size() <= 200)));
+                      && request.resource.data.candidateNote.size() <= 200))
+              // ★ 成分表示の写真。管理者が数字を確かめるためのものです。
+              //   Storage Rules が使えないので、大きさの上限はここで守ります。
+              //   写真と同じ 400,000 バイト未満に揃えてあります。
+              && (!('candidatePhoto' in request.resource.data)
+                  || (request.resource.data.candidatePhoto is string
+                      && request.resource.data.candidatePhoto.size() < 400000)));
       }
     }
   }

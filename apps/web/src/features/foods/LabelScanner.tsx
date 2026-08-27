@@ -38,8 +38,20 @@ export function LabelScanner({
   onDone,
   onCancel,
 }: {
-  /** 読み取って人が確認した100gあたりの値 */
-  onDone: (result: { per100g: DecimalNutrients; productName: string; note: string }) => void;
+  /**
+   * 読み取って人が確認した100gあたりの値。
+   *
+   * ★ 写真も一緒に返します。
+   *   数字だけ渡すと、受け取った管理者に確かめる手段がありません。
+   *   「参考値のほうを拾っていないか」は、表示を見ないと判断できませんし、
+   *   そのころ契約者はパッケージを捨てています。
+   */
+  onDone: (result: {
+    per100g: DecimalNutrients;
+    productName: string;
+    note: string;
+    photo: string;
+  }) => void;
   onCancel: () => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
@@ -50,6 +62,8 @@ export function LabelScanner({
   const [evidence, setEvidence] = useState('');
   const [aiNotes, setAiNotes] = useState<string[]>([]);
   const [gramsInput, setGramsInput] = useState('');
+  /** 撮った写真そのもの。管理者が確かめられるように持ち回る */
+  const [photo, setPhoto] = useState<string>('');
 
   async function onPick(files: FileList | null) {
     if (files === null || files.length === 0) return;
@@ -60,6 +74,7 @@ export function LabelScanner({
       const resized = await resizePhoto(files[0]!);
       const result = await readNutritionLabel(resized.dataUrl);
 
+      setPhoto(resized.dataUrl);
       setProductName(result.productName);
       setEvidence(result.evidence);
       setAiNotes(result.notes);
@@ -253,6 +268,7 @@ export function LabelScanner({
                 if (converted === null || !converted.ok) return;
                 onDone({
                   per100g: converted.per100g,
+                  photo,
                   productName,
                   note: [labelBasisLabel(effective), evidence, ...converted.notes]
                     .filter((s) => s.length > 0)
