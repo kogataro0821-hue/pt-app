@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { findSimilarFoods, kcalMismatchWarning, type Per100gInput } from '@pt/core';
+import { findSimilarFoods, foodKey, kcalMismatchWarning, type Per100gInput } from '@pt/core';
 import { writeErrorMessage } from '@/lib/firestoreError';
 import { emptyFood, newFoodId, saveFood, type Food } from './foodsRepo';
 
@@ -18,6 +18,7 @@ import { emptyFood, newFoodId, saveFood, type Food } from './foodsRepo';
 export function FoodEditor({
   initial,
   all,
+  nameOptions,
   onSaved,
   onCancel,
 }: {
@@ -25,6 +26,13 @@ export function FoodEditor({
   initial?: Food;
   /** 重複チェックに使う既存の一覧 */
   all: Food[];
+  /**
+   * 名前の候補（依頼から登録するときに、実際に使われた表記を渡す）。
+   *
+   * ★ 代表は自動で選びますが、選び方が常に正しいとは限りません。
+   *   管理者が1タップで選び直せるようにしておきます。
+   */
+  nameOptions?: string[];
   onSaved: (food: Food) => void;
   onCancel: () => void;
 }) {
@@ -86,7 +94,7 @@ export function FoodEditor({
         //   既存のIDを変えると、過去の記録から食材をたどれなくなります。
         id: isNew ? newFoodId(name) : base.id,
         name: name.trim(),
-        aliases: splitAliases(aliasText),
+        aliases: usefulAliases(name, aliasText),
         per100g: numbers,
         note: note.trim(),
       });
@@ -112,6 +120,24 @@ export function FoodEditor({
           placeholder="鶏むね肉（皮なし）"
         />
       </label>
+
+      {(nameOptions ?? []).length > 1 && (
+        <>
+          <p className="field-hint">実際に使われた表記です。どれで登録するか選べます。</p>
+          <div className="add-actions">
+            {(nameOptions ?? []).map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={option === name ? 'button-secondary current' : 'button-secondary'}
+                onClick={() => setName(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {similar.length > 0 && (
         <>
@@ -207,6 +233,31 @@ export function FoodEditor({
       </div>
     </section>
   );
+}
+
+/**
+ * 別名として意味のあるものだけを残す。
+ *
+ * ★ 照合キーが名前と同じ別名は、登録しても何も増えません。
+ *   「サラダチキン」と「サラダ（全角スペース）チキン」は
+ *   すでに同じキーになるので、別名が無くても当たります。
+ *   意味のない別名が並ぶと、管理者が一覧を読むときの邪魔になるだけです。
+ *
+ *   逆に「鶏むね肉」と「鶏胸肉」はキーが違うので、別名が要ります。
+ *   ここで消えるのは前者だけです。
+ */
+export function usefulAliases(name: string, aliasText: string): string[] {
+  const nameKey = foodKey(name);
+  const seen = new Set<string>([nameKey]);
+  const out: string[] = [];
+
+  for (const alias of splitAliases(aliasText)) {
+    const key = foodKey(alias);
+    if (key.length === 0 || seen.has(key)) continue;
+    seen.add(key);
+    out.push(alias);
+  }
+  return out;
 }
 
 export function splitAliases(text: string): string[] {

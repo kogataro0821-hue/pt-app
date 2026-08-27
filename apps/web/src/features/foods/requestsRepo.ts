@@ -7,7 +7,7 @@ import {
   increment,
   setDoc,
 } from 'firebase/firestore';
-import { foodKey, type DateKey } from '@pt/core';
+import { foodKey, orderedVariants, preferredVariant, type DateKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 
 /**
@@ -101,7 +101,18 @@ export async function requestFood(
   try {
     const parent = doc(requestsCol(), key);
     // 読まずに書きます。読めてしまうと、他人が何を食べたかが漏れます。
-    await setDoc(parent, { name: trimmed, key, updatedAt: now }, { merge: true });
+    //
+    // ★ ここに名前を書きません。
+    //
+    //   以前は代表名を親に持たせていました。読まずに書くので毎回上書きになり、
+    //   「サラダチキン」のあとに「サラダ（全角スペース）チキン」が来ると、
+    //   **後から書いた全角スペース入りのほうが代表**になります。
+    //   管理者はそれをそのまま登録し、全員のマスタに変な表記が残りました。
+    //
+    //   誰が最後に打ったかは正しさと関係がないので、
+    //   表記は下の from/{契約者ID} に各自のぶんだけ残し、
+    //   代表は読むときに選びます（preferredVariant）。
+    await setDoc(parent, { key, updatedAt: now }, { merge: true });
     await setDoc(
       doc(parent, 'from', clientId),
       {
@@ -143,13 +154,17 @@ export async function listRequests(): Promise<FoodRequest[]> {
       const fromSnap = await getDocs(collection(d.ref, 'from'));
       const from = fromSnap.docs.map((f) => toEntry(f.id, f.data()));
 
+      // 実際に使われた表記から代表を選びます。
+      // 移行前のデータには親に name が残っていることがあるので、
+      // 表記が1つも取れなかったときだけ、そちらを使います。
+      const counts = from.map((e) => ({ text: e.variant, count: e.count }));
+      const preferred = preferredVariant(counts);
+      const fallback = typeof data.name === 'string' ? data.name : d.id;
+
       return {
         id: d.id,
-        name: typeof data.name === 'string' ? data.name : d.id,
-        variants: uniqueVariants(
-          typeof data.name === 'string' ? data.name : d.id,
-          from.map((e) => e.variant),
-        ),
+        name: preferred.length > 0 ? preferred : fallback,
+        variants: preferred.length > 0 ? orderedVariants(counts) : [fallback],
         from,
         count: from.reduce((n, e) => n + e.count, 0),
         updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
@@ -187,14 +202,4 @@ function toEntry(clientId: string, data: Record<string, unknown>): RequestEntry 
       ? data.dates.filter((v): v is DateKey => typeof v === 'string')
       : [],
   };
-}
-
-/** 代表の表記を先頭に、重複を除いた表記のゆれ一覧 */
-function uniqueVariants(name: string, variants: string[]): string[] {
-  const out: string[] = [];
-  for (const v of [name, ...variants]) {
-    const t = v.trim();
-    if (t.length > 0 && !out.includes(t)) out.push(t);
-  }
-  return out;
 }

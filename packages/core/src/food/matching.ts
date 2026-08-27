@@ -213,3 +213,60 @@ export function shouldAddAlias(food: NameableFood, name: string): boolean {
   if (key.length === 0) return false;
   return !allNames(food).some((n) => foodKey(n) === key);
 }
+
+/** 表記のゆれ1件と、それが使われた回数 */
+export interface VariantCount {
+  text: string;
+  count: number;
+}
+
+/**
+ * 表記のゆれの中から、代表として使う1つを選ぶ（Phase 9）。
+ *
+ * ★ なぜ「最後に書かれたもの」ではいけないのか
+ *
+ *   最初この判断を持っていませんでした。依頼を積むたびに代表名を
+ *   上書きしていたので、「サラダチキン」→「サラダ（全角スペース）チキン」の順に
+ *   使われると、**後から来た全角スペース入りのほうが代表**になります。
+ *   管理者はそれをそのまま登録してしまい、
+ *   全員のマスタに変な表記が残ります（実際に起きました）。
+ *
+ *   誰が最後に打ったかは、正しさと何の関係もありません。
+ *
+ * ★ 選び方
+ *
+ *   1. いちばん多く使われた表記        …… 多数の人が書く形が自然な形
+ *   2. 同数なら短いほう                …… 余分な空白や記号が入っていない
+ *   3. それでも同じなら文字順          …… 同じ入力なら毎回同じ結果になるように
+ *
+ *   3を入れているのは、選び方が実行のたびに変わらないようにするためです。
+ *   代表名がちらつくと、管理者は何を信じてよいか分からなくなります。
+ */
+export function preferredVariant(variants: readonly VariantCount[]): string {
+  const usable = variants
+    .map((v) => ({ text: v.text.trim(), count: v.count }))
+    .filter((v) => v.text.length > 0);
+
+  if (usable.length === 0) return '';
+
+  return usable.reduce((best, v) => {
+    if (v.count !== best.count) return v.count > best.count ? v : best;
+    if (v.text.length !== best.text.length) return v.text.length < best.text.length ? v : best;
+    return v.text.localeCompare(best.text) < 0 ? v : best;
+  }).text;
+}
+
+/**
+ * 表記のゆれを、代表を先頭にして重複なく並べる。
+ * 管理者の画面で「どれを代表にしたか」が一目で分かるようにするため。
+ */
+export function orderedVariants(variants: readonly VariantCount[]): string[] {
+  const preferred = preferredVariant(variants);
+  const out: string[] = preferred.length > 0 ? [preferred] : [];
+
+  for (const v of variants) {
+    const t = v.text.trim();
+    if (t.length > 0 && !out.includes(t)) out.push(t);
+  }
+  return out;
+}

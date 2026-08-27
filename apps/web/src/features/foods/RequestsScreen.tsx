@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { findSimilarFoods } from '@pt/core';
+import { findSimilarFoods, foodKey } from '@pt/core';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { addAlias, clearFoodCache, emptyFood, loadFoods, type Food } from './foodsRepo';
@@ -249,10 +249,17 @@ function RequestCard({
             <FoodEditor
               initial={{
                 ...emptyFood(request.name),
-                // 使われた書き方は、そのまま別名の候補にします。
-                aliases: request.variants.filter((v) => v !== request.name),
+                // ★ 照合キーが同じ表記は、別名に入れません。
+                //   「サラダチキン」と全角スペース入りは、別名が無くても
+                //   すでに同じものとして当たります。入れても増えるものがなく、
+                //   一覧が読みにくくなるだけです。
+                //   キーが違う表記（あれば）だけを別名の候補にします。
+                aliases: request.variants.filter(
+                  (v) => foodKey(v) !== foodKey(request.name),
+                ),
               }}
               all={foods}
+              nameOptions={request.variants}
               onSaved={(food) => setStep({ kind: 'ask', food, how: 'created' })}
               onCancel={() => setStep({ kind: 'idle' })}
             />

@@ -1768,3 +1768,10 @@ select.input {
   overflow: visible;
   text-overflow: clip;
 }
+
+/* 名前の候補。いま選ばれているものが分かるようにする */
+.button-secondary.current {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}

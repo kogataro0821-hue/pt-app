@@ -7,6 +7,8 @@ import {
   findSimilarFoods,
   foodKey,
   isSameFoodName,
+  orderedVariants,
+  preferredVariant,
   shouldAddAlias,
   similarity,
   type NameableFood,
@@ -233,5 +235,72 @@ describe('★ 照合キーはそのままドキュメントIDに使える', () =
   it('ふつうの食材名は今までどおり変わらない', () => {
     expect(foodKey('鶏むね肉')).toBe('鶏むね肉');
     expect(foodKey('サラダチキン')).toBe('さらだちきん');
+  });
+});
+
+describe('★ 表記のゆれから代表を選ぶ', () => {
+  // ★ 実際に起きた不具合の再現。
+  //   「サラダチキン」→「サラダ（全角スペース）チキン」の順に使われたとき、
+  //   後から来た全角スペース入りのほうが代表になっていた。
+  it('同数なら、余計な空白が入っていない短いほうを代表にする', () => {
+    expect(
+      preferredVariant([
+        { text: 'サラダチキン', count: 1 },
+        { text: 'サラダ　チキン', count: 1 },
+      ]),
+    ).toBe('サラダチキン');
+  });
+
+  it('順番を入れ替えても結果は変わらない', () => {
+    expect(
+      preferredVariant([
+        { text: 'サラダ　チキン', count: 1 },
+        { text: 'サラダチキン', count: 1 },
+      ]),
+    ).toBe('サラダチキン');
+  });
+
+  it('多く使われた表記が優先される（短さより回数）', () => {
+    expect(
+      preferredVariant([
+        { text: 'とりむね', count: 1 },
+        { text: '鶏むね肉（皮なし）', count: 9 },
+      ]),
+    ).toBe('鶏むね肉（皮なし）');
+  });
+
+  it('回数も長さも同じなら、いつも同じものを選ぶ', () => {
+    const a = preferredVariant([
+      { text: 'あいう', count: 2 },
+      { text: 'かきく', count: 2 },
+    ]);
+    const b = preferredVariant([
+      { text: 'かきく', count: 2 },
+      { text: 'あいう', count: 2 },
+    ]);
+    expect(a).toBe(b);
+  });
+
+  it('空白だけの表記は無視する', () => {
+    expect(
+      preferredVariant([
+        { text: '  ', count: 5 },
+        { text: '納豆', count: 1 },
+      ]),
+    ).toBe('納豆');
+  });
+
+  it('何も無ければ空を返す', () => {
+    expect(preferredVariant([])).toBe('');
+  });
+
+  it('代表が先頭に来て、重複なく並ぶ', () => {
+    expect(
+      orderedVariants([
+        { text: 'サラダ　チキン', count: 1 },
+        { text: 'サラダチキン', count: 1 },
+        { text: 'サラダチキン', count: 1 },
+      ]),
+    ).toEqual(['サラダチキン', 'サラダ　チキン']);
   });
 });
