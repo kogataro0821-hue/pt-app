@@ -36,6 +36,7 @@ export function MealsSection({
   isAdmin,
   aiConsent,
   onMealsChanged,
+  onPhotoSaved,
 }: {
   clientId: string;
   date: DateKey;
@@ -47,6 +48,8 @@ export function MealsSection({
   aiConsent: AiConsent;
   /** カレンダーの印を更新するために、食事の有無を親へ伝える */
   onMealsChanged?: (hasMeals: boolean) => void;
+  /** AIに送った写真を保存したときに、写真欄を更新させる */
+  onPhotoSaved?: () => void;
 }) {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +57,8 @@ export function MealsSection({
   const [aiFor, setAiFor] = useState<{ mealId: string; mode: 'text' | 'photo' } | null>(null);
   const [editing, setEditing] = useState<{ mealId: string; item: MealItem } | null>(null);
   const [busy, setBusy] = useState(false);
+  /** 登録依頼が届かなかったとき。記録は成立しているので、止めずに知らせるだけ */
+  const [requestFailed, setRequestFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +67,7 @@ export function MealsSection({
     setAddingTo(null);
     setAiFor(null);
     setEditing(null);
+    setRequestFailed(false);
 
     void (async () => {
       try {
@@ -158,6 +164,15 @@ export function MealsSection({
     void persist(list, found);
   }
 
+  /**
+   * 管理者へ登録依頼を送る。
+   * 届かなくても記録は成立しているので止めませんが、届かなかったことは知らせます。
+   */
+  async function sendRequest(requestName: string, candidate: LabelCandidate | null) {
+    const ok = await requestFood(requestName, clientId, date, candidate);
+    if (!ok) setRequestFailed(true);
+  }
+
   function addItem(
     mealId: string,
     item: MealItem,
@@ -173,7 +188,7 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    if (requestName !== null) void requestFood(requestName, clientId, date, candidate);
+    if (requestName !== null) void sendRequest(requestName, candidate);
     setAddingTo(null);
   }
 
@@ -192,7 +207,7 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    if (requestName !== null) void requestFood(requestName, clientId, date, candidate);
+    if (requestName !== null) void sendRequest(requestName, candidate);
     setEditing(null);
   }
 
@@ -207,7 +222,7 @@ export function MealsSection({
       list.map((m) => (m.id === mealId ? updated : m)),
       updated,
     );
-    for (const requestName of requestNames) void requestFood(requestName, clientId, date);
+    for (const requestName of requestNames) void sendRequest(requestName, null);
     setAiFor(null);
   }
 
@@ -243,6 +258,15 @@ export function MealsSection({
       {error !== null && (
         <p className="form-error" role="alert">
           {error}
+        </p>
+      )}
+
+      {requestFailed && (
+        <p className="notice" role="alert">
+          <b>トレーナーへの登録依頼を送れませんでした。</b>
+          <br />
+          食事の記録そのものは保存されています。お手数ですが、この食材を入れ直すか、
+          トレーナーに直接お伝えください。
         </p>
       )}
 
@@ -308,7 +332,11 @@ export function MealsSection({
           {canEdit && aiFor?.mealId === meal.id && (
             <AiTextPanel
               mode={aiFor.mode}
+              clientId={clientId}
+              date={date}
+              mealId={meal.id}
               onAdd={(items, requestNames) => addItems(meal.id, items, requestNames)}
+              onPhotoSaved={onPhotoSaved}
               onClose={() => setAiFor(null)}
             />
           )}

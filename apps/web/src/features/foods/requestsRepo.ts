@@ -109,15 +109,22 @@ export function requestId(name: string): string {
  * ★ 失敗しても食事の記録は止めません。
  *   依頼は「管理者に伝える」ための仕組みであって、記録の本体ではないためです。
  *   ここで例外を投げると、食材を1つ追加できないだけで記録全体が止まります。
+ *
+ * ★ ただし、成功したかどうかは返します。
+ *
+ *   ここを完全に黙らせていたせいで、
+ *   Rules の条件が合わずに依頼がひとつも積まれない状態が続き、
+ *   「依頼を出したのに管理者側に出てこない」原因が分かりませんでした。
+ *   記録は止めない。でも、伝わっていないことは伝える。
  */
 export async function requestFood(
   name: string,
   clientId: string,
   date: DateKey,
   candidate: LabelCandidate | null = null,
-): Promise<void> {
+): Promise<boolean> {
   const key = requestId(name);
-  if (key.length === 0) return;
+  if (key.length === 0) return false;
 
   const trimmed = name.trim().slice(0, 60);
   const now = Date.now();
@@ -152,6 +159,7 @@ export async function requestFood(
       },
       { merge: true },
     );
+    return true;
   } catch (e) {
     // ★ 依頼を積めなくても、食事の記録そのものは成立しているので止めません。
     //
@@ -161,6 +169,7 @@ export async function requestFood(
     //   原因の分からない状態になります。
     //   記録は止めず、原因だけは残します。
     console.warn('[foodRequests] 登録依頼を積めませんでした', e);
+    return false;
   }
 }
 

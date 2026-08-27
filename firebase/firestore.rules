@@ -360,12 +360,26 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow delete: if isAdmin();
 
+      // ★ name は「あってもよい」項目です。必須にしてはいけません。
+      //
+      //   ここは一度壊しました。
+      //   代表の表記を「読むときに選ぶ」形に変えたとき、
+      //   依頼を積むコードから name を書かないようにしたのに、
+      //   このルールだけ「name が必ず入っていること」を要求したままでした。
+      //   結果、依頼がひとつも積まれなくなり、
+      //   しかも積めなかったことは画面に出ないので、
+      //   「依頼を出したのに管理者側に出てこない」という
+      //   原因の分からない状態になりました。
+      //
+      //   代表の表記は from/{契約者ID} の variant から選びます。
+      //   親に name が残っているのは移行前のデータだけです。
       allow create, update: if isAdmin()
         || (isKnownUser()
             && request.resource.data.keys().hasOnly(['name', 'key', 'updatedAt'])
-            && request.resource.data.name is string
-            && request.resource.data.name.size() > 0
-            && request.resource.data.name.size() <= 60
+            && (!('name' in request.resource.data)
+                || (request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 60))
             && request.resource.data.key == key);
 
       match /from/{clientId} {

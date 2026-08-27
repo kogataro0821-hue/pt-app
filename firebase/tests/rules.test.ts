@@ -540,6 +540,38 @@ describe('★ 食品の登録依頼（設計書 §21 / Phase 9）', () => {
     );
   });
 
+  // ★★ これを見落として、依頼がひとつも積まれない状態を作りました。
+  //
+  //   代表の表記を「読むときに選ぶ」形に変えたとき、
+  //   コードは name を書かなくなったのに、ルールは name を必須のままにしていました。
+  //   積めなかったことは画面に出ないので、原因が分かりませんでした。
+  //   いま実際に書いている形（name 無し）を、ここで固定します。
+  it('name を書かない形でも積める（いまのコードはこの形）', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん'), { key: 'さらだちきん', updatedAt: 1 }),
+    );
+  });
+
+  it('name 無しで積んだあと、管理者が読める', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん'), { key: 'さらだちきん', updatedAt: 1 }),
+    );
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), entry),
+    );
+    await assertSucceeds(getDocs(collection(admin(), 'foodRequests')));
+  });
+
+  it('name を書くなら、空文字は通さない（移行前のデータの形）', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん'), {
+        name: '',
+        key: 'さらだちきん',
+        updatedAt: 1,
+      }),
+    );
+  });
+
   it('すでにある依頼にも積める（別の人が同じ食材を使ったとき）', async () => {
     await assertSucceeds(setDoc(doc(alice(), 'foodRequests/さらだちきん'), parent));
     await assertSucceeds(setDoc(doc(bob(), 'foodRequests/さらだちきん'), parent));
