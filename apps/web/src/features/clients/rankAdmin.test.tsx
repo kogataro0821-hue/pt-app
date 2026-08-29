@@ -85,7 +85,10 @@ describe('★ 設定画面からは、ランクを上げられない', () => {
     await userEvent.selectOptions(screen.getByLabelText(/ランクを下げる/), 'RUBY');
 
     await waitFor(() => {
-      expect(setClientRank).toHaveBeenCalledWith('taro', 'RUBY');
+      expect(setClientRank).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId: 'taro' }),
+        'RUBY',
+      );
     });
     expect(window.confirm).toHaveBeenCalled();
   });

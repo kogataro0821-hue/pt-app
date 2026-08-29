@@ -162,7 +162,7 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
     setBusy(true);
     setError(null);
     try {
-      await setClientRank(client.clientId, rank);
+      await setClientRank(client, rank);
       setClient({ ...client, rank });
     } catch {
       setError('ランクを変更できませんでした。');

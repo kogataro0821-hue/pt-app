@@ -2504,3 +2504,117 @@ select.input {
     height: 38px;
   }
 }
+
+/* ---- お知らせ（追加仕様: お知らせ欄）------------------------------------- */
+
+/* ベル。押せる面積を 44px 角に近づけてあります（指で押す場所なので） */
+.appbar-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-right: 2px;
+  color: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+.bell-icon {
+  width: 21px;
+  height: 21px;
+}
+
+/* ★ 数字はベルの右上に重ねます。
+   行に並べると、押せる面積が横に伸びて隣のボタンと近づきます。 */
+.appbar-bell-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--attention);
+  color: var(--surface);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.notice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.notice-unread-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--attention);
+}
+
+.notice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.notice-item {
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* ★ 未読は「左の縦線」で示します。
+   背景色を変えると、既読と未読で明るさが変わって一覧がまだらになります。 */
+.notice-item.unread {
+  border-left: 3px solid var(--attention);
+}
+
+.notice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.notice-kind {
+  font-size: 11px;
+}
+
+.notice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--attention);
+}
+
+.notice-at {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.notice-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.notice-body {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.notice-item .button-quiet {
+  margin-top: 8px;
+}

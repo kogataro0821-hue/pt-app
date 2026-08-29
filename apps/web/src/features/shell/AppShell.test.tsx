@@ -29,7 +29,11 @@ vi.mock('@/features/auth/AuthProvider', () => ({
 }));
 
 vi.mock('react-router-dom', () => ({
-  Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({ children, to, ...rest }: { children: React.ReactNode; to: string }) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
   useLocation: () => ({ pathname: '/clients' }),
 }));
 
@@ -123,5 +127,55 @@ describe('★ 契約者には、何も見せない', () => {
     expect(ensureRequestCount).not.toHaveBeenCalled();
     // 前に管理者が見ていた数を、持ち続けない
     expect(clearRequestCount).toHaveBeenCalled();
+  });
+});
+
+/**
+ * お知らせのベル（追加仕様: お知らせ欄）。
+ *
+ * ★ 件数はここで数えません。渡してもらいます。
+ *
+ *   数えるには契約者ドキュメントが要ります。それを持っているのは
+ *   ClientGate を通った画面だけです。この外枠にもう一度読ませると、
+ *   同じものを2回読むことになります（読み取りが2倍）。
+ */
+describe('お知らせのベル', () => {
+  function showWithBell(bell?: { to: string; unread: number }) {
+    return render(
+      <AppShell onChangePassword={vi.fn()} bell={bell}>
+        <p>中身</p>
+      </AppShell>,
+    );
+  }
+
+  it('渡されなければ、ベルは出ない', () => {
+    role = 'admin';
+    showWithBell(undefined);
+    expect(screen.queryByRole('link', { name: /お知らせ/ })).not.toBeInTheDocument();
+  });
+
+  it('未読があれば、数字が出る', () => {
+    role = 'client';
+    showWithBell({ to: '/c/c1/notices', unread: 3 });
+
+    const bell = screen.getByRole('link', { name: 'お知らせ（新しいものが3件）' });
+    expect(bell).toHaveAttribute('href', '/c/c1/notices');
+    expect(bell).toHaveTextContent('3');
+  });
+
+  it('★ 未読が0なら、数字は出さない', () => {
+    // ★ 0 を出すと、毎日「0」を見ることになります。
+    //   何も無いことは、何も出さないことで伝わります。
+    role = 'client';
+    showWithBell({ to: '/c/c1/notices', unread: 0 });
+
+    const bell = screen.getByRole('link', { name: 'お知らせ' });
+    expect(bell).not.toHaveTextContent('0');
+  });
+
+  it('溜まりすぎたら、3桁で打ち切る', () => {
+    role = 'client';
+    showWithBell({ to: '/c/c1/notices', unread: 120 });
+    expect(screen.getByRole('link', { name: /お知らせ/ })).toHaveTextContent('99+');
   });
 });

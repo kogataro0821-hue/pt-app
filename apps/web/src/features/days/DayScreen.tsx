@@ -307,7 +307,7 @@ export function DayScreen({
               確定は「この日はおしまい」の合図なので、その下に読むものがあると
               目に入りません。トレーナーの言葉は記録の一部として上に置きます。 */}
           <NotesSection
-            clientId={client.clientId}
+            client={client}
             date={date}
             isAdmin={isAdmin}
             adminUid={adminUid}

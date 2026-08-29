@@ -15,13 +15,16 @@ import {
   INITIAL_RANK,
   RANKS,
   rankOrder,
+  toNotices,
   toRank,
   toRankGoals,
+  type Notice,
   type Rank,
   type RankGoals,
   type Targets,
 } from '@pt/core';
 import { clientIdToEmail, getFirebaseConfig } from '@/config/firebase';
+import { pushNotice, rankUpNotice, welcomeNotice } from '@/features/notices/noticesRepo';
 import { getDb } from '@/lib/firebase';
 import {
   DEFAULT_PERMISSIONS,
@@ -143,6 +146,10 @@ export async function createClient(input: {
     rank: input.rank ?? INITIAL_RANK,
     rankSeeded: seeded,
     memberNo,
+    // ★ 最初のお知らせ（追加仕様: お知らせ欄）。
+    //   初回ログインの時点で、ベルに1件入っている状態にします。
+    //   空のベルを見せても、そこに何が出るのか伝わりません。
+    notices: [welcomeNotice()],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -222,13 +229,20 @@ export async function updateClient(
  *   画面側では、条件を満たしていないランクへ上げるボタンを出しません。
  *   下げるほうは、トレーナーの判断でいつでもできます。
  */
-export async function setClientRank(clientId: string, rank: Rank): Promise<void> {
+export async function setClientRank(client: Client, rank: Rank): Promise<Notice[]> {
   const now = Date.now();
   await setDoc(
-    doc(getDb(), 'clients', clientId),
+    doc(getDb(), 'clients', client.clientId),
     { rank, rankUpdatedAt: now, updatedAt: now },
     { merge: true },
   );
+
+  // ★ 上がったときだけ、お知らせを出します（追加仕様: お知らせ欄）。
+  //   下げたことを本人に通知しても、意味がありません。
+  //   トレーナーが直接伝えるべき話で、アプリが割り込むところではありません。
+  if (rankOrder(rank) <= rankOrder(client.rank)) return client.notices;
+
+  return await pushNotice(client, rankUpNotice(rank, now));
 }
 
 /**
@@ -371,6 +385,7 @@ function toClient(id: string, data: Record<string, unknown>): Client {
     rankSeeded: data.rankSeeded === true,
     rankGoals: toRankGoals(data.rankGoals),
     memberNo: num(data.memberNo),
+    notices: toNotices(data.notices),
     extra: (data.extra as Record<string, unknown> | undefined) ?? {},
     createdAt: num(data.createdAt),
     updatedAt: num(data.updatedAt),
@@ -398,6 +413,7 @@ function toFirestore(client: Client): Record<string, unknown> {
     rankSeeded: client.rankSeeded,
     rankGoals: client.rankGoals,
     memberNo: client.memberNo,
+    notices: client.notices,
     extra: client.extra,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,

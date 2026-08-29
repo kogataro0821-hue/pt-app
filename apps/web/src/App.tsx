@@ -17,6 +17,8 @@ import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AiConsentCard } from '@/features/ai/AiConsentCard';
 import { AppShell } from '@/features/shell/AppShell';
+import { NoticesScreen } from '@/features/notices/NoticesScreen';
+import { unreadNoticeCount } from '@/features/notices/noticesRepo';
 
 export default function App() {
   return (
@@ -206,6 +208,10 @@ function AppRoutes({
         path="/c/:clientId/settings"
         element={<ClientSettingsRoute onChangePassword={onChangePassword} />}
       />
+      <Route
+        path="/c/:clientId/notices"
+        element={<NoticesRoute onChangePassword={onChangePassword} />}
+      />
 
       <Route path="*" element={<NotFoundRoute onChangePassword={onChangePassword} />} />
       </Routes>
@@ -253,16 +259,35 @@ function Shell({
   children,
   onChangePassword,
   viewing,
+  bell,
 }: {
   children: React.ReactNode;
   onChangePassword: () => void;
   viewing?: { clientId: string; displayName: string };
+  bell?: { to: string; unread: number };
 }) {
   return (
-    <AppShell onChangePassword={onChangePassword} viewing={viewing}>
+    <AppShell onChangePassword={onChangePassword} viewing={viewing} bell={bell}>
       {children}
     </AppShell>
   );
+}
+
+/**
+ * ベルに出すもの（追加仕様: お知らせ欄）。
+ *
+ * ★ 契約者本人のときだけ出します。
+ *
+ *   管理者が誰かの画面を見ているときにベルを出すと、
+ *   「自分あてのお知らせ」と見分けが付きません。
+ *   管理者に届くお知らせは、そもそもありません（自分で書いたものだけになります）。
+ *
+ * ★ 数えるための通信はありません。
+ *   client はこの画面に来る前にすでに読んであります。
+ */
+function bellFor(client: Client, isAdmin: boolean) {
+  if (isAdmin) return undefined;
+  return { to: `/c/${client.clientId}/notices`, unread: unreadNoticeCount(client) };
 }
 
 function AdminOnly({
@@ -331,6 +356,7 @@ function CalendarRoute({ onChangePassword }: { onChangePassword: () => void }) {
           viewing={
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
+          bell={bellFor(client, isAdmin)}
         >
           {/* ★ 会員証はカレンダーの上に置きます（追加仕様: 会員ランク）。
                  画面を開いた瞬間に目に入る場所です。
@@ -368,6 +394,7 @@ function DayRoute({ onChangePassword }: { onChangePassword: () => void }) {
           viewing={
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
+          bell={bellFor(client, isAdmin)}
         >
           <DayScreen client={client} date={date} isAdmin={isAdmin} />
         </Shell>
@@ -391,8 +418,34 @@ function WeightRoute({ onChangePassword }: { onChangePassword: () => void }) {
           viewing={
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
+          bell={bellFor(client, isAdmin)}
         >
           <WeightScreen client={client} />
+        </Shell>
+      )}
+    </ClientGate>
+  );
+}
+
+/** お知らせの一覧（追加仕様: お知らせ欄）。 */
+function NoticesRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const { clientId } = useParams();
+  if (clientId === undefined) return <Navigate to="/" replace />;
+
+  return (
+    <ClientGate
+      clientId={clientId}
+      wrap={(node) => <Shell onChangePassword={onChangePassword}>{node}</Shell>}
+    >
+      {(client, isAdmin) => (
+        <Shell
+          onChangePassword={onChangePassword}
+          viewing={
+            isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
+          }
+          bell={bellFor(client, isAdmin)}
+        >
+          <NoticesScreen client={client} isAdmin={isAdmin} />
         </Shell>
       )}
     </ClientGate>
@@ -415,6 +468,7 @@ function ClientSettingsRoute({ onChangePassword }: { onChangePassword: () => voi
           viewing={
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
+          bell={bellFor(client, isAdmin)}
         >
           <ClientSettings client={client} isAdmin={isAdmin} onChangePassword={onChangePassword} />
         </Shell>

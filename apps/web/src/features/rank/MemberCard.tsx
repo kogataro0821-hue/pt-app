@@ -85,7 +85,7 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
     setBusy(true);
     setError(null);
     try {
-      await setClientRank(client.clientId, to);
+      await setClientRank(client, to);
       // 昇格させたので、目印は役目を終えます
       await updateClient(client.clientId, { extra: { ...client.extra, rankReady: null } });
       setRank(to);

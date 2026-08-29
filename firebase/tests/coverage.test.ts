@@ -169,3 +169,68 @@ describe('ルールの土台が外れていないか', () => {
     expect(rules).toMatch(/function\s+isClient\(cid\)\s*\{\s*return\s+signedIn\(\)/);
   });
 });
+
+/**
+ * 契約者が clients に書ける項目の一覧を見張る（追加仕様: 会員ランク / お知らせ欄）。
+ *
+ * ★ この一覧が、会員ランクとお知らせの守りそのものです。
+ *
+ *   `rank` も `memberNo` も `notices` も、Rules に1行も書いていません。
+ *   一覧に**入っていない**というだけで、管理者専用になっています。
+ *   だから新しい項目を足すたびに Rules を書き足さずに済みました。
+ *
+ *   裏を返すと、この一覧に1語足した瞬間に、その守りが消えます。
+ *   しかも Rules は「許可を足した」ようにしか見えないので、
+ *   何を壊したのかが差分からは分かりません。ここで止めます。
+ */
+describe('★ 契約者が clients に書ける項目が、増えていないか', () => {
+  const m = /allow update: if isAdmin\(\)[\s\S]*?hasOnly\(\[([^\]]*)\]\)/.exec(rules);
+  const allowed = (m?.[1] ?? '')
+    .split(',')
+    .map((s) => s.trim().replace(/^'|'$/g, ''))
+    .filter((s) => s.length > 0);
+
+  it('一覧を読み取れている（読み取り方が壊れていないかの確認）', () => {
+    expect(allowed).toContain('displayName');
+    expect(allowed).toContain('extra');
+  });
+
+  it('一覧はこの6つだけ', () => {
+    expect(allowed.sort()).toEqual(
+      ['aiConsent', 'displayName', 'extra', 'memo', 'passwordChangedAt', 'updatedAt'].sort(),
+    );
+  });
+
+  for (const field of [
+    'rank',
+    'rankUpdatedAt',
+    'rankSeeded',
+    'rankGoals',
+    'memberNo',
+    'notices',
+    'targets',
+    'permissions',
+    'reviewMode',
+    'active',
+    'authUid',
+  ]) {
+    it(`${field} は、契約者に書かせていない`, () => {
+      expect(
+        allowed.includes(field),
+        `clients の update で契約者に ${field} を許しています。` +
+          `この項目は管理者が決めるものです。一覧から外してください。`,
+      ).toBe(false);
+    });
+  }
+
+  it('★ 既読の印は extra の中に置いてある（契約者が付けられる）', () => {
+    // ★ extra は契約者が書ける唯一の自由欄です。
+    //   既読をここ以外に置くと、ベルの数字が永遠に消えません。
+    const repo = readFileSync(
+      fileURLToPath(new URL('../../apps/web/src/features/notices/noticesRepo.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(repo).toContain('extra: { ...client.extra, noticeReadAt');
+    expect(allowed).toContain('extra');
+  });
+});

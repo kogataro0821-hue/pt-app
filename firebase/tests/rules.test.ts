@@ -2340,3 +2340,90 @@ describe('★ 会員ランクを、契約者が自分で書き換えられない
     await assertSucceeds(getDocs(collection(alice(), 'clients/alice/days')));
   });
 });
+
+// =============================================================================
+// 追加仕様: お知らせ欄
+//
+// ★ お知らせは「起きたこと」の記録です。
+//
+//   「トレーナーからコメントが届きました」を本人が作れてしまうと、
+//   お知らせは記録ではなく、ただの飾りになります。
+//   逆に、届いたお知らせを本人が消せてしまうのも困ります。
+//
+// ★ ここは Rules を1行も書き足していません。
+//
+//   clients の update で契約者に許した項目の一覧（displayName / memo /
+//   extra / aiConsent / passwordChangedAt / updatedAt）に notices が
+//   入っていないため、**足すだけで自動的に管理者専用**になります。
+//   このテストは、その性質が本当に効いているかを確かめるものです。
+// =============================================================================
+
+describe('★ お知らせを、契約者が自分で作れないか', () => {
+  const notice = {
+    id: 'comment-2026-08-28',
+    kind: 'comment',
+    at: 1_700_000_000_000,
+    title: 'トレーナーからコメントが届きました',
+    body: '',
+    date: '2026-08-28',
+  };
+
+  it('契約者は、自分あてのお知らせを作れない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'clients/alice'), { notices: [notice] }, { merge: true }),
+    );
+  });
+
+  it('空にして、届いたお知らせを消すこともできない', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/alice'), { notices: [] }, { merge: true }));
+  });
+
+  it('許されている項目に混ぜても、通らない', async () => {
+    await assertFails(
+      setDoc(
+        doc(alice(), 'clients/alice'),
+        { displayName: 'アリス', notices: [notice] },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('他人あてのお知らせも作れない', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/bob'), { notices: [notice] }, { merge: true }));
+  });
+
+  it('未認証では、そもそも書けない', async () => {
+    await assertFails(
+      setDoc(doc(guest(), 'clients/alice'), { notices: [notice] }, { merge: true }),
+    );
+  });
+
+  it('管理者は作れる', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), 'clients/alice'), { notices: [notice] }, { merge: true }),
+    );
+  });
+
+  it('★ 既読の印は、契約者本人が付けられる', async () => {
+    // ★ 既読を付けるのは本人です。本人が書ける場所（extra）に置いてあります。
+    //   ここが閉じていると、ベルの数字が永遠に消えません。
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), 'clients/alice'),
+        { extra: { noticeReadAt: 1_700_000_000_000 } },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('★ 既読の印を、他人には付けられない', async () => {
+    // ★ 他人の未読を消せると、その人はお知らせに気づかないまま終わります
+    await assertFails(
+      setDoc(
+        doc(alice(), 'clients/bob'),
+        { extra: { noticeReadAt: 1_700_000_000_000 } },
+        { merge: true },
+      ),
+    );
+  });
+});

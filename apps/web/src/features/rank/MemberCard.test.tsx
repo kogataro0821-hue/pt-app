@@ -160,7 +160,10 @@ describe('管理者の画面では、その場で昇格させられる', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'RUBY に昇格させる' }));
 
     await waitFor(() => {
-      expect(setClientRank).toHaveBeenCalledWith('taro', 'RUBY');
+      expect(setClientRank).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId: 'taro' }),
+        'RUBY',
+      );
     });
     expect(await screen.findByText('RUBY')).toBeInTheDocument();
   });

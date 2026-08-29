@@ -19,11 +19,21 @@ import {
 export function AppShell({
   children,
   viewing,
+  bell,
   onChangePassword,
 }: {
   children: ReactNode;
   /** 管理者が誰かのデータを見ているときだけ渡す */
   viewing?: { clientId: string; displayName: string } | undefined;
+  /**
+   * お知らせのベル（追加仕様: お知らせ欄）。契約者の画面でだけ渡します。
+   *
+   * ★ 件数はここで数えません。渡してもらいます。
+   *   数えるには契約者ドキュメントが要りますが、それを持っているのは
+   *   ClientGate を通った画面だけです。この外枠に読ませると、
+   *   同じものをもう一度読むことになります（読み取りが2倍）。
+   */
+  bell?: { to: string; unread: number } | undefined;
   onChangePassword: () => void;
 }) {
   const { state, signOutNow } = useAuth();
@@ -50,6 +60,14 @@ export function AppShell({
           </Link>
         </h1>
         <div className="appbar-actions">
+          {bell !== undefined && (
+            <Link className="appbar-bell" to={bell.to} aria-label={bellLabel(bell.unread)}>
+              <BellIcon />
+              {bell.unread > 0 && (
+                <span className="appbar-bell-badge">{bell.unread > 99 ? '99+' : bell.unread}</span>
+              )}
+            </Link>
+          )}
           <button className="appbar-action" type="button" onClick={onChangePassword}>
             パスワード
           </button>
@@ -82,6 +100,38 @@ export function AppShell({
 
       <main className="main">{children}</main>
     </div>
+  );
+}
+
+function bellLabel(unread: number): string {
+  return unread > 0 ? `お知らせ（新しいものが${unread}件）` : 'お知らせ';
+}
+
+/**
+ * ベルの絵。
+ *
+ * ★ 絵文字ではなく図形で描いています。
+ *   絵文字は端末ごとに形も色も変わり、iPhone では原色の黄色になります。
+ *   画面の色を決めているのに、そこだけ別の絵になります。
+ */
+function BellIcon() {
+  return (
+    <svg className="bell-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 3a5.5 5.5 0 0 0-5.5 5.5v3.2L5 15.2h14l-1.5-3.5V8.5A5.5 5.5 0 0 0 12 3Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 17.5a2 2 0 0 0 4 0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

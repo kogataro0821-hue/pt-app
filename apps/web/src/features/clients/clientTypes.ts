@@ -1,4 +1,11 @@
-import { DEFAULT_TARGETS, INITIAL_RANK, type Rank, type RankGoals, type Targets } from '@pt/core';
+import {
+  DEFAULT_TARGETS,
+  INITIAL_RANK,
+  type Notice,
+  type Rank,
+  type RankGoals,
+  type Targets,
+} from '@pt/core';
 
 /**
  * 契約者のデータ（設計書 §4 / §5.3）。
@@ -131,6 +138,28 @@ export interface Client {
    *   契約者を作るのは管理者1人なので、実用上ぶつかりません。
    */
   memberNo: number | null;
+  /**
+   * その人あてのお知らせ（追加仕様: お知らせ欄）。新しい順。
+   *
+   * ★ ここに置いているのは、**追加の読み取りを増やさない**ためです。
+   *
+   *   別のコレクションにすると、画面を開くたびに読み取りが増えます。
+   *   契約者ドキュメントはカレンダーを開いた時点ですでに読んでいるので、
+   *   その中に入れておけば、お知らせのための通信は0回です。
+   *
+   * ★ 契約者は、この欄を書き換えられません。
+   *
+   *   Rules で契約者に許した項目の一覧（displayName / memo / extra / …）に
+   *   `notices` は入っていません。**足すだけで自動的に管理者専用になります。**
+   *   Rules を書き足す必要はありません。
+   *
+   *   「トレーナーからコメントが届きました」を本人が作れてしまうと、
+   *   お知らせが記録として意味を持たなくなります。
+   *
+   * ★ 既読の印は、ここではなく `extra.noticeReadAt` に置きます。
+   *   既読を付けるのは契約者本人なので、本人が書ける場所である必要があります。
+   */
+  notices: Notice[];
   /** 後から項目を足すための入れ物（設計書 §4） */
   extra: Record<string, unknown>;
   createdAt: number | null;
@@ -159,6 +188,7 @@ export function emptyClient(clientId: string): Client {
     rankSeeded: false,
     rankGoals: {},
     memberNo: null,
+    notices: [],
     extra: {},
     createdAt: null,
     updatedAt: null,

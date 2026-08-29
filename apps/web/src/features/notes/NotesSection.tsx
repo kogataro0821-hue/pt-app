@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DateKey } from '@pt/core';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
+import type { Client } from '@/features/clients/clientTypes';
+import { commentNotice, pushNotice } from '@/features/notices/noticesRepo';
 import {
   deleteNote,
   listNotes,
@@ -23,17 +25,26 @@ import {
  *   トレーナーは毎日書くとは限らないので、無い日は静かにしておきます。
  */
 export function NotesSection({
-  clientId,
+  client,
   date,
   isAdmin,
   adminUid,
 }: {
-  clientId: string;
+  client: Client;
   date: DateKey;
   isAdmin: boolean;
   /** 書いた人として記録するUID。管理者以外では使いません */
   adminUid: string;
 }) {
+  const clientId = client.clientId;
+  /**
+   * いまのお知らせ一覧（追加仕様: お知らせ欄）。
+   *
+   * ★ props の client は、この画面を開いた時点のものです。
+   *   コメントを2回保存するとき、2回目も古い一覧を渡してしまうと
+   *   1回目のお知らせが消えます。書いたぶんをここで覚えておきます。
+   */
+  const noticesRef = useRef(client.notices);
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -65,6 +76,28 @@ export function NotesSection({
     };
   }, [clientId, date]);
 
+  /**
+   * コメントが届いたことを、契約者に知らせる（追加仕様: お知らせ欄）。
+   *
+   * ★ 同じ日のコメントは、何度直しても**お知らせ1件**です。
+   *   目印を日付から作っているので、2件目にはなりません。
+   *
+   * ★ ここが失敗しても、コメント自体は保存できています。
+   *   お知らせが出ないだけのことで、書いた言葉を失うほうがずっと困ります。
+   *   エラーは出しません。
+   */
+  async function notifyClient() {
+    if (!isAdmin) return;
+    try {
+      noticesRef.current = await pushNotice(
+        { ...client, notices: noticesRef.current },
+        commentNotice(date),
+      );
+    } catch {
+      // お知らせを出せなくても、コメントは保存できている
+    }
+  }
+
   async function add() {
     const text = draft.trim();
     if (text.length === 0) return;
@@ -83,6 +116,7 @@ export function NotesSection({
       await saveNote(clientId, date, note);
       setNotes([...(notes ?? []), note]);
       setDraft('');
+      await notifyClient();
     } catch (e) {
       setError(writeErrorMessage(e, 'コメント'));
     } finally {
@@ -101,6 +135,7 @@ export function NotesSection({
       await saveNote(clientId, date, updated);
       setNotes((notes ?? []).map((n) => (n.id === note.id ? updated : n)));
       setEditingId(null);
+      await notifyClient();
     } catch (e) {
       setError(writeErrorMessage(e, 'コメント'));
     } finally {
