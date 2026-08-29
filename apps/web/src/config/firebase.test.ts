@@ -30,6 +30,6 @@ describe('設定', () => {
   });
 
   it('アプリ名が決まっている', () => {
-    expect(APP_NAME).toBe('PT Manager');
+    expect(APP_NAME).toBe('たろZAP');
   });
 });

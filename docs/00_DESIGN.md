@@ -1538,7 +1538,7 @@ fix/xxxx
 - (b) お持ちのドメイン（silce.jp 等）のサブドメイン: `tanaka01@members.silce.jp`
 
 #### Q3. アプリの名前
-いまは仮に <b>PT Manager</b> としています。決まりしだい2箇所を書き換えるだけです（ホーム画面のアイコン下に出る名前になります）。
+<b>たろZAP</b> です。書き換えるときは3箇所（<code>vite.config.ts</code> の manifest / <code>src/config/firebase.ts</code> の <code>APP_NAME</code> / <code>index.html</code> の <code>&lt;title&gt;</code> と <code>apple-mobile-web-app-title</code>）。ホーム画面のアイコン下に出るのは manifest の <code>short_name</code> と <code>apple-mobile-web-app-title</code> です。
 
 #### Q4. アプリを開く URL
 GitHub Pages の既定では `https://<ユーザー名>.github.io/pt-app/` になります。

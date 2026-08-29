@@ -2584,7 +2584,14 @@ select.input {
   margin-bottom: 6px;
 }
 
-.notice-kind {
+/* ★ 種類の名前を、そのまま class にしてはいけません。
+   'app' はアプリ全体の外枠が使っている class です（min-height: 100dvh）。
+   裸で付けたところ、この小さな札が画面いっぱいの高さになりました。
+   接頭辞を付けて、他とぶつからないようにしてあります。 */
+.notice-kind-welcome,
+.notice-kind-rankup,
+.notice-kind-comment,
+.notice-kind-app {
   font-size: 11px;
 }
 

@@ -76,8 +76,8 @@ export function clientIdToEmail(clientId: string): string {
 /** AI中継サーバー（Cloudflare Worker）。Phase 8 まで空。 */
 export const AI_WORKER_URL = env('VITE_AI_WORKER_URL') ?? null;
 
-/** アプリ名。ここと vite.config.ts の manifest の2箇所だけ（設計書 §5）。 */
-export const APP_NAME = 'PT Manager';
+/** アプリ名。ここと vite.config.ts の manifest と index.html の3箇所（設計書 §5）。 */
+export const APP_NAME = 'たろZAP';
 
 /**
  * AI中継役（Cloudflare Worker）のURL（設計書 §9.2）。

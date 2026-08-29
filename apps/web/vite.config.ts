@@ -25,11 +25,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
-        // ★アプリ名はここと src/config/firebase.ts の2箇所。設計書 §5
-        name: 'PT Manager',
-        short_name: 'PT Manager',
+        // ★アプリ名はここと src/config/firebase.ts と index.html の3箇所。設計書 §5
+        //   short_name は、ホーム画面でアイコンの真下に出る名前です（長いと省略されます）
+        name: 'たろZAP',
+        short_name: 'たろZAP',
         description: '食事・運動・体重を記録して、PFCを正確に管理するアプリ',
         lang: 'ja',
         // standalone にすると、ホーム画面から開いたときに Safari のバーが消えて

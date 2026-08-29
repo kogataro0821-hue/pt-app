@@ -119,7 +119,12 @@ function NoticeRow({
   return (
     <li className={`notice-item${unread ? ' unread' : ''}`}>
       <div className="notice-head">
-        <span className={`badge notice-kind ${notice.kind}`}>{kindLabel(notice.kind)}</span>
+        {/* ★ class 名に必ず notice-kind- を付けます（種類だけを裸で使わない）。
+               'app' という class は、アプリ全体の外枠が使っています（min-height: 100dvh）。
+               裸で付けると、この小さな札が画面いっぱいの高さになります。実際になりました。 */}
+        <span className={`badge notice-kind-${notice.kind.toLowerCase()}`}>
+          {kindLabel(notice.kind)}
+        </span>
         {unread && <span className="notice-dot" aria-label="新しいお知らせ" />}
         <time className="notice-at">{shortDate(notice.at)}</time>
       </div>

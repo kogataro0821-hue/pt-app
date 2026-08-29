@@ -164,3 +164,49 @@ describe('管理者が見るとき', () => {
     expect(screen.getByText('トレーナーからコメントが届きました')).toBeInTheDocument();
   });
 });
+
+/**
+ * ★ ここは、実際にやらかした不具合の再発防止です。
+ *
+ *   種類の名前をそのまま class にしていました（class="badge notice-kind app"）。
+ *   ところが `app` は、アプリ全体の外枠がすでに使っている class です。
+ *
+ *       .app { min-height: 100dvh; display: flex; flex-direction: column; }
+ *
+ *   その結果、種類を示す小さな札が**画面いっぱいの高さ**になり、
+ *   お知らせ1件が縦に何画面ぶんも空いた見た目になりました。
+ *
+ *   画面の確認では気づけませんでした。**4種類のうち app だけ**が壊れていて、
+ *   確認に使った見本には app が入っていなかったためです。
+ *   だからここでは4種類すべてを並べます。
+ */
+describe('★ 種類の class 名が、他とぶつかっていないか', () => {
+  const KINDS: Notice['kind'][] = ['welcome', 'rankUp', 'comment', 'app'];
+
+  it('4種類すべてに、接頭辞の付いた class が付く', () => {
+    show({
+      notices: KINDS.map((kind, i) => aNotice({ id: kind, kind, at: 1000 + i })),
+    });
+
+    for (const kind of KINDS) {
+      expect(document.querySelector(`.notice-kind-${kind.toLowerCase()}`)).not.toBeNull();
+    }
+  });
+
+  it('★ 種類の名前を、裸の class として使っていない', () => {
+    // ★ 'app' や 'comment' のような一般的な語は、
+    //   いまぶつかっていなくても、あとから足された class とぶつかります。
+    show({
+      notices: KINDS.map((kind, i) => aNotice({ id: kind, kind, at: 1000 + i })),
+    });
+
+    for (const el of document.querySelectorAll('.notice-head span')) {
+      for (const cls of el.classList) {
+        expect(
+          KINDS.map((k) => k.toLowerCase()).includes(cls.toLowerCase()),
+          `class="${cls}" は種類の名前そのものです。notice-kind- を付けてください。`,
+        ).toBe(false);
+      }
+    }
+  });
+});
