@@ -242,11 +242,28 @@ function RequestCard({
           {label !== null && (
             <div className="notice">
               <p>
-                <b>契約者が撮った成分表示</b>
+                {/* ★ どこから来た数字かを、必ず区別して出します。
+                       写真つきなら表示と見比べられますが、手入力はそれができません。
+                       同じ顔で並べると、確かめずに採用してしまいます。 */}
+                <b>
+                  {label.source === 'manual'
+                    ? '契約者が手で入れた仮の値'
+                    : '契約者が撮った成分表示'}
+                </b>
                 <br />
-                読み取った値: {label.per100g.kcal}kcal · P{label.per100g.p} F{label.per100g.f} C
+                {label.source === 'manual' ? '入れた値: ' : '読み取った値: '}
+                {label.per100g.kcal}kcal · P{label.per100g.p} F{label.per100g.f} C
                 {label.per100g.c}（100gあたり）
               </p>
+
+              {label.source === 'manual' && (
+                <p className="field-hint">
+                  <b>裏付けはありません。</b>
+                  契約者が分かる範囲で入れた数字です。この値はすでに
+                  その契約者の合計に「仮」として入っているので、
+                  <b>登録するとその日の数字が変わります。</b>
+                </p>
+              )}
               {label.note.length > 0 && <p className="field-hint">{label.note}</p>}
 
               {label.photo.length > 0 && (

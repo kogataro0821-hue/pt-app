@@ -58,11 +58,40 @@ export interface MealItem {
    *   そこで「名前と量だけ記録し、栄養値は未確定」という状態を許します。
    *   記録を止めてしまうと続かなくなるからです。
    *
-   *   未確定の食材は nutrients が 0 なので、合計には影響しません。
+   *   未確定の食材は、既定では nutrients が 0 なので、合計には影響しません。
    *   ただし画面には「未確定が◯件あります」と必ず出し、
    *   合計が実際より少ないことが分かるようにします。
+   *
+   *   例外が `provisional` です（下を参照）。
    */
   pending: boolean;
+
+  /**
+   * 契約者が入れた「仮の値」か（追加仕様: 仮の栄養値）。
+   *
+   * ★ ここは、設計の原則と実際の使い勝手がぶつかった場所です。
+   *
+   *   原則: 栄養値を決めるのは管理者だけ（共通マスタ）。
+   *         「白米」が人によって156kcalだったり200kcalだったりすると、
+   *         数字を根拠にした指導ができなくなります。
+   *
+   *   現実: マスタに無い食材を食べた日は、合計が実際より少なく出ます。
+   *         記録したのに数字が0のままだと、続ける気がなくなります。
+   *
+   *   折り合いとして、こうしました。
+   *
+   *     ・**マスタにある食材の値は、契約者は触れません**（原則はここで守られます）
+   *     ・マスタに無い食材にかぎり、契約者が仮の値を入れられます
+   *     ・仮の値は合計に入りますが、画面では「うち仮」として分けて出します
+   *     ・管理者がマスタに登録すると、マスタの値に置き換わり、この印は消えます
+   *
+   *   つまり契約者が決めているのではなく、**管理者が決めるまでの間に合わせ**です。
+   *   値がぶつかりうる場所（マスタにある食材）には、そもそも入力欄が出ません。
+   *
+   * ★ true のとき pending も必ず true です。
+   *   per100g / nutrients には、契約者が入れた値が入っています。
+   */
+  provisional: boolean;
 }
 
 /** 1回の食事。「1食目」「2食目」…と自由に増やせる（Q12の決定）。 */
@@ -104,6 +133,39 @@ export function flatItemTotals(meals: readonly Pick<Meal, 'items'>[]): Nutrients
 /** 栄養値がまだ確定していない食材の数。 */
 export function countPending(meals: readonly Pick<Meal, 'items'>[]): number {
   return meals.reduce((sum, m) => sum + m.items.filter((i) => i.pending).length, 0);
+}
+
+/**
+ * 契約者が仮の値を入れた食材の数（追加仕様: 仮の栄養値）。
+ *
+ * この分は合計に**入っています**。画面では「うち仮」として分けて出します。
+ */
+export function countProvisional(meals: readonly Pick<Meal, 'items'>[]): number {
+  return meals.reduce((sum, m) => sum + m.items.filter((i) => i.provisional).length, 0);
+}
+
+/**
+ * 栄養値がまったく無い食材の数。
+ *
+ * ★ `countPending` との違いに意味があります。
+ *   未確定のうち、仮の値が入っているものは合計に入っています。
+ *   「合計に含まれていません」と伝えるべきなのは、こちらの数です。
+ */
+export function countNoValue(meals: readonly Pick<Meal, 'items'>[]): number {
+  return meals.reduce(
+    (sum, m) => sum + m.items.filter((i) => i.pending && !i.provisional).length,
+    0,
+  );
+}
+
+/**
+ * 仮の値のぶんだけを足した合計。
+ *
+ * 「1,850kcal（うち仮 95kcal）」の、括弧の中を出すために使います。
+ * どれだけが確かな数字で、どれだけが間に合わせかを、画面で見分けられるようにします。
+ */
+export function provisionalTotals(meals: readonly Pick<Meal, 'items'>[]): Nutrients {
+  return sumNutrients(meals.flatMap((m) => m.items.filter((i) => i.provisional).map((i) => i.nutrients)));
 }
 
 /** 次に使う既定のラベル。「1食目」「2食目」… */
@@ -250,6 +312,9 @@ export function applyFoodToPending(
       nutrients: computeItemNutrients(food.per100g, item.grams),
       foodId: food.id,
       pending: false,
+      // ★ 仮の値だったものも、ここでマスタの値に置き換わります。
+      //   印を消し忘れると、確定したのに「仮」と表示され続けます。
+      provisional: false,
     };
   });
 

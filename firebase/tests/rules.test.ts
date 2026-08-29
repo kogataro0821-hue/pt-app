@@ -799,6 +799,33 @@ describe('★ 食品の登録依頼（設計書 §21 / Phase 9）', () => {
     );
   });
 
+  // ★ 追加仕様: 仮の栄養値
+  //   手で入れた値と、写真から読み取った値は、管理者にとって重みが違います。
+  //   区別できないと、裏付けの無い数字をそのままマスタに入れてしまいます。
+  it('値の出どころ（手入力か、成分表示か）を添えられる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...candidate,
+        candidateSource: 'manual',
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...candidate,
+        candidateSource: 'label',
+      }),
+    );
+  });
+
+  it('知らない出どころは書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
+        ...candidate,
+        candidateSource: 'trainer',
+      }),
+    );
+  });
+
   it('大きすぎる写真は送れない', async () => {
     await assertFails(
       setDoc(doc(alice(), 'foodRequests/さらだちきん/from/alice'), {
@@ -891,12 +918,27 @@ describe('★ 一括置き換えの変更履歴（設計書 §19 / Phase 9）', 
   });
 
   // ★ 履歴は追記のみ。書き換えられたら履歴の意味がない。
-  it('管理者でも履歴は書き換えられない', async () => {
+  // ★ 書き換えと削除を、あえて分けています（追加仕様: 契約者の完全削除）。
+  //
+  //   書き換えを許すと、トレーナーが「別の数字だったことにする」ことができます。
+  //   履歴が守っているのは、まさにそこです。だから誰にも許しません。
+  //
+  //   削除は、契約者を完全に消すときに必要です。ここだけ残ると、
+  //   消したはずの人の食材名と日付が残り続けます。
+  //   消えていれば「無い」ことは分かるので、書き換えとは性質が違います。
+  it('★ 管理者でも履歴は書き換えられない', async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'clients/alice/audits/a1'), audit);
     });
     await assertFails(setDoc(doc(admin(), 'clients/alice/audits/a1'), { ...audit, at: 2 }));
-    await assertFails(deleteDoc(doc(admin(), 'clients/alice/audits/a1')));
+  });
+
+  it('契約者は履歴を書き換えも削除もできない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'clients/alice/audits/a2'), audit);
+    });
+    await assertFails(setDoc(doc(alice(), 'clients/alice/audits/a2'), { ...audit, at: 2 }));
+    await assertFails(deleteDoc(doc(alice(), 'clients/alice/audits/a2')));
   });
 
   it('契約者は他人の履歴を読めない', async () => {
@@ -1338,11 +1380,18 @@ describe('★ 変更履歴は追記のみ（設計書 §19）', () => {
     );
   });
 
-  it('管理者でも履歴を削除できない', async () => {
+  it('管理者は履歴を削除できる（契約者の完全削除のため）', async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'clients/alice/audits/a3'), { action: 'update' });
     });
-    await assertFails(deleteDoc(doc(admin(), 'clients/alice/audits/a3')));
+    await assertSucceeds(deleteDoc(doc(admin(), 'clients/alice/audits/a3')));
+  });
+
+  it('未認証は履歴を削除できない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'clients/alice/audits/a4'), { action: 'update' });
+    });
+    await assertFails(deleteDoc(doc(guest(), 'clients/alice/audits/a4')));
   });
 
   it('履歴を読めるのは管理者だけ', async () => {
@@ -2134,5 +2183,70 @@ describe('★ 値の検査 — 境界のちょうどと、型', () => {
       await seed(`clients/alice/days/${TEN_DAYS_AGO}/photos/p2`, { dataUrl: 'x', createdAt });
       await assertFails(deleteDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p2`)));
     });
+  });
+});
+
+// =============================================================================
+// 追加仕様: 契約者の完全削除
+//
+// ★ 管理者が、その契約者のデータを1つ残らず消せるか。
+//
+//   Firestore は親を消しても下位コレクションが残ります。
+//   1か所でも権限が足りないと、そこだけが**画面から見えないまま生き残ります**。
+//   消したつもりで消えていない、といういちばんたちの悪い状態です。
+//
+//   ここでは「全部の置き場所を、管理者が消せる」ことを1件ずつ確かめます。
+//   deleteClient.ts の消し漏れは、別の見張り（coverage.test.ts）が見ています。
+// =============================================================================
+
+describe('★ 契約者を完全に削除できるか（管理者）', () => {
+  const DATE = '2026-03-01';
+
+  /** その契約者のデータが置かれうる場所を、全部並べる */
+  const PLACES: { label: string; path: string; data: Record<string, unknown> }[] = [
+    { label: '食事', path: `clients/alice/days/${DATE}/meals/m1`, data: { order: 0, items: [] } },
+    { label: '運動', path: `clients/alice/days/${DATE}/exercises/e1`, data: { minutes: 30 } },
+    { label: '写真', path: `clients/alice/days/${DATE}/photos/p1`, data: { dataUrl: 'x', createdAt: 1 } },
+    { label: 'トレーナーのコメント', path: `clients/alice/days/${DATE}/notes/n1`, data: { text: 'よい' } },
+    { label: 'AI評価', path: `clients/alice/days/${DATE}/review/latest`, data: { text: '講評' } },
+    { label: '日データ', path: `clients/alice/days/${DATE}`, data: { date: DATE } },
+    { label: '体のサイズ', path: 'clients/alice/measurements/2026-03-01', data: { waistCm: 70 } },
+    { label: 'お気に入り', path: 'clients/alice/favorites/f1', data: { name: '朝の定番' } },
+    { label: '個人のレシピ', path: 'clients/alice/recipes/r1', data: { name: 'рецепт' } },
+    { label: '移行前の食品マスタ', path: 'clients/alice/foods/legacy1', data: { name: '白米' } },
+    { label: '変更履歴', path: 'clients/alice/audits/a9', data: { type: 'x' } },
+    { label: 'AIとの会話', path: 'clients/alice/aiSessions/s1', data: { startedAt: 1 } },
+    {
+      label: 'AIとの会話の本文',
+      path: 'clients/alice/aiSessions/s1/messages/m1',
+      data: { role: 'user', text: '白米180g' },
+    },
+    { label: '登録依頼に残る自分の分', path: 'foodRequests/さらだちきん/from/alice', data: { variant: 'サラダチキン', count: 1, dates: [] } },
+    { label: '権限', path: 'users/alice-uid', data: { role: 'client', clientId: 'alice', active: true } },
+    { label: '契約者そのもの', path: 'clients/alice', data: { clientId: 'alice' } },
+  ];
+
+  for (const place of PLACES) {
+    it(`${place.label}を消せる`, async () => {
+      await seed(place.path, place.data);
+      await assertSucceeds(deleteDoc(doc(admin(), place.path)));
+    });
+  }
+
+  it('★ 契約者自身は、これらを勝手に消せない（消えるのは管理者の操作のときだけ）', async () => {
+    // ★ 削除の権限を広げたことで、契約者まで消せるようになっていないかの確認です。
+    await seed('clients/alice/audits/a10', { type: 'x' });
+    await assertFails(deleteDoc(doc(alice(), 'clients/alice/audits/a10')));
+
+    await seed('users/alice-uid', { role: 'client', clientId: 'alice', active: true });
+    await assertFails(deleteDoc(doc(alice(), 'users/alice-uid')));
+
+    await assertFails(deleteDoc(doc(alice(), 'clients/alice')));
+  });
+
+  it('★ 他人の契約者を消せるのは管理者だけ', async () => {
+    await seed('clients/bob/audits/b1', { type: 'x' });
+    await assertFails(deleteDoc(doc(alice(), 'clients/bob/audits/b1')));
+    await assertFails(deleteDoc(doc(guest(), 'clients/bob/audits/b1')));
   });
 });

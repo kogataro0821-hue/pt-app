@@ -27,6 +27,26 @@ const rules = readFileSync(
 const tests = readFileSync(fileURLToPath(new URL('./rules.test.ts', import.meta.url)), 'utf8');
 
 /**
+ * 契約者を完全に削除する処理（追加仕様: 契約者の完全削除）。
+ *
+ * ★ ここも「見落とすと誰も気づけない」場所です。
+ *   Firestore は親を消しても下位コレクションが残ります。
+ *   新しいコレクションを増やして、この処理に足し忘れると、
+ *   **消したはずの契約者のデータが、画面から見えないまま残り続けます。**
+ *   いちばんたちの悪い残り方です。
+ */
+const deleteClient = readFileSync(
+  fileURLToPath(new URL('../../apps/web/src/features/clients/deleteClient.ts', import.meta.url)),
+  'utf8',
+);
+
+/**
+ * 契約者に紐づかない、共有のコレクション。
+ * 契約者を1人消しても、これは消しません。
+ */
+const SHARED_COLLECTIONS = new Set(['config']);
+
+/**
  * ルールの中の match ブロックから、コレクション名を拾う。
  *
  *   match /clients/{cid}/days/{date}/photos/{photoId}  →  clients, days, photos
@@ -78,6 +98,41 @@ describe('Rules のコレクションに、テストの取りこぼしが無い�
   }
 });
 
+describe('契約者を消したときに、消し残しが出ないか', () => {
+  for (const name of collectionsInRules()) {
+    if (SHARED_COLLECTIONS.has(name)) continue;
+
+    it(`${name} を消している`, () => {
+      expect(
+        new RegExp(`['\`]${name}['\`]`).test(deleteClient),
+        `ルールに match /${name} がありますが、deleteClient.ts で消していません。` +
+          `契約者を完全に削除しても、ここのデータだけが残ります。` +
+          `消す対象に足すか、共有のものなら SHARED_COLLECTIONS に足してください。`,
+      ).toBe(true);
+    });
+  }
+
+  it('親より先に、下位のものを消している', () => {
+    // ★ 親（clients/{cid}）を先に消すと、途中で失敗したときに
+    //   「どの契約者のものか分からない孤児」が大量に残ります。
+    const days = deleteClient.indexOf("'days'");
+    const client = deleteClient.lastIndexOf("'clients', cid");
+    expect(days).toBeGreaterThan(0);
+    expect(client).toBeGreaterThan(days);
+  });
+
+  it('ログインアカウントが消えないことを、画面で伝えている', () => {
+    // ★ Admin SDK が無いので、ここでは消せません。
+    //   黙って残すと、同じ契約者IDで作り直せない理由が分からなくなります。
+    const zone = readFileSync(
+      fileURLToPath(new URL('../../apps/web/src/features/clients/DangerZone.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(zone).toContain('ログインアカウントは、ここでは消せません');
+    expect(zone).toContain('pt-app.local');
+  });
+});
+
 describe('ルールの土台が外れていないか', () => {
   it('既定の全拒否が残っている', () => {
     // ★ これが外れると、書き忘れたパスが「誰でも読み書きできる」状態になります
@@ -96,6 +151,13 @@ describe('ルールの土台が外れていないか', () => {
   it('管理者判定に「有効なアカウントか」が入っている', () => {
     // ★ ここから active の判定が落ちると、無効にした管理者が生き返ります
     expect(rules).toMatch(/function\s+isAdmin\(\)[\s\S]*?me\(\)\.active\s*==\s*true/);
+  });
+
+  it('★ 変更履歴の書き換えは、誰にも許していない', () => {
+    // ★ 削除は管理者に許しました（契約者の完全削除のため）。
+    //   でも書き換えを許すと、トレーナーが「別の数字だったことにする」ことができます。
+    //   履歴が守っているのは、まさにそこです。
+    expect(rules).toMatch(/match\s+\/audits\/\{auditId\}[\s\S]*?allow\s+update:\s*if\s+false;/);
   });
 
   it('契約者判定に、本人かどうかの比較が入っている', () => {

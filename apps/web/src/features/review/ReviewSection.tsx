@@ -33,7 +33,8 @@ export function ReviewSection({
   targets,
   exerciseMinutes,
   mealCount,
-  pendingCount,
+  noValueCount,
+  provisionalCount,
   reviewMode,
   aiAvailable,
   canEdit,
@@ -46,7 +47,10 @@ export function ReviewSection({
   targets: Targets;
   exerciseMinutes: number;
   mealCount: number;
-  pendingCount: number;
+  /** 栄養値がまったく無く、合計に入っていない食材の数 */
+  noValueCount: number;
+  /** 契約者が仮の値を入れた食材の数。この分は合計に入っている */
+  provisionalCount: number;
   reviewMode: string;
   aiAvailable: boolean;
   canEdit: boolean;
@@ -88,7 +92,8 @@ export function ReviewSection({
         target: { kcal: targets.kcal, p: targets.p, f: targets.f, c: targets.c },
         exerciseMinutes,
         mealCount,
-        pendingCount,
+        noValueCount,
+        provisionalCount,
         reviewMode,
       });
 

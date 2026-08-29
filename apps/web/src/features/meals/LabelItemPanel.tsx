@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ZERO, type MealItem } from '@pt/core';
+import { computeItemNutrients, toInternal, type MealItem } from '@pt/core';
 import { LabelScanner } from '@/features/foods/LabelScanner';
 import type { LabelCandidate } from '@/features/foods/requestsRepo';
 import { newItemId } from './mealsRepo';
@@ -18,10 +18,14 @@ import { newItemId } from './mealsRepo';
  *   撮れば、商品名も1食分のグラム数も表示に書いてあります。
  *   打つ前に読める情報を、打たせる理由がありません。
  *
- * ★ 数値はここでは記録に入りません。
+ * ★ 読み取った値は「仮の値」として記録に入ります（追加仕様: 仮の栄養値）。
  *
- *   読み取った100gあたりの値は「登録依頼」として管理者へ送られます。
- *   その食材は「登録待ち」として残り、合計には入りません。
+ *   以前はここで捨てていました。承認されるまで0のままだったので、
+ *   袋の数字を撮ったのに、その日の合計には1kcalも入りませんでした。
+ *
+ *   いまは仮の値として合計に入れ、画面では「うち仮」として分けて出します。
+ *   同じ値が「登録依頼」として管理者にも送られ、
+ *   **マスタの値になるかどうかは、これまでどおり管理者が決めます。**
  *   管理者が承認した時点で、食べたグラム数に換算されて記録に入ります。
  *
  *   袋に書いてある数字なら信用してよさそうに見えますが、
@@ -58,7 +62,7 @@ export function LabelItemPanel({
           onCancel={onClose}
           onDone={(r) => {
             setRead({
-              candidate: { per100g: r.per100g, note: r.note, photo: r.photo },
+              candidate: { source: 'label', per100g: r.per100g, note: r.note, photo: r.photo },
               productName: r.productName,
               servingGrams: r.servingGrams,
             });
@@ -89,16 +93,24 @@ export function LabelItemPanel({
     if (read === null) return;
 
     const trimmed = name.trim();
+    // ★ 読み取った値を「仮の値」として使います（追加仕様: 仮の栄養値）。
+    //
+    //   以前はここで捨てていました。管理者が承認するまで0のままだったので、
+    //   袋の数字を撮ったのに、その日の合計には1kcalも入りませんでした。
+    //
+    //   いまは仮の値として合計に入れ、画面では「うち仮」として分けて出します。
+    //   マスタの値になるかどうかは、これまでどおり管理者が決めます。
+    const per100g = toInternal(read.candidate.per100g);
     onAdd(
       {
         id: newItemId(),
         name: trimmed,
         grams: gramsNum,
-        // 栄養値は入れません。管理者が承認した時点で入ります。
-        per100g: ZERO,
-        nutrients: ZERO,
+        per100g,
+        nutrients: computeItemNutrients(per100g, gramsNum),
         foodId: null,
         pending: true,
+        provisional: true,
       },
       trimmed,
       read.candidate,
@@ -151,9 +163,9 @@ export function LabelItemPanel({
           {read.candidate.per100g.kcal}kcal · P{read.candidate.per100g.p} F
           {read.candidate.per100g.f} C{read.candidate.per100g.c}（100gあたり）
           <br />
-          この値はトレーナーへ送られます。<b>承認されると、この記録に反映されます。</b>
+          この値を<b>仮の値として、この日の合計に入れます。</b>
           <br />
-          それまでは「登録待ち」として残り、合計には入りません。
+          同じ値がトレーナーにも届きます。<b>承認されると、正しい値に置き換わります。</b>
         </p>
 
         {error !== null && (

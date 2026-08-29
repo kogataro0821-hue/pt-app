@@ -1,7 +1,13 @@
-import type { ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { APP_NAME } from '@/config/firebase';
 import { useAuth } from '@/features/auth/AuthProvider';
+import {
+  clearRequestCount,
+  ensureRequestCount,
+  requestCountSnapshot,
+  subscribeRequestCount,
+} from '@/features/foods/requestCount';
 
 /**
  * 全画面共通の外枠（設計書 §11.1）。
@@ -22,6 +28,18 @@ export function AppShell({
 }) {
   const { state, signOutNow } = useAuth();
   const isAdmin = state.status === 'signedIn' && state.user.role === 'admin';
+
+  // 未処理の登録依頼の件数。契約者は読めないので、管理者のときだけ数えます。
+  const pendingRequests = useSyncExternalStore(subscribeRequestCount, requestCountSnapshot);
+  useEffect(() => {
+    if (isAdmin) {
+      void ensureRequestCount();
+      return;
+    }
+    // ★ 管理者でなくなったら（ログアウト・契約者に切り替わった）、覚えていた数を捨てます。
+    //   画面には出ませんが、前の人のものを持ち続ける理由がありません。
+    clearRequestCount();
+  }, [isAdmin]);
 
   return (
     <div className="app">
@@ -46,7 +64,7 @@ export function AppShell({
         <nav className="admin-nav">
           <AdminLink to="/clients" label="契約者" />
           <AdminLink to="/foods" label="食品マスタ" />
-          <AdminLink to="/foods/requests" label="登録依頼" />
+          <AdminLink to="/foods/requests" label="登録依頼" badge={pendingRequests} />
         </nav>
       )}
 
@@ -68,13 +86,29 @@ export function AppShell({
 }
 
 /** 現在地に印を付けるリンク。/foods と /foods/requests を取り違えないように。 */
-function AdminLink({ to, label }: { to: string; label: string }) {
+function AdminLink({
+  to,
+  label,
+  badge,
+}: {
+  to: string;
+  label: string;
+  /** 数が分かっていて、かつ1件以上のときだけ出す。0件のときは何も出しません */
+  badge?: number | null;
+}) {
   const { pathname } = useLocation();
   const current = to === '/foods' ? pathname === '/foods' : pathname.startsWith(to);
 
   return (
     <Link className={current ? 'admin-link current' : 'admin-link'} to={to}>
       {label}
+      {badge !== undefined && badge !== null && badge > 0 && (
+        // ★ 3桁になると横並びが崩れるので、そこで打ち切ります。
+        //   ここまで溜まっていれば、正確な数より「溜まっている」ことが大事です。
+        <span className="admin-badge" aria-label={`未処理の依頼が${badge}件`}>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   );
 }

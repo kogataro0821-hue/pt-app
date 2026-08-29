@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { macroMismatchWarning, validateTargets, type Targets } from '@pt/core';
 import { deleteProvisioningClient, getClient, setClientActive, updateClient } from './clientsRepo';
 import { REVIEW_MODES, sexLabel, type Client, type ReviewMode, type Sex } from './clientTypes';
+import { DangerZone } from './DangerZone';
 
 /**
  * 契約者の編集（設計書 §11.3 A-3）。
@@ -371,6 +372,10 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
           {client.active ? 'この契約者を無効にする' : 'この契約者を有効に戻す'}
         </button>
       </section>
+
+      {/* ★ 完全削除は、いちばん下に、いちばん目立たない形で置きます。
+             よく使う操作の隣に置くと、いつか押されます。 */}
+      <DangerZone client={client} onDeleted={onBack} />
     </>
   );
 }

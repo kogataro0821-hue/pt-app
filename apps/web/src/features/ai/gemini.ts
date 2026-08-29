@@ -709,8 +709,16 @@ export interface ReviewInput {
   exerciseMinutes: number;
   /** 食事の件数。0 なら記録が無い日 */
   mealCount: number;
-  /** 栄養値がまだ確定していない食材の数 */
-  pendingCount: number;
+  /**
+   * 栄養値がまったく無く、上の摂取量に**入っていない**食材の数。
+   * ここが0でないと、AIは実際より少ない数字を見て語ることになります。
+   */
+  noValueCount: number;
+  /**
+   * 契約者が仮に入れた値で計算されている食材の数。
+   * こちらは摂取量に**入っています**。ただし確定した数字ではありません。
+   */
+  provisionalCount: number;
   /** 'gentle' | 'standard' | 'strict' | 'very_strict' */
   reviewMode: string;
 }
@@ -748,8 +756,14 @@ export async function requestDayReview(input: ReviewInput): Promise<string> {
     `目標: ${round(input.target.kcal)}kcal / P ${round(input.target.p)}g / F ${round(input.target.f)}g / C ${round(input.target.c)}g`,
     `目標との差: ${signed(input.actual.kcal - input.target.kcal)}kcal / P ${signed(input.actual.p - input.target.p)}g / F ${signed(input.actual.f - input.target.f)}g / C ${signed(input.actual.c - input.target.c)}g`,
     `運動: ${input.exerciseMinutes}分`,
-    input.pendingCount > 0
-      ? `※ 栄養値がまだ登録されていない食材が${input.pendingCount}件あり、上の摂取量には含まれていません。実際はこれより多く食べています。その前提で書いてください。`
+    input.noValueCount > 0
+      ? `※ 栄養値がまだ登録されていない食材が${input.noValueCount}件あり、上の摂取量には含まれていません。実際はこれより多く食べています。その前提で書いてください。`
+      : '',
+    // ★ 仮の値が混ざっていることは、AIにも伝えます。
+    //   伝えないと、確定した数字と同じ確からしさで語ります。
+    //   「167gちょうど摂れています」のような言い方は、仮の数字にはふさわしくありません。
+    input.provisionalCount > 0
+      ? `※ 上の摂取量には、本人が仮に入力した値で計算されている食材が${input.provisionalCount}件ぶん含まれています。まだトレーナーが確認していない数字なので、細かい数値の断定は避けてください。`
       : '',
   ]
     .filter((line) => line.length > 0)

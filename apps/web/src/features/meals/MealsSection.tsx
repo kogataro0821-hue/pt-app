@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  countPending,
+  countNoValue,
+  countProvisional,
+  provisionalTotals,
   dayTotals,
   diffFromTarget,
   formatNutrients,
@@ -60,7 +62,10 @@ export function MealsSection({
   onSummary?: (summary: {
     totals: Nutrients;
     mealCount: number;
-    pendingCount: number;
+    /** 栄養値がまったく無く、合計に入っていない食材の数 */
+    noValueCount: number;
+    /** 契約者が仮の値を入れた食材の数。この分は合計に**入っています** */
+    provisionalCount: number;
   }) => void;
 }) {
   const [meals, setMeals] = useState<Meal[] | null>(null);
@@ -81,7 +86,8 @@ export function MealsSection({
     onSummary?.({
       totals: dayTotals(meals),
       mealCount: meals.length,
-      pendingCount: countPending(meals),
+      noValueCount: countNoValue(meals),
+      provisionalCount: countProvisional(meals),
     });
     // ★ 依存は meals だけです。
     //   onSummary を入れると、親が毎回関数を作り直すたびに再実行され、
@@ -279,7 +285,9 @@ export function MealsSection({
 
   const totals = dayTotals(meals);
   const hasAnyItem = meals.some((m) => m.items.length > 0);
-  const pendingCount = countPending(meals);
+  const noValueCount = countNoValue(meals);
+  const provisionalCount = countProvisional(meals);
+  const provisional = provisionalTotals(meals);
   // 中継役が未設定なら、そもそもAIは動かないのでボタンも出さない
   const aiAvailable = AI_RELAY_URL !== null && hasValidAiConsent(aiConsent);
 
@@ -463,7 +471,9 @@ export function MealsSection({
         totals={totals}
         targets={targets}
         hasAnyItem={hasAnyItem}
-        pendingCount={pendingCount}
+        noValueCount={noValueCount}
+        provisionalCount={provisionalCount}
+        provisional={provisional}
       />
     </>
   );
@@ -489,7 +499,17 @@ function ItemRow({
         <span className="item-name">{item.name}</span>
         <span className="item-grams">{item.grams}g</span>
       </div>
-      {item.pending ? (
+      {/* ★ 仮の値のときは、数字と「仮」の印を両方出します。
+             数字だけだと確定と見分けが付かず、印だけだと合計との関係が分かりません。 */}
+      {item.provisional ? (
+        <div className="macros">
+          <span className="badge wait">仮</span>
+          <span className="kcal">{f.kcal}kcal</span>
+          <span className="macro p">P {f.p}</span>
+          <span className="macro f">F {f.f}</span>
+          <span className="macro c">C {f.c}</span>
+        </div>
+      ) : item.pending ? (
         <div className="macros">
           <span className="badge wait">栄養値は登録待ち</span>
         </div>
@@ -548,19 +568,26 @@ function TotalsCard({
   totals,
   targets,
   hasAnyItem,
-  pendingCount,
+  noValueCount,
+  provisionalCount,
+  provisional,
 }: {
   totals: Nutrients;
   targets: Targets;
   hasAnyItem: boolean;
-  /** 栄養値がまだ確定していない食材の数 */
-  pendingCount: number;
+  /** 栄養値がまったく無く、合計に入っていない食材の数 */
+  noValueCount: number;
+  /** 契約者が仮の値を入れた食材の数 */
+  provisionalCount: number;
+  /** その仮の値だけを足した合計 */
+  provisional: Nutrients;
 }) {
   const target = targetsToNutrients(targets);
   const diff = diffFromTarget(totals, target);
   const f = formatNutrients(totals);
   const t = formatNutrients(target);
   const d = formatNutrients(diff);
+  const pv = formatNutrients(provisional);
 
   return (
     <section className="card totals">
@@ -597,13 +624,40 @@ function TotalsCard({
       </div>
 
       {/*
+        ★ 仮の値が混ざっていることは、必ず分けて出します（追加仕様: 仮の栄養値）。
+
+          合計に入れるからには、「どこまでが確かな数字か」が
+          ひと目で分かる必要があります。混ぜたまま出すと、
+          仮の数字を根拠に判断してしまいます。
+      */}
+      {provisionalCount > 0 && (
+        <div className="row provisional">
+          <div className="row-label">うち仮</div>
+          <div className="macros">
+            <span className="kcal">{pv.kcal}kcal</span>
+            <span className="macro p">P {pv.p}</span>
+            <span className="macro f">F {pv.f}</span>
+            <span className="macro c">C {pv.c}</span>
+          </div>
+        </div>
+      )}
+
+      {provisionalCount > 0 && (
+        <p className="notice">
+          仮の値で記録した食材が{provisionalCount}件あります。
+          <b>その分も上の合計に入っています。</b>
+          トレーナーが登録すると、正しい値に置き換わります。
+        </p>
+      )}
+
+      {/*
         ★ 未確定があることは必ず伝えます。
           伝えないと「合計が実際より少ない」ことに気づけず、
           その数字を根拠に判断してしまいます。
       */}
-      {pendingCount > 0 && (
+      {noValueCount > 0 && (
         <p className="notice">
-          栄養値が未確定の食材が{pendingCount}件あります。
+          栄養値が未確定の食材が{noValueCount}件あります。
           <b>その分は合計に含まれていません。</b>
           トレーナーが登録すると反映されます。
         </p>

@@ -4,6 +4,7 @@ import {
   findExactFood,
   findSimilarFoods,
   formatNutrients,
+  toDecimal,
   toInternal,
   ZERO,
   type MealItem,
@@ -18,20 +19,26 @@ import { newItemId } from './mealsRepo';
 /**
  * 食材1件の入力（設計書 §13 / §21 / Phase 9）。
  *
- * ★ 契約者が決められるのは「量(g)」だけです。
+ * ★ 境界は「マスタにあるかどうか」です（追加仕様: 仮の栄養値）。
  *
- *   100gあたりの kcal / P / F / C は共通マスタの値をそのまま使い、
- *   契約者は編集できません。ここを開けてしまうと、
- *   同じ食材の数値が人によって違う状態が生まれ、
+ *   | 食材 | 契約者ができること |
+ *   |---|---|
+ *   | マスタにある | 量(g)だけ。栄養値は**見るだけ** |
+ *   | マスタに無い | 量(g)と、**仮の栄養値** |
+ *
+ *   マスタにある食材の値を触らせないことが、いちばん大事な一線です。
+ *   ここを開けると「白米」が人によって156kcalだったり200kcalだったりして、
  *   トレーナーが数字を根拠に指導できなくなります。
+ *   **値がぶつかりうる場所には、そもそも入力欄を出しません。**
  *
- *   量は本人しか知らない情報なので、本人が入れます。
- *   栄養値は調べる人が決める情報なので、管理者が決めます。
- *   それぞれ、知っている側が担当する形です。
+ *   マスタに無い食材は、そもそもぶつかる相手がいません。
+ *   0のまま記録されるより、本人の分かる範囲で入れてもらったほうが、
+ *   その日の合計が実態に近づきます。管理者が登録した時点で置き換わります。
  *
- * ★ マスタに無い食材も記録できます。
- *   その場合は「栄養値は未確定」として記録し、管理者へ登録依頼を出します。
- *   記録を止めると続かなくなるので、止めません。
+ * ★ 同じ入力欄でも、管理者と契約者では意味が違います。
+ *
+ *     管理者が入れた値 … 確定（そのまま使う）
+ *     契約者が入れた値 … 仮（「うち仮」として分けて表示し、承認で置き換わる）
  */
 export function ItemForm({
   initial,
@@ -57,16 +64,31 @@ export function ItemForm({
   const [grams, setGrams] = useState(initial === undefined ? '' : String(initial.grams));
   const [foods, setFoods] = useState<Food[]>([]);
   const [picked, setPicked] = useState<Food | null>(null);
-  /** 管理者がその場で入れた栄養値 */
-  const [manual, setManual] = useState<Record<keyof Per100gInput, string>>({
-    kcal: '',
-    p: '',
-    f: '',
-    c: '',
-  });
+  /**
+   * その場で入れた100gあたりの栄養値。
+   * 管理者なら確定値、契約者なら仮の値になります（下の submit を参照）。
+   */
+  const [manual, setManual] = useState<Record<keyof Per100gInput, string>>(
+    initial !== undefined && initial.provisional
+      ? {
+          // 編集のときは、前に入れた仮の値を出しておきます。
+          // 空欄から入れ直させると、直したいだけの人が全部打ち直すことになります。
+          kcal: String(toDecimal(initial.per100g).kcal),
+          p: String(toDecimal(initial.per100g).p),
+          f: String(toDecimal(initial.per100g).f),
+          c: String(toDecimal(initial.per100g).c),
+        }
+      : { kcal: '', p: '', f: '', c: '' },
+  );
   const [error, setError] = useState<string | null>(null);
-  /** 成分表示から読み取った候補。管理者へ一緒に送る（追加仕様: 成分表示の読み取り） */
-  const [candidate, setCandidate] = useState<LabelCandidate | null>(null);
+  /**
+   * 成分表示を読み取ったときの、写真とメモ（追加仕様: 成分表示の読み取り）。
+   *
+   * ★ 読み取った**数字は manual に入れます**。候補として別に持ちません。
+   *   そうしないと、読み取りが間違っていたときに直す手段がありません。
+   *   AIのOCRは間違えます。直せる形にしておきます。
+   */
+  const [scan, setScan] = useState<{ note: string; photo: string; read: Per100gInput } | null>(null);
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
@@ -91,11 +113,32 @@ export function ItemForm({
     f: parse(manual.f) ?? 0,
     c: parse(manual.c) ?? 0,
   };
-  const manualFilled =
-    canEditNutrition && (['kcal', 'p', 'f', 'c'] as const).every((k) => manual[k].trim().length > 0);
+  const manualFilled = (['kcal', 'p', 'f', 'c'] as const).every(
+    (k) => manual[k].trim().length > 0,
+  );
 
   const per100g: Per100gInput | null =
     exact !== null ? exact.per100g : manualFilled ? manualNumbers : null;
+
+  /**
+   * この記録の栄養値の立ち位置。
+   *
+   *   マスタにある                  → 確定（マスタの値）
+   *   無い ＋ 管理者が入れた        → 確定（その場で決めた値。登録依頼は出さない）
+   *   無い ＋ 契約者が入れた        → **仮**（合計に入るが「うち仮」として分ける）
+   *   無い ＋ 誰も入れていない      → 値なし（合計に入らない）
+   */
+  //
+  // ★ 管理者が「仮」の食材を開いたときは、仮のままにします。
+  //
+  //   開いた時点で欄に値が入っている（契約者が入れた値）ので、
+  //   そのまま保存すると、押しただけで確定値に化けます。
+  //   契約者の当て推量を、管理者が確かめずに承認した形になります。
+  //   値を確定させる道は「登録依頼」の画面だけ、と決めておきます。
+  const wasProvisional = initial?.provisional === true;
+  const decidedByAdmin = exact === null && canEditNutrition && manualFilled && !wasProvisional;
+  const provisional = exact === null && manualFilled && !decidedByAdmin;
+  const pending = exact === null && !decidedByAdmin;
 
   const nameOk = name.trim().length > 0;
   const gramsOk = gramsNum !== null && gramsNum > 0 && gramsNum <= 5000;
@@ -117,8 +160,9 @@ export function ItemForm({
     }
 
     const trimmed = name.trim();
-    const pending = per100g === null;
     const internal = per100g === null ? ZERO : toInternal(per100g);
+    // 値が無いときだけ0。仮の値が入っていれば、ちゃんと計算します
+    const noValue = pending && !provisional;
 
     onSubmit(
       {
@@ -126,14 +170,44 @@ export function ItemForm({
         name: exact !== null ? exact.name : trimmed,
         grams: gramsNum,
         per100g: internal,
-        nutrients: pending ? ZERO : computeItemNutrients(internal, gramsNum),
+        nutrients: noValue ? ZERO : computeItemNutrients(internal, gramsNum),
         foodId: exact?.id ?? null,
         pending,
+        provisional,
       },
       // 未確定なら、管理者へ登録依頼を出す
       pending ? trimmed : null,
-      pending ? candidate : null,
+      pending ? buildCandidate() : null,
     );
+  }
+
+  /**
+   * 管理者へ送る「値の候補」を組み立てる。
+   *
+   * ★ 写真があるのに数字が写真と違う、という状態を隠しません。
+   *   管理者は写真を見て「この数字で合っている」と判断します。
+   *   契約者が直していたことを知らないまま採用すると、
+   *   写真を添えた意味がなくなります。
+   */
+  function buildCandidate(): LabelCandidate | null {
+    if (!manualFilled) return null;
+
+    if (scan === null) {
+      return { source: 'manual', per100g: manualNumbers, note: '', photo: '' };
+    }
+
+    const edited = (['kcal', 'p', 'f', 'c'] as const).some(
+      (k) => manualNumbers[k] !== scan.read[k],
+    );
+
+    return {
+      source: 'label',
+      per100g: manualNumbers,
+      note: edited
+        ? `${scan.note}${scan.note.length > 0 ? ' / ' : ''}※ 読み取り値（${scan.read.kcal}kcal・P${scan.read.p}・F${scan.read.f}・C${scan.read.c}）を契約者が直しています`
+        : scan.note,
+      photo: scan.photo,
+    };
   }
 
   return (
@@ -202,18 +276,17 @@ export function ItemForm({
       />
 
       {/* ★ マスタに無い食材のときだけ出します（設計書 §47 / 追加仕様: 成分表示の読み取り）。
-          読み取った値は、この場では使いません。
-          管理者への登録依頼に「候補」として添えるだけです。
-          栄養値を決めるのは管理者、という前提は変えません。 */}
+          読み取った数字は、上の入力欄にそのまま入れます。
+          読み取りは間違えるので、**直せる形にしておきます**。 */}
       {exact === null && nameOk && aiAvailable && AI_RELAY_URL !== null && !canEditNutrition && (
         <>
-          {candidate === null && !scanning && (
+          {scan === null && !scanning && (
             <button
               className="button-secondary"
               type="button"
               onClick={() => setScanning(true)}
             >
-              成分表示を撮って伝える
+              成分表示を撮って入れる
             </button>
           )}
 
@@ -221,7 +294,13 @@ export function ItemForm({
             <LabelScanner
               onCancel={() => setScanning(false)}
               onDone={(r) => {
-                setCandidate({ per100g: r.per100g, note: r.note, photo: r.photo });
+                setScan({ note: r.note, photo: r.photo, read: r.per100g });
+                setManual({
+                  kcal: String(r.per100g.kcal),
+                  p: String(r.per100g.p),
+                  f: String(r.per100g.f),
+                  c: String(r.per100g.c),
+                });
                 if (grams.trim().length === 0 && r.servingGrams !== null) {
                   setGrams(String(r.servingGrams));
                 }
@@ -231,15 +310,12 @@ export function ItemForm({
             />
           )}
 
-          {candidate !== null && (
+          {scan !== null && (
             <p className="notice" role="status">
-              <b>成分表示を読み取りました。</b>
-              トレーナーに数値の候補として伝えます。
+              <b>成分表示を読み取って、上の欄に入れました。</b>
               <br />
-              {candidate.per100g.kcal}kcal · P{candidate.per100g.p} F{candidate.per100g.f} C
-              {candidate.per100g.c}（100gあたり）
-              <br />
-              この値が使われるかどうかは、トレーナーが決めます。
+              袋の表示と見比べて、違っていたら直してください。
+              写真もトレーナーに届くので、あとで確認してもらえます。
             </p>
           )}
         </>
@@ -278,8 +354,8 @@ export function ItemForm({
 /**
  * 栄養値の欄。
  *
- * マスタにあれば表示だけ（編集不可）。
- * 無ければ、管理者はその場で入れられ、契約者は「未確定」として記録します。
+ * マスタにあれば表示だけ（編集不可）。ここが一線です。
+ * 無ければ入力できますが、**管理者と契約者では意味が違います**。
  */
 function NutritionBlock({
   food,
@@ -294,6 +370,8 @@ function NutritionBlock({
   manual: Record<keyof Per100gInput, string>;
   onManualChange: (v: Record<keyof Per100gInput, string>) => void;
 }) {
+  // ★ マスタにある食材は、表示だけ。入力欄を出しません。
+  //   出さないことが、そのまま「値がぶつからない」保証になります。
   if (food !== null) {
     return (
       <div className="nutrition-fixed">
@@ -311,19 +389,22 @@ function NutritionBlock({
 
   if (name.trim().length === 0) return null;
 
-  if (!canEditNutrition) {
-    return (
-      <p className="notice">
-        この食材はまだ登録されていません。<b>量だけ記録し、トレーナーに登録を依頼します。</b>
-        <br />
-        登録されるまで、この食材は合計に含まれません。
-      </p>
-    );
-  }
-
   return (
     <fieldset className="per100g">
-      <legend className="field-label">100gあたりの栄養値（新しく登録します）</legend>
+      <legend className="field-label">
+        {canEditNutrition ? '100gあたりの栄養値（新しく登録します）' : '100gあたりの栄養値（仮）'}
+      </legend>
+
+      {!canEditNutrition && (
+        <p className="field-hint">
+          この食材はまだ登録されていません。分かる範囲で入れておくと、
+          <b>その分もこの日の合計に入ります</b>（「うち仮」として分けて表示します）。
+          <br />
+          トレーナーが登録すると、正しい値に置き換わります。
+          <b>分からなければ空欄のままで大丈夫です。</b>
+        </p>
+      )}
+
       <div className="grid-4">
         {(['kcal', 'p', 'f', 'c'] as const).map((key) => (
           <label className="field" key={key}>
@@ -341,8 +422,11 @@ function NutritionBlock({
           </label>
         ))}
       </div>
+
       <span className="field-hint">
-        空欄のままでも記録できます。その場合は「未確定」として残り、あとから登録できます。
+        {canEditNutrition
+          ? '空欄のままでも記録できます。その場合は「未確定」として残り、あとから登録できます。'
+          : '4つすべて入れたときだけ、仮の値として使います。1つでも空欄なら、これまでどおり合計には入りません。'}
       </span>
     </fieldset>
   );

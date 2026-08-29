@@ -1,4 +1,3 @@
-import { ZERO } from '@pt/core';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -90,27 +89,36 @@ describe('読み取ったあと', () => {
     ).toBeInTheDocument();
   });
 
-  it('読み取った値と、承認されるまで合計に入らないことを伝える', async () => {
+  it('読み取った値が仮として合計に入ること、承認で置き換わることを伝える', async () => {
     setup();
     await userEvent.click(screen.getByRole('button', { name: '読めた（1回分57g）' }));
 
     expect(screen.getByText(/461.4kcal/)).toBeInTheDocument();
-    expect(screen.getByText(/承認されると、この記録に反映されます/)).toBeInTheDocument();
-    expect(screen.getByText(/合計には入りません/)).toBeInTheDocument();
+    expect(screen.getByText(/仮の値として、この日の合計に入れます/)).toBeInTheDocument();
+    expect(screen.getByText(/承認されると、正しい値に置き換わります/)).toBeInTheDocument();
   });
 });
 
 describe('追加したとき', () => {
-  it('栄養値0・登録待ちの食材として渡す（袋の数字を勝手に採用しない）', async () => {
+  it('★ 袋の数字は「仮」として入る。マスタの値として確定はしない', async () => {
+    // ★ ここが線引きです。
+    //   合計には入れます（撮った意味があるように）。
+    //   でも foodId は付かず、pending のままです。
+    //   マスタの値になるかどうかを決めるのは、これまでどおり管理者です。
     const { onAdd } = setup();
     await userEvent.click(screen.getByRole('button', { name: '読めた（1回分57g）' }));
     await userEvent.click(screen.getByRole('button', { name: 'この食材を追加する' }));
 
     const [item] = firstCall(onAdd);
+    expect(item.provisional).toBe(true);
     expect(item.pending).toBe(true);
-    expect(item.per100g).toEqual(ZERO);
-    expect(item.nutrients).toEqual(ZERO);
     expect(item.foodId).toBeNull();
+
+    // 読み取った100gあたりの値が、そのまま入っている
+    expect(item.per100g.kcal).toBe(461_400);
+    expect(item.per100g.p).toBe(10_000);
+    // 461.4kcal/100g × 57g = 263.0kcal（表示の「1食263kcal」に戻る）
+    expect(item.nutrients.kcal).toBe(262_998);
   });
 
   it('読み取った値と写真は、登録依頼の候補として一緒に渡す', async () => {

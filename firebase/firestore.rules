@@ -339,11 +339,25 @@ service cloud.firestore {
         match /messages/{messageId} { allow read, write: if canRead(cid); }
       }
 
-      // 変更履歴。追記のみ。書き換えも削除もできない（設計書 §19）
+      // 変更履歴。追記のみで、**書き換えはできません**（設計書 §19）。
+      //
+      // ★ update と delete を、あえて分けています。
+      //
+      //   update（書き換え）は誰にも許しません。これを開けると、
+      //   トレーナーが「別の数字だったことにする」ことができてしまいます。
+      //   履歴が守っているのは、まさにそこです。
+      //
+      //   delete（削除）は管理者だけ許します。契約者を完全に削除するとき、
+      //   ここだけ消せずに残ると、消したはずの人の食材名と日付が残り続けます。
+      //   「完全に消した」と言えなくなります。
+      //
+      //   消えていれば「無い」ことは分かります。書き換えのように
+      //   別のものに見せかけることはできません。性質が違います。
       match /audits/{auditId} {
         allow get, list: if isAdmin();
         allow create: if canRead(cid);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isAdmin();
       }
     }
 
@@ -414,15 +428,19 @@ service cloud.firestore {
         allow get: if isAdmin() || isClient(clientId);
         allow list, delete: if isAdmin();
 
-        // ★ candidatePer100g は「成分表示から読み取った候補」です（追加仕様: 成分表示の読み取り）。
+        // ★ candidatePer100g は「値の候補」です（追加仕様: 成分表示の読み取り / 仮の栄養値）。
         //   契約者が書けますが、これはあくまで候補で、確定値ではありません。
         //   マスタへ入れるかどうかを決めるのは管理者のままです（foods は管理者のみ書込可）。
         //   ここが直接マスタに反映される経路は作っていません。
+        //
+        // ★ candidateSource は、その値が成分表示の読み取り（'label'）か
+        //   手入力（'manual'）かの区別です。管理者の判断材料が違うので分けます。
         allow create, update: if isAdmin()
           || (isClient(clientId)
               && request.resource.data.keys().hasOnly(
                    ['variant', 'count', 'dates', 'updatedAt',
-                    'candidatePer100g', 'candidateNote', 'candidatePhoto'])
+                    'candidatePer100g', 'candidateNote', 'candidatePhoto',
+                    'candidateSource'])
               && request.resource.data.variant is string
               && request.resource.data.variant.size() > 0
               && request.resource.data.variant.size() <= 60
@@ -439,7 +457,9 @@ service cloud.firestore {
               //   写真と同じ 400,000 バイト未満に揃えてあります。
               && (!('candidatePhoto' in request.resource.data)
                   || (request.resource.data.candidatePhoto is string
-                      && request.resource.data.candidatePhoto.size() < 400000)));
+                      && request.resource.data.candidatePhoto.size() < 400000))
+              && (!('candidateSource' in request.resource.data)
+                  || request.resource.data.candidateSource in ['label', 'manual']));
       }
     }
   }

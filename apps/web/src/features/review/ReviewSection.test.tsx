@@ -52,7 +52,8 @@ function setup(over: Partial<Parameters<typeof ReviewSection>[0]> = {}) {
       targets={DEFAULT_TARGETS}
       exerciseMinutes={25}
       mealCount={3}
-      pendingCount={1}
+      noValueCount={1}
+      provisionalCount={0}
       reviewMode="standard"
       aiAvailable
       canEdit
@@ -85,7 +86,15 @@ describe('生成', () => {
 
     const [input] = firstCall(vi.mocked(requestDayReview));
     expect(Object.keys(input).sort()).toEqual(
-      ['actual', 'exerciseMinutes', 'mealCount', 'pendingCount', 'reviewMode', 'target'].sort(),
+      [
+        'actual',
+        'exerciseMinutes',
+        'mealCount',
+        'noValueCount',
+        'provisionalCount',
+        'reviewMode',
+        'target',
+      ].sort(),
     );
     const asText = JSON.stringify(input);
     expect(asText).not.toContain('tanaka01');

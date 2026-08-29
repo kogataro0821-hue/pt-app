@@ -117,7 +117,8 @@ Worker の画面で「**Settings**」タブ →「**Variables and Secrets**」�
    「**Storage & Databases**」→「**KV**」を開く
    （見当たらなければ「Workers & Pages」→「KV」）
 
-2. 「**Create a namespace**」（または「作成」）を押す
+2. 右上の「**+ Create Instance**」を押す
+   （「Create a namespace」と表示されることもあります。同じものです）
 
 3. 名前を **`pt-ai-rate`** にして作成
 

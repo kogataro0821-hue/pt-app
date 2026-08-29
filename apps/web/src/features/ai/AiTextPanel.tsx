@@ -216,6 +216,11 @@ export function AiTextPanel({
           nutrients: ZERO,
           foodId: null,
           pending: true,
+          // ★ ここでは仮の値を入れません（追加仕様: 仮の栄養値）。
+          //   この確認画面に kcal/P/F/C の4欄を並べると、5品なら20欄になり、
+          //   スマホでは押し間違えます。
+          //   追加したあとに食材をタップすれば、いつもの入力画面で入れられます。
+          provisional: false,
         });
         requestNames.push(d.name.trim());
         continue;
@@ -230,6 +235,7 @@ export function AiTextPanel({
         nutrients: computeItemNutrients(internal, grams),
         foodId: d.food.id,
         pending: false,
+        provisional: false,
       });
     }
 

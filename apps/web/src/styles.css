@@ -1734,6 +1734,8 @@ select.input {
 
 .admin-link {
   flex: none;
+  /* 名前と、未処理の件数のあいだ */
+  gap: 6px;
   padding: 6px var(--space-md);
   border-radius: var(--radius-pill);
   font-size: 13px;
@@ -1851,4 +1853,47 @@ select.input {
   margin-top: var(--space-xs);
   font-size: 12.5px;
   color: var(--muted);
+}
+
+/* -----------------------------------------------------------------------------
+ * 未処理の登録依頼の数（Phase 11 のあとの小さな追加）
+ *
+ * ★ 依頼は静かに積まれます。開かないかぎり気づけないので、
+ *   行き先の名前の横に数を出します。0件のときは何も出しません
+ *   （常に出ていると、見なくなります）。
+ * -------------------------------------------------------------------------- */
+.admin-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  /* 文字は surface（明るいときは白／暗いときは黒に近い色）。
+     明暗どちらでも、背景とのコントラストが確保されます */
+  background: var(--attention);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* -----------------------------------------------------------------------------
+ * 仮の栄養値（追加仕様: 仮の栄養値）
+ *
+ * ★ 合計に入れるからには、「どこまでが確かな数字か」が
+ *   ひと目で分かる必要があります。混ぜたまま出すと、
+ *   仮の数字を根拠に判断してしまいます。
+ * -------------------------------------------------------------------------- */
+.row.provisional {
+  color: var(--muted);
+}
+
+.row.provisional .row-label {
+  color: var(--attention);
+  font-weight: 700;
+}
+
+.row.provisional .kcal,
+.row.provisional .macro {
+  /* 確定した数字より、一段おとなしく見せます */
+  opacity: 0.85;
 }

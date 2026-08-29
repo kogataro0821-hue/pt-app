@@ -1,4 +1,4 @@
-import { ZERO, toInternal, type MealItem, type Nutrients } from '@pt/core';
+import { ZERO, computeItemNutrients, toInternal, type MealItem, type Nutrients } from '@pt/core';
 import { emptyClient, type Client } from '@/features/clients/clientTypes';
 import type { Food } from '@/features/foods/foodsRepo';
 import type { FoodRequest, LabelCandidate, RequestEntry } from '@/features/foods/requestsRepo';
@@ -48,6 +48,7 @@ export function anItem(over: Partial<MealItem> = {}): MealItem {
     nutrients: per100g,
     foodId: 'しろまい',
     pending: false,
+    provisional: false,
     ...over,
   };
 }
@@ -62,12 +63,30 @@ export function aPendingItem(over: Partial<MealItem> = {}): MealItem {
     nutrients: ZERO,
     foodId: null,
     pending: true,
+    provisional: false,
+    ...over,
+  };
+}
+
+/** 契約者が仮の値を入れた食材1件（合計に入るが「うち仮」として分かれる） */
+export function aProvisionalItem(over: Partial<MealItem> = {}): MealItem {
+  const per100g: Nutrients = toInternal({ kcal: 400, p: 20, f: 10, c: 50 });
+  return {
+    id: 'i8',
+    name: 'ささみジャーキー',
+    grams: 50,
+    per100g,
+    nutrients: computeItemNutrients(per100g, 50),
+    foodId: null,
+    pending: true,
+    provisional: true,
     ...over,
   };
 }
 
 export function aCandidate(over: Partial<LabelCandidate> = {}): LabelCandidate {
   return {
+    source: 'label',
     per100g: { kcal: 461.4, p: 10, f: 18.1, c: 65.3, fiber: 0, salt: 4.2 },
     note: '1食57gあたりの表示から換算しました。',
     // 1×1の透明な画像。中身は問わないので、いちばん短いもので足ります。

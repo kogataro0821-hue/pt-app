@@ -15,6 +15,7 @@ import {
   type DecimalNutrients,
 } from '@pt/core';
 import { getDb } from '@/lib/firebase';
+import { invalidateRequestCount, setRequestCount } from './requestCount';
 
 /**
  * 食品の登録依頼（設計書 §21 / Phase 9）。
@@ -79,6 +80,17 @@ export interface RequestEntry {
  *   Phase 9 の前提が崩れます。
  */
 export interface LabelCandidate {
+  /**
+   * その値がどこから来たか（追加仕様: 仮の栄養値）。
+   *
+   *   'label'  … 契約者が成分表示を撮って、AIが読み取った値
+   *   'manual' … 契約者が自分で打ち込んだ仮の値
+   *
+   * ★ 管理者の判断材料が違うので、区別します。
+   *   写真つきなら表示と見比べられますが、手入力はそれができません。
+   *   同じ顔で並べると、確かめずに採用してしまいます。
+   */
+  source: 'label' | 'manual';
   per100g: DecimalNutrients;
   /** 何を基準にどう換算したか。管理者が判断するための手がかり */
   note: string;
@@ -171,6 +183,7 @@ export async function requestFood(
               candidatePer100g: candidate.per100g,
               candidateNote: candidate.note.slice(0, 200),
               candidatePhoto: candidate.photo,
+              candidateSource: candidate.source,
             }),
       },
       { merge: true },
@@ -226,6 +239,10 @@ export async function listRequests(): Promise<FoodRequest[]> {
     }),
   );
 
+  // ★ ここで正しい数が分かっているので、バッジに教えます。
+  //   バッジのために数え直す必要がなくなります（読み取りが増えません）。
+  setRequestCount(out.length);
+
   return out.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -243,6 +260,9 @@ export async function resolveRequest(request: FoodRequest): Promise<void> {
     await deleteDoc(entry.ref);
   }
   await deleteDoc(parent);
+
+  // 件数が変わりました。次に必要になったときに数え直します。
+  invalidateRequestCount();
 }
 
 // -----------------------------------------------------------------------------
@@ -255,21 +275,41 @@ function toEntry(clientId: string, data: Record<string, unknown>): RequestEntry 
     dates: Array.isArray(data.dates)
       ? data.dates.filter((v): v is DateKey => typeof v === 'string')
       : [],
-    candidate: toCandidate(data.candidatePer100g, data.candidateNote, data.candidatePhoto),
+    candidate: toCandidate(
+      data.candidatePer100g,
+      data.candidateNote,
+      data.candidatePhoto,
+      data.candidateSource,
+    ),
   };
 }
 
-function toCandidate(raw: unknown, note: unknown, photo: unknown): LabelCandidate | null {
+function toCandidate(
+  raw: unknown,
+  note: unknown,
+  photo: unknown,
+  source: unknown,
+): LabelCandidate | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const d = raw as Record<string, unknown>;
   const pick = (k: string): number =>
     typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : 0;
 
-  // kcalが0の候補は、読み取りに失敗したものとみなして無視します。
+  // 印が無い古い記録は、成分表示から来たものです（手入力より前からある仕組み）。
+  const from: LabelCandidate['source'] = source === 'manual' ? 'manual' : 'label';
+
+  // ★ 読み取りの失敗と、0kcal の食品を区別します。
+  //
+  //   成分表示のAI読み取りは、失敗すると全部0で返ってきます。
+  //   それを候補として出すと、管理者が0kcalで登録しかねません。だから捨てます。
+  //
+  //   一方、手入力の0は本人が打った値です。
+  //   ブラックコーヒーや水は本当に0kcalなので、捨ててはいけません。
   const kcal = pick('kcal');
-  if (kcal <= 0) return null;
+  if (from === 'label' && kcal <= 0) return null;
 
   return {
+    source: from,
     per100g: { kcal, p: pick('p'), f: pick('f'), c: pick('c'), fiber: pick('fiber'), salt: pick('salt') },
     note: typeof note === 'string' ? note : '',
     photo: typeof photo === 'string' ? photo : '',

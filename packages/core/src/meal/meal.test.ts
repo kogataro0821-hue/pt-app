@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { foodKey } from '../food/matching';
 import { toInternal } from '../nutrition/convert';
 import { sumNutrients } from '../nutrition/sum';
 import { NUTRIENT_KEYS, ZERO, type Nutrients } from '../nutrition/types';
 import {
   applyFoodToPending,
   computeItemNutrients,
+  countNoValue,
   countPending,
+  countProvisional,
+  provisionalTotals,
   dayTotals,
   flatItemTotals,
   kcalMismatchWarning,
@@ -37,7 +41,7 @@ function item(name: keyof typeof PER_100G, grams: number): MealItem {
     per100g: PER_100G[name],
     nutrients: computeItemNutrients(PER_100G[name], grams),
     foodId: null,
-    pending: false,
+    pending: false, provisional: false,
   };
 }
 
@@ -124,7 +128,7 @@ describe('★ 栄養値が未確定の食材（設計書 §13 / Phase 9）', () 
     per100g: { kcal: 0, p: 0, f: 0, c: 0, fiber: 0, salt: 0 },
     nutrients: { kcal: 0, p: 0, f: 0, c: 0, fiber: 0, salt: 0 },
     foodId: null,
-    pending: true,
+    pending: true, provisional: false,
   };
 
   // ★ 未確定は0として扱う。適当な数字で埋めると、合計が嘘になる。
@@ -267,7 +271,7 @@ describe('未確定の食材にあとから栄養値を入れる', () => {
           per100g: ZERO,
           nutrients: ZERO,
           foodId: null,
-          pending: true,
+          pending: true, provisional: false,
         },
         ...rest,
       ],
@@ -312,7 +316,7 @@ describe('未確定の食材にあとから栄養値を入れる', () => {
       per100g: toInternal({ kcal: 999, p: 1, f: 1, c: 1 }),
       nutrients: computeItemNutrients(toInternal({ kcal: 999, p: 1, f: 1, c: 1 }), 100),
       foodId: 'べつのなにか',
-      pending: false,
+      pending: false, provisional: false,
     };
 
     const meal: Meal = { ...pendingMeal('白米', 150), items: [confirmed] };
@@ -335,7 +339,7 @@ describe('未確定の食材にあとから栄養値を入れる', () => {
       per100g: ZERO,
       nutrients: ZERO,
       foodId: null,
-      pending: true,
+      pending: true, provisional: false,
     };
 
     const { changed } = applyFoodToPending(
@@ -368,5 +372,128 @@ describe('未確定の食材にあとから栄養値を入れる', () => {
 
     const { meal } = applyFoodToPending(before, '鶏むね肉', CHICKEN);
     expect(countPending([meal])).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 追加仕様: 仮の栄養値
+//
+// ★ ここは、設計の原則と使い勝手がぶつかった場所です。
+//
+//   原則:「栄養値を決めるのは管理者だけ」。守らないと、白米が人によって
+//        156kcal だったり 200kcal だったりして、数字を根拠にした指導ができません。
+//
+//   現実: マスタに無い食材を食べた日は、合計が実際より少なく出ます。
+//        記録したのに0のままだと、続ける気がなくなります。
+//
+//   折り合いは「マスタに無い食材にかぎり、契約者が仮の値を入れられる。
+//   ただし合計とは分けて見せ、管理者が登録したら置き換わる」です。
+//   その約束を、ここで固定します。
+// -----------------------------------------------------------------------------
+
+describe('仮の栄養値', () => {
+  const RICE = toInternal({ kcal: 156, p: 2.5, f: 0.3, c: 37.1 });
+  const CHICKEN = {
+    id: 'torimune',
+    name: '鶏むね肉',
+    per100g: toInternal({ kcal: 105, p: 23.3, f: 1.9, c: 0.1 }),
+  };
+
+  /** 契約者が仮の値を入れた食材 */
+  function provisionalItem(name: string, grams: number, per100g: Nutrients): MealItem {
+    return {
+      id: `p-${name}`,
+      name,
+      grams,
+      per100g,
+      nutrients: computeItemNutrients(per100g, grams),
+      foodId: null,
+      pending: true,
+      provisional: true,
+    };
+  }
+
+  function mealOf(items: MealItem[]): Meal {
+    return { id: 'm1', order: 0, label: '1食目', memo: '', items, createdAt: null, updatedAt: null };
+  }
+
+  it('仮の値は、その日の合計に入る', () => {
+    // ★ ここが「A案」の核心です。記録した日が0のままになりません
+    const m = mealOf([provisionalItem('ささみジャーキー', 100, RICE)]);
+    expect(dayTotals([m]).kcal).toBe(156_000);
+  });
+
+  it('仮のぶんだけを取り出せる（「うち仮◯kcal」を出すため）', () => {
+    const m = mealOf([
+      item('白米', 150),
+      provisionalItem('ささみジャーキー', 100, RICE),
+    ]);
+
+    expect(provisionalTotals([m]).kcal).toBe(156_000);
+    // 全体の合計は、確かな分と仮の分の和
+    expect(dayTotals([m]).kcal).toBe(computeItemNutrients(PER_100G.白米, 150).kcal + 156_000);
+  });
+
+  it('仮の値が無ければ、仮の合計は0', () => {
+    expect(provisionalTotals([mealOf([item('白米', 150)])])).toEqual(ZERO);
+  });
+
+  it('件数を3通りに数え分ける', () => {
+    // ★ 「未確定」と「合計に入っていない」は別ものです。
+    //   仮の値が入っているものは未確定ですが、合計には入っています。
+    const m = mealOf([
+      item('白米', 150), // 確定
+      provisionalItem('ささみジャーキー', 100, RICE), // 仮の値あり
+      {
+        id: 'x',
+        name: '謎の惣菜',
+        grams: 80,
+        per100g: ZERO,
+        nutrients: ZERO,
+        foodId: null,
+        pending: true,
+        provisional: false,
+      }, // 値なし
+    ]);
+
+    expect(countPending([m])).toBe(2); // 未確定なもの全部
+    expect(countProvisional([m])).toBe(1); // うち、仮の値が入っているもの
+    expect(countNoValue([m])).toBe(1); // うち、合計に入っていないもの
+  });
+
+  it('★ 管理者が登録すると、仮の値はマスタの値に置き換わり、印も消える', () => {
+    const before = mealOf([provisionalItem('鶏むね肉', 200, RICE)]);
+    expect(dayTotals([before]).kcal).toBe(312_000); // 仮の値での合計
+
+    const { meal, changed } = applyFoodToPending(before, '鶏むね肉', CHICKEN);
+
+    expect(changed).toBe(1);
+    expect(meal.items[0]?.provisional).toBe(false);
+    expect(meal.items[0]?.pending).toBe(false);
+    expect(meal.items[0]?.foodId).toBe('torimune');
+    // 合計はマスタの値になる。契約者が入れた値は残らない
+    expect(dayTotals([meal]).kcal).toBe(computeItemNutrients(CHICKEN.per100g, 200).kcal);
+    expect(provisionalTotals([meal])).toEqual(ZERO);
+  });
+
+  it('★ 置き換えのあと、「うち仮」は0になる（印の消し忘れがないこと）', () => {
+    const before = mealOf([
+      provisionalItem('鶏むね肉', 100, RICE),
+      provisionalItem('鶏むね肉', 50, RICE),
+    ]);
+    const { meal } = applyFoodToPending(before, '鶏むね肉', CHICKEN);
+
+    expect(countProvisional([meal])).toBe(0);
+    expect(countNoValue([meal])).toBe(0);
+  });
+
+  it('確定した食材は、仮の値では上書きされない', () => {
+    // ★ マスタにある食材の値を、契約者が動かせないことの裏付け
+    const confirmed = item('白米', 150);
+    const m = mealOf([confirmed]);
+    const { meal, changed } = applyFoodToPending(m, foodKey('白米'), CHICKEN);
+
+    expect(changed).toBe(0);
+    expect(meal.items[0]).toEqual(confirmed);
   });
 });

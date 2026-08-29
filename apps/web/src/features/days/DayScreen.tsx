@@ -59,8 +59,9 @@ export function DayScreen({
   const [summary, setSummary] = useState<{
     totals: Nutrients;
     mealCount: number;
-    pendingCount: number;
-  }>({ totals: ZERO, mealCount: 0, pendingCount: 0 });
+    noValueCount: number;
+    provisionalCount: number;
+  }>({ totals: ZERO, mealCount: 0, noValueCount: 0, provisionalCount: 0 });
   const [exerciseMinutes, setExerciseMinutes] = useState(0);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
@@ -321,7 +322,8 @@ export function DayScreen({
             targets={client.targets}
             exerciseMinutes={exerciseMinutes}
             mealCount={summary.mealCount}
-            pendingCount={summary.pendingCount}
+            noValueCount={summary.noValueCount}
+            provisionalCount={summary.provisionalCount}
             reviewMode={client.reviewMode}
             aiAvailable={AI_RELAY_URL !== null && hasValidAiConsent(client.aiConsent)}
             canEdit={canEdit || isAdmin}

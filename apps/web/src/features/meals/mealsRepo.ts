@@ -97,6 +97,9 @@ function toItem(raw: unknown, index: number): MealItem {
     nutrients: toNutrients(data.nutrients),
     foodId: typeof data.foodId === 'string' ? data.foodId : null,
     pending: data.pending === true,
+    // ★ 印が無い古い記録は false になります。
+    //   仮の値の仕組みより前の記録は、未確定なら栄養値が0なので、それで合っています。
+    provisional: data.provisional === true,
   };
 }
 
@@ -128,6 +131,7 @@ function toFirestore(meal: Meal): Record<string, unknown> {
       nutrients: plain(i.nutrients),
       foodId: i.foodId,
       pending: i.pending,
+      provisional: i.provisional,
     })),
     // 合計も一緒に保存します。読むときは items から計算し直すので、
     // これは Firebase のコンソールから確認するためのものです。
