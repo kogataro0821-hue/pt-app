@@ -332,20 +332,18 @@ function CalendarRoute({ onChangePassword }: { onChangePassword: () => void }) {
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
         >
-          <div className="section-head">
-            <h2 className="title">
-              {client.displayName.length > 0 ? client.displayName : client.clientId}
-            </h2>
-            {isAdmin && (
+          {/* ★ 会員証はカレンダーの上に置きます（追加仕様: 会員ランク）。
+                 画面を開いた瞬間に目に入る場所です。
+                 名前は会員証に入っているので、見出しは出しません。 */}
+          {isAdmin && (
+            <div className="section-head">
               <Link className="button-quiet compact" to={`/clients/${client.clientId}/settings`}>
                 設定
               </Link>
-            )}
-          </div>
-          <CalendarScreen clientId={client.clientId} month={month} />
-          {/* ★ カレンダーの下に置きます（追加仕様: 会員ランク）。
-                 記録画面に入る前に、必ず目に入る場所です。 */}
+            </div>
+          )}
           <MemberCard client={client} isAdmin={isAdmin} />
+          <CalendarScreen clientId={client.clientId} month={month} />
         </Shell>
       )}
     </ClientGate>

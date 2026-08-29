@@ -47,14 +47,14 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
       .catch(() => {
         // ★ 数えられなくても、会員証そのものは出します。
         //   ランクと番号は保存された値なので、集計が無くても表示できます。
-        if (!cancelled) setStats({ mealDays: 0, exerciseDays: 0, longestMealStreak: 0 });
+        if (!cancelled) setStats({ mealDays: 0, exerciseDays: 0, longestMealStreak: 0, longestExerciseStreak: 0 });
       });
     return () => {
       cancelled = true;
     };
   }, [client.clientId, client.rank]);
 
-  const progress = stats === null ? null : rankProgress(rank, stats);
+  const progress = stats === null ? null : rankProgress(rank, stats, client.rankGoals);
 
   // ★ 契約者の画面で数えたときに、目印を書き残します（追加仕様: 会員ランク）。
   //
@@ -100,6 +100,8 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
     <div className="member-block">
       {/* ★ ここはクレジットカードと同じ比率です。中身は絞ってあります */}
       <section className={`member-card rank-${rank.toLowerCase()}`}>
+        {/* 紙の質感。飾りではなく、のっぺりしたグラデーションから抜けるためのもの */}
+        <span className="member-grain" aria-hidden="true" />
         <img className="member-logo" src={logoUrl} alt="たろZAP" />
         <span className="member-no">
           No. {client.memberNo === null ? '----' : pad4(client.memberNo)}
@@ -111,7 +113,9 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
         </div>
 
         <div className="member-card-foot">
-          <span className="member-id">{client.clientId}</span>
+          <span className="member-id">
+            {client.displayName.length > 0 ? client.displayName : client.clientId}
+          </span>
           <span className="member-since">
             MEMBER SINCE {client.startDate === null ? '----.--' : memberSince(client.startDate)}
           </span>

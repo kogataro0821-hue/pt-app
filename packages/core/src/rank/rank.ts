@@ -89,6 +89,68 @@ export interface RecordStats {
   exerciseDays: number;
   /** 食事を記録した日が、いちばん長く続いた日数 */
   longestMealStreak: number;
+  /** 運動を記録した日が、いちばん長く続いた日数 */
+  longestExerciseStreak: number;
+}
+
+/**
+ * DIAMOND から先の昇格条件（追加仕様: 会員ランク）。
+ *
+ * ★ RUBY・SAPPHIRE・EMERALD の条件は決まっていますが、
+ *   その先はトレーナーが一人ひとりに決めます。
+ *   「この人にはあと何を続けてほしいか」は、人によって違うためです。
+ *
+ *   例）食事記録 ／ 累計 ／ 120日
+ *       運動記録 ／ 連続 ／ 30日
+ */
+export interface RankGoal {
+  /** 何を数えるか */
+  target: 'meal' | 'exercise';
+  /** どう数えるか。total = 累計、streak = 連続 */
+  mode: 'total' | 'streak';
+  /** 何日 */
+  days: number;
+}
+
+/** 契約者ごとに決める、DIAMOND から先の条件。決めていないランクは入っていません。 */
+export type RankGoals = Partial<Record<Rank, RankGoal>>;
+
+/** 条件の説明。画面の進み具合の見出しにも使います。 */
+export function goalLabel(goal: RankGoal): string {
+  const what = goal.target === 'meal' ? '食事' : '運動';
+  return goal.mode === 'streak' ? `${what}を続けて記録した日数` : `${what}を記録した日数`;
+}
+
+function goalProgress(goal: RankGoal, stats: RecordStats): number {
+  if (goal.target === 'meal') {
+    return goal.mode === 'streak' ? stats.longestMealStreak : stats.mealDays;
+  }
+  return goal.mode === 'streak' ? stats.longestExerciseStreak : stats.exerciseDays;
+}
+
+/** 保存されている値を RankGoal に直す。おかしければ null。 */
+export function toRankGoal(raw: unknown): RankGoal | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const d = raw as Record<string, unknown>;
+
+  const target = d.target === 'exercise' ? 'exercise' : d.target === 'meal' ? 'meal' : null;
+  const mode = d.mode === 'streak' ? 'streak' : d.mode === 'total' ? 'total' : null;
+  const days = typeof d.days === 'number' && Number.isFinite(d.days) ? Math.floor(d.days) : 0;
+
+  if (target === null || mode === null || days < 1) return null;
+  return { target, mode, days };
+}
+
+export function toRankGoals(raw: unknown): RankGoals {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const d = raw as Record<string, unknown>;
+
+  const out: RankGoals = {};
+  for (const rank of RANKS) {
+    const goal = toRankGoal(d[rank]);
+    if (goal !== null) out[rank] = goal;
+  }
+  return out;
 }
 
 /** ひとつの条件。画面の進み具合にもそのまま使います。 */
@@ -98,8 +160,14 @@ export interface RankStep {
   need: number;
 }
 
-/** そのランクへ上がるための条件。PLATINUM（最初）には条件がありません。 */
-export function requirementsFor(rank: Rank, stats: RecordStats): RankStep[] {
+/**
+ * そのランクへ上がるための条件。
+ *
+ * PLATINUM（最初）には条件がありません。
+ * DIAMOND から先は、トレーナーが決めた条件（goals）を使います。
+ * 決めていなければ、条件が無い＝上がれない、という扱いです。
+ */
+export function requirementsFor(rank: Rank, stats: RecordStats, goals: RankGoals = {}): RankStep[] {
   switch (rank) {
     case 'RUBY':
       // ★ 「最初の21日間」ではなく「連続21日」にしました。
@@ -114,13 +182,18 @@ export function requirementsFor(rank: Rank, stats: RecordStats): RankStep[] {
         { label: '食事を記録した日数', done: stats.mealDays, need: 90 },
         { label: '運動を記録した日数', done: stats.exerciseDays, need: 24 },
       ];
-    default:
+    case 'PLATINUM':
       return [];
+    default: {
+      const goal = goals[rank];
+      if (goal === undefined) return [];
+      return [{ label: goalLabel(goal), done: goalProgress(goal, stats), need: goal.days }];
+    }
   }
 }
 
-function meets(rank: Rank, stats: RecordStats): boolean {
-  const steps = requirementsFor(rank, stats);
+function meets(rank: Rank, stats: RecordStats, goals: RankGoals): boolean {
+  const steps = requirementsFor(rank, stats, goals);
   if (steps.length === 0) return false;
   return steps.every((s) => s.done >= s.need);
 }
@@ -133,19 +206,19 @@ function meets(rank: Rank, stats: RecordStats): boolean {
  *   運動16日を先に達成しても、RUBY の条件（連続21日）が未達なら
  *   SAPPHIRE にはなりません。RUBY が先です。
  *
- *   ただし、両方そろっていれば**一度に2段上がります**。
+ *   ただし、条件がそろっていれば**一度に何段でも上がります**。
  *   1段ずつ待たせる理由がないためです。
  *
- * ★ すでに DIAMOND 以上の人は、ここでは動かしません。
- *   トレーナーが決めたランクを、記録の集計で上書きしてはいけません。
+ * ★ DIAMOND から先は、トレーナーが条件を決めていなければ上がりません。
+ *   決めていない＝まだ目標を渡していない、ということなので、そこで止めます。
  */
-export function earnedRank(current: Rank, stats: RecordStats): Rank {
+export function earnedRank(current: Rank, stats: RecordStats, goals: RankGoals = {}): Rank {
   let rank = current;
 
-  while (rankOrder(rank) < rankOrder(AUTO_MAX_RANK)) {
+  for (;;) {
     const next = RANKS[rankOrder(rank) + 1];
     if (next === undefined) break;
-    if (!meets(next, stats)) break;
+    if (!meets(next, stats, goals)) break;
     rank = next;
   }
 
@@ -164,16 +237,24 @@ export interface RankProgress {
   stats: RecordStats;
 }
 
-export function rankProgress(current: Rank, stats: RecordStats): RankProgress {
-  const earned = earnedRank(current, stats);
+export function rankProgress(
+  current: Rank,
+  stats: RecordStats,
+  goals: RankGoals = {},
+): RankProgress {
+  const earned = earnedRank(current, stats, goals);
   const base = rankOrder(earned) > rankOrder(current) ? earned : current;
-  const next = rankOrder(base) < rankOrder(AUTO_MAX_RANK) ? RANKS[rankOrder(base) + 1] : undefined;
+  const next = RANKS[rankOrder(base) + 1];
+
+  // ★ 次のランクの条件が無いときは、目標を出しません。
+  //   DIAMOND から先で、トレーナーがまだ条件を決めていない場合です。
+  const steps = next === undefined ? [] : requirementsFor(next, stats, goals);
 
   return {
     current,
     earned: rankOrder(earned) > rankOrder(current) ? earned : null,
-    next: next ?? null,
-    steps: next === undefined ? [] : requirementsFor(next, stats),
+    next: steps.length === 0 ? null : (next ?? null),
+    steps,
     stats,
   };
 }
@@ -194,10 +275,12 @@ export function summarizeRecords(
   exerciseDates: readonly DateKey[],
 ): RecordStats {
   const meals = unique(mealDates);
+  const exercises = unique(exerciseDates);
   return {
     mealDays: meals.length,
-    exerciseDays: unique(exerciseDates).length,
+    exerciseDays: exercises.length,
     longestMealStreak: longestStreak(meals),
+    longestExerciseStreak: longestStreak(exercises),
   };
 }
 

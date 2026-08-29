@@ -1929,7 +1929,7 @@ select.input {
   width: 100%;
   max-width: 420px;
   margin: 0 auto;
-  padding: 4.5% 5.5%;
+  padding: 6.5% 7%;
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto 1fr auto;
@@ -1940,6 +1940,40 @@ select.input {
   /* 既定は PLATINUM。ランクごとに下で上書きします */
   background: linear-gradient(135deg, #7e8b94 0%, #d3dade 45%, #78848c 100%);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* --- 箔押しの装飾 ---------------------------------------------------------
+ *
+ * ★ 内側の二重線と、四隅の飾りを1枚のSVGで敷きます。
+ *   4隅は同じ飾りを反転して並べているので、どの角も内側を向きます。
+ *
+ * ★ 色は変えず、濃さ（--orn）だけで段階を付けます。
+ *   ランクが上がるほど、飾りがはっきり出ます。
+ *   別々の飾りにすると、並べたときに順位が読めなくなります。
+ *
+ * ★ 明るい地（PLATINUM / DIAMOND / CROWN）では金の線が溶けるので、
+ *   そこだけ濃い金に差し替えます（下で上書き）。
+ * ------------------------------------------------------------------------ */
+
+.member-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--orn, 0.55);
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20856%20540%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23e8c877%22%20stroke-linecap%3D%22round%22%3E%3Cg%20opacity%3D%220.6%22%3E%3Crect%20x%3D%2217%22%20y%3D%2217%22%20width%3D%22822%22%20height%3D%22506%22%20rx%3D%2215%22%20stroke-width%3D%221.6%22%2F%3E%3Crect%20x%3D%2225%22%20y%3D%2225%22%20width%3D%22806%22%20height%3D%22490%22%20rx%3D%2210%22%20stroke-width%3D%220.7%22%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D%220.95%22%20stroke-width%3D%221.8%22%3E%3Cg%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%23e8c877%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(856%2C0)%20scale(-1%2C1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%23e8c877%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(0%2C540)%20scale(1%2C-1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%23e8c877%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(856%2C540)%20scale(-1%2C-1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%23e8c877%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
+}
+
+/* 紙の質感。ごく薄く乗せるだけで、のっぺりしたグラデーションから抜けます */
+.member-card .member-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--grain, 0.06);
+  mix-blend-mode: overlay;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20140%20140%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.85%22%20numOctaves%3D%224%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22140%22%20height%3D%22140%22%20filter%3D%22url(%23n)%22%2F%3E%3C%2Fsvg%3E") repeat;
+  background-size: 140px 140px;
 }
 
 /* 斜めの光沢。ランクが上がるほど強くします */
@@ -1995,13 +2029,14 @@ select.input {
   opacity: 0.75;
 }
 
-/* ★ ここが筆記体です。読み込めなければ端末の筆記体に落ちます */
+/* ★ ゴシック体（太め）。カードの主役なので、いちばん強く出します */
 .member-rank-name {
-  font-family: 'Great Vibes', 'Snell Roundhand', 'Apple Chancery', cursive;
-  font-size: 32px;
+  font-family: 'Helvetica Neue', Arial, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: 0.05em;
   line-height: 1.05;
   min-width: 0;
-  /* 筆記体は細いので、影を薄く入れて背景から浮かせます */
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
@@ -2096,7 +2131,9 @@ select.input {
  * ------------------------------------------------------------------------ */
 
 .member-card.rank-platinum {
-  --sheen: 0.14;
+  --sheen: 0.16;
+  --orn: 0.5;
+  --grain: 0.1;
   background: linear-gradient(135deg, #77848d 0%, #d3dade 45%, #6f7c85 100%);
   color: #161c20;
   border-color: rgba(255, 255, 255, 0.55);
@@ -2104,41 +2141,99 @@ select.input {
 .member-card.rank-platinum .member-rank-name {
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
 }
+.member-card.rank-platinum::before,
+.member-card.rank-diamond::before,
+.member-card.rank-crown::before {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20856%20540%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234a3712%22%20stroke-linecap%3D%22round%22%3E%3Cg%20opacity%3D%220.6%22%3E%3Crect%20x%3D%2217%22%20y%3D%2217%22%20width%3D%22822%22%20height%3D%22506%22%20rx%3D%2215%22%20stroke-width%3D%221.6%22%2F%3E%3Crect%20x%3D%2225%22%20y%3D%2225%22%20width%3D%22806%22%20height%3D%22490%22%20rx%3D%2210%22%20stroke-width%3D%220.7%22%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D%220.9%22%20stroke-width%3D%221.8%22%3E%3Cg%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(856%2C0)%20scale(-1%2C1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(0%2C540)%20scale(1%2C-1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(856%2C540)%20scale(-1%2C-1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+}
 
 .member-card.rank-ruby {
-  --sheen: 0.18;
+  --sheen: 0.2;
+  --orn: 0.6;
+  --grain: 0.09;
   background: linear-gradient(135deg, #6d0a1c 0%, #c21f3a 48%, #7d1024 100%);
   border-color: rgba(255, 190, 200, 0.45);
 }
 
 .member-card.rank-sapphire {
-  --sheen: 0.22;
+  --sheen: 0.24;
+  --orn: 0.7;
+  --grain: 0.08;
   background: linear-gradient(135deg, #0b2160 0%, #1f52b8 48%, #10285f 100%);
   border-color: rgba(180, 205, 255, 0.5);
 }
 
 .member-card.rank-emerald {
-  --sheen: 0.26;
+  --sheen: 0.28;
+  --orn: 0.8;
+  --grain: 0.08;
   background: linear-gradient(135deg, #06341f 0%, #0f8a53 48%, #063a24 100%);
   border-color: rgba(170, 240, 205, 0.55);
 }
 
-/* DIAMOND から先はトレーナーの裁量。見た目もはっきり変えます */
+/* ★ DIAMOND — ここから先はトレーナーの裁量。見た目もはっきり変えます。
+ *
+ *   PLATINUM（銀の一枚板）との差が出るように、作りそのものを変えています。
+ *     ・虹の反射を重ねる（プリズム）
+ *     ・光の点を3つ置く（きらめき）
+ *     ・縁を白く光らせる
+ *   銀は「磨いた金属」、ダイヤは「光を割る石」。そこを分けています。
+ */
 .member-card.rank-diamond {
-  --sheen: 0.5;
-  background: linear-gradient(135deg, #c2dcec 0%, #ffffff 38%, #d2dfec 62%, #a9c4d9 100%);
-  color: #101b25;
-  border-color: rgba(255, 255, 255, 0.9);
+  --sheen: 0.62;
+  --orn: 0.85;
+  --grain: 0.05;
+  color: #0d1620;
+  border-color: rgba(255, 255, 255, 0.95);
+  background:
+    /* きらめき。丸い光ではなく、四方にとがった輝きにします。
+       丸だと「ぼんやり明るい」で終わり、宝石には見えません */
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20856%20540%22%3E%3Cpath%20d%3D%22M640%2086%20C647.36%20121.88%20650.12%20124.64%20686%20132%20C650.12%20139.36%20647.36%20142.12%20640%20178%20C632.64%20142.12%20629.88%20139.36%20594%20132%20C629.88%20124.64%20632.64%20121.88%20640%2086%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.95%22%2F%3E%3Cpath%20d%3D%22M196%20362%20C200.8%20385.4%20202.6%20387.2%20226%20392%20C202.6%20396.8%20200.8%20398.6%20196%20422%20C191.2%20398.6%20189.4%20396.8%20166%20392%20C189.4%20387.2%20191.2%20385.4%20196%20362%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.85%22%2F%3E%3Cpath%20d%3D%22M760%20402%20C763.52%20419.16%20764.84%20420.48%20782%20424%20C764.84%20427.52%20763.52%20428.84%20760%20446%20C756.48%20428.84%20755.16%20427.52%20738%20424%20C755.16%20420.48%20756.48%20419.16%20760%20402%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M392%2080%20C394.56%2092.48%20395.52%2093.44%20408%2096%20C395.52%2098.56%20394.56%2099.52%20392%20112%20C389.44%2099.52%20388.48%2098.56%20376%2096%20C388.48%2093.44%20389.44%2092.48%20392%2080%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.7%22%2F%3E%3Cpath%20d%3D%22M520%20288%20C521.92%20297.36%20522.64%20298.08%20532%20300%20C522.64%20301.92%20521.92%20302.64%20520%20312%20C518.08%20302.64%20517.36%20301.92%20508%20300%20C517.36%20298.08%20518.08%20297.36%20520%20288%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.55%22%2F%3E%3Cpath%20d%3D%22M112%20136%20C114.24%20146.92%20115.08%20147.76%20126%20150%20C115.08%20152.24%20114.24%20153.08%20112%20164%20C109.76%20153.08%20108.92%20152.24%2098%20150%20C108.92%20147.76%20109.76%20146.92%20112%20136%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%22640%22%20cy%3D%22132%22%20r%3D%2210%22%20fill%3D%22%23fff%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%22196%22%20cy%3D%22392%22%20r%3D%226%22%20fill%3D%22%23fff%22%20opacity%3D%220.45%22%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat,
+    /* 虹の反射（プリズム） */
+    linear-gradient(
+      68deg,
+      rgba(255, 150, 200, 0.5) 3%,
+      rgba(140, 205, 255, 0.44) 20%,
+      rgba(170, 255, 220, 0.4) 38%,
+      rgba(255, 240, 150, 0.5) 56%,
+      rgba(195, 170, 255, 0.5) 74%,
+      rgba(150, 235, 255, 0.44) 92%
+    ),
+    /* 石の面（カット）。境目をはっきりさせて、磨いた板ではなく割れた面に見せます */
+    linear-gradient(
+      152deg,
+      #ffffff 0%, #ffffff 14%,
+      #cfe0ef 15%, #cfe0ef 30%,
+      #ffffff 31%, #ffffff 46%,
+      #bcd3e6 47%, #bcd3e6 58%,
+      #ffffff 59%, #ffffff 74%,
+      #c7dbec 75%, #c7dbec 88%,
+      #ffffff 89%, #ffffff 100%
+    );
   box-shadow:
-    0 8px 22px rgba(90, 140, 180, 0.35),
-    inset 0 0 30px rgba(255, 255, 255, 0.6);
+    0 10px 26px rgba(120, 165, 205, 0.45),
+    inset 0 0 34px rgba(255, 255, 255, 0.85),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.9);
 }
 .member-card.rank-diamond .member-rank-name {
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+  /* ★ 背景が虹色で忙しいので、文字はグラデーションにしません。
+        濃い一色にして、白い光を回りに置きます。
+        文字までキラキラさせると、どこも読めなくなります。 */
+  color: #0b1c2c;
+  text-shadow:
+    0 0 6px rgba(255, 255, 255, 0.95),
+    0 0 14px rgba(255, 255, 255, 0.8),
+    0 1px 2px rgba(255, 255, 255, 0.9);
+}
+.member-card.rank-diamond .member-no,
+.member-card.rank-diamond .member-card-foot {
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
 }
 
 .member-card.rank-crown {
-  --sheen: 0.4;
+  --sheen: 0.42;
+  --orn: 0.95;
+  --grain: 0.12;
   background: linear-gradient(135deg, #6b4a06 0%, #e0b23c 45%, #8a6310 100%);
   color: #241a02;
   border-color: rgba(255, 236, 180, 0.85);
@@ -2149,7 +2244,9 @@ select.input {
 }
 
 .member-card.rank-crown_ambassador {
-  --sheen: 0.45;
+  --sheen: 0.5;
+  --orn: 1;
+  --grain: 0.14;
   background: linear-gradient(135deg, #0b0b0d 0%, #24242a 40%, #0b0b0d 70%, #1a1a1f 100%);
   border: 1px solid rgba(224, 178, 60, 0.85);
   box-shadow:

@@ -2308,6 +2308,27 @@ describe('★ 会員ランクを、契約者が自分で書き換えられない
     await assertSucceeds(setDoc(doc(admin(), 'clients/alice'), { memberNo: 7 }, { merge: true }));
   });
 
+  it('DIAMOND から先の条件も、契約者は書き換えられない', async () => {
+    // ★ 書けると、条件を「食事1日」にして自分で上がれてしまいます
+    await assertFails(
+      setDoc(
+        doc(alice(), 'clients/alice'),
+        { rankGoals: { DIAMOND: { target: 'meal', mode: 'total', days: 1 } } },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('管理者は条件を決められる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(admin(), 'clients/alice'),
+        { rankGoals: { DIAMOND: { target: 'meal', mode: 'total', days: 120 } } },
+        { merge: true },
+      ),
+    );
+  });
+
   it('契約者は自分のランクを読める（会員証に出すため）', async () => {
     await assertSucceeds(getDoc(doc(alice(), 'clients/alice')));
   });

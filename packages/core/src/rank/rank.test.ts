@@ -5,11 +5,15 @@ import {
   longestStreak,
   rankLabel,
   rankOrder,
+  goalLabel,
   rankProgress,
   readyRank,
   requirementsFor,
   summarizeRecords,
   toRank,
+  toRankGoal,
+  toRankGoals,
+  type RankGoals,
   type RecordStats,
 } from './rank';
 
@@ -23,7 +27,7 @@ import {
  */
 
 function stats(over: Partial<RecordStats> = {}): RecordStats {
-  return { mealDays: 0, exerciseDays: 0, longestMealStreak: 0, ...over };
+  return { mealDays: 0, exerciseDays: 0, longestMealStreak: 0, longestExerciseStreak: 0, ...over };
 }
 
 describe('連続した日数', () => {
@@ -120,8 +124,8 @@ describe('★ 順番を飛ばさない', () => {
     ).toBe('EMERALD');
   });
 
-  it('記録だけで上がれるのは EMERALD まで', () => {
-    // ★ DIAMOND から先は、記録の量では決まりません
+  it('条件が決まっていないかぎり、EMERALD より先へは行かない', () => {
+    // ★ DIAMOND から先は、トレーナーが条件を決めていなければ上がりません
     const perfect = stats({ longestMealStreak: 365, exerciseDays: 365, mealDays: 365 });
     expect(earnedRank('PLATINUM', perfect)).toBe(AUTO_MAX_RANK);
     expect(earnedRank('EMERALD', perfect)).toBe('EMERALD');
@@ -134,7 +138,7 @@ describe('★ トレーナーが決めたランクを、集計で動かさない
     expect(earnedRank('DIAMOND', stats())).toBe('DIAMOND');
   });
 
-  it('CROWN の人も、記録が満点でも上がらない', () => {
+  it('条件が決まっていなければ、記録が満点でも上がらない', () => {
     const perfect = stats({ longestMealStreak: 365, exerciseDays: 365, mealDays: 365 });
     expect(earnedRank('CROWN', perfect)).toBe('CROWN');
   });
@@ -160,13 +164,13 @@ describe('画面に出すまとめ', () => {
     expect(p.steps).toEqual([{ label: '食事を続けて記録した日数', done: 10, need: 21 }]);
   });
 
-  it('EMERALD まで来たら、次の目標は出さない（トレーナーが決めるため）', () => {
+  it('条件が決まっていなければ、次の目標は出さない', () => {
     const p = rankProgress('EMERALD', stats({ mealDays: 200 }));
     expect(p.next).toBeNull();
     expect(p.steps).toEqual([]);
   });
 
-  it('EMERALD より上でも、次の目標は出さない', () => {
+  it('CROWN でも、条件が決まっていなければ出さない', () => {
     expect(rankProgress('CROWN', stats()).next).toBeNull();
   });
 
@@ -227,5 +231,89 @@ describe('昇格の目印', () => {
     expect(readyRank({ rankReady: 'SUPER_CROWN' }, 'PLATINUM')).toBeNull();
     expect(readyRank({ rankReady: 42 }, 'PLATINUM')).toBeNull();
     expect(readyRank({ rankReady: null }, 'PLATINUM')).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// DIAMOND から先の条件（トレーナーが一人ひとりに決める）
+// -----------------------------------------------------------------------------
+
+describe('DIAMOND から先の条件', () => {
+  const goals: RankGoals = {
+    DIAMOND: { target: 'meal', mode: 'total', days: 120 },
+    CROWN: { target: 'exercise', mode: 'streak', days: 30 },
+  };
+
+  it('条件を決めていなければ、満点でも上がらない', () => {
+    // ★ 決めていない＝まだ目標を渡していない、ということなので、そこで止めます
+    const perfect = stats({ mealDays: 999, exerciseDays: 999, longestExerciseStreak: 999 });
+    expect(earnedRank('EMERALD', perfect, {})).toBe('EMERALD');
+  });
+
+  it('決めた条件を満たせば上がる（累計）', () => {
+    expect(earnedRank('EMERALD', stats({ mealDays: 119 }), goals)).toBe('EMERALD');
+    expect(earnedRank('EMERALD', stats({ mealDays: 120 }), goals)).toBe('DIAMOND');
+  });
+
+  it('決めた条件を満たせば上がる（連続）', () => {
+    const s = stats({ mealDays: 120, longestExerciseStreak: 30 });
+    expect(earnedRank('EMERALD', s, goals)).toBe('CROWN');
+  });
+
+  it('★ 先の条件だけ満たしても、手前を飛ばさない', () => {
+    // CROWN の条件は満たしているが、DIAMOND の条件（食事120日）が未達
+    const s = stats({ mealDays: 10, longestExerciseStreak: 30 });
+    expect(earnedRank('EMERALD', s, goals)).toBe('EMERALD');
+  });
+
+  it('途中のランクの条件が抜けていたら、そこで止まる', () => {
+    // ★ CROWN AMBASSADOR の条件だけ決めても、CROWN の条件が無ければ進めません
+    const onlyLast: RankGoals = { CROWN_AMBASSADOR: { target: 'meal', mode: 'total', days: 1 } };
+    expect(earnedRank('EMERALD', stats({ mealDays: 999 }), onlyLast)).toBe('EMERALD');
+  });
+
+  it('条件の書き方が、そのまま画面の見出しになる', () => {
+    expect(goalLabel({ target: 'meal', mode: 'total', days: 120 })).toBe('食事を記録した日数');
+    expect(goalLabel({ target: 'meal', mode: 'streak', days: 30 })).toBe(
+      '食事を続けて記録した日数',
+    );
+    expect(goalLabel({ target: 'exercise', mode: 'total', days: 50 })).toBe('運動を記録した日数');
+    expect(goalLabel({ target: 'exercise', mode: 'streak', days: 10 })).toBe(
+      '運動を続けて記録した日数',
+    );
+  });
+
+  it('進み具合も、決めた条件で出す', () => {
+    const p = rankProgress('EMERALD', stats({ mealDays: 60 }), goals);
+    expect(p.next).toBe('DIAMOND');
+    expect(p.steps).toEqual([{ label: '食事を記録した日数', done: 60, need: 120 }]);
+  });
+});
+
+describe('条件の読み込み（壊れた値に強いか）', () => {
+  it('正しい形はそのまま読む', () => {
+    expect(toRankGoal({ target: 'meal', mode: 'total', days: 120 })).toEqual({
+      target: 'meal',
+      mode: 'total',
+      days: 120,
+    });
+  });
+
+  it('知らない値や、日数が0以下なら無視する', () => {
+    expect(toRankGoal({ target: 'sleep', mode: 'total', days: 10 })).toBeNull();
+    expect(toRankGoal({ target: 'meal', mode: 'sometimes', days: 10 })).toBeNull();
+    expect(toRankGoal({ target: 'meal', mode: 'total', days: 0 })).toBeNull();
+    expect(toRankGoal({ target: 'meal', mode: 'total', days: -5 })).toBeNull();
+    expect(toRankGoal(null)).toBeNull();
+    expect(toRankGoal('たくさん')).toBeNull();
+  });
+
+  it('ランクごとにまとめて読める。壊れているものだけ落ちる', () => {
+    const goals = toRankGoals({
+      DIAMOND: { target: 'meal', mode: 'total', days: 120 },
+      CROWN: { target: 'meal', mode: 'total', days: 0 },
+      NOT_A_RANK: { target: 'meal', mode: 'total', days: 5 },
+    });
+    expect(Object.keys(goals)).toEqual(['DIAMOND']);
   });
 });

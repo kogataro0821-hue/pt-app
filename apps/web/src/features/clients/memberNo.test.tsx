@@ -27,6 +27,8 @@ vi.mock('./clientsRepo', () => ({
   nextMemberNo: (...a: unknown[]): unknown => nextMemberNo(...a),
   setClientActive: vi.fn(),
   setClientRank: vi.fn(),
+  setRankGoal: vi.fn(),
+  ranksBelow: (): unknown[] => [],
   deleteProvisioningClient: vi.fn(),
 }));
 

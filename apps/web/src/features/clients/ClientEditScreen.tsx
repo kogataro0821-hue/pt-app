@@ -3,6 +3,8 @@ import { macroMismatchWarning, validateTargets, type Targets } from '@pt/core';
 import {
   deleteProvisioningClient,
   nextMemberNo,
+  ranksBelow,
+  setRankGoal,
   getClient,
   setClientActive,
   setClientRank,
@@ -10,7 +12,8 @@ import {
 } from './clientsRepo';
 import { REVIEW_MODES, sexLabel, type Client, type ReviewMode, type Sex } from './clientTypes';
 import { DangerZone } from './DangerZone';
-import { RANKS, rankLabel, type Rank } from '@pt/core';
+import { GoalRow } from './GoalRow';
+import { AUTO_MAX_RANK, RANKS, rankLabel, rankOrder, type Rank, type RankGoal } from '@pt/core';
 
 /**
  * 契約者の編集（設計書 §11.3 A-3）。
@@ -151,8 +154,11 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
     }
   }
 
-  async function changeRank(rank: Rank) {
+  async function demote(rank: Rank) {
     if (busy || client === null || rank === client.rank) return;
+    if (!window.confirm(`${rankLabel(client.rank)} から ${rankLabel(rank)} に下げます。よろしいですか？`)) {
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -160,6 +166,20 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
       setClient({ ...client, rank });
     } catch {
       setError('ランクを変更できませんでした。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveGoal(rank: Rank, goal: RankGoal | null) {
+    if (busy || client === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await setRankGoal(client, rank, goal);
+      setClient({ ...client, rankGoals: next });
+    } catch {
+      setError('条件を保存できませんでした。');
     } finally {
       setBusy(false);
     }
@@ -491,26 +511,57 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
         </div>
 
         <p className="note">
-          RUBY・SAPPHIRE・EMERALD は、記録の量で条件を満たすとカレンダーの下に
-          「昇格させる」ボタンが出ます。<b>ここでは、それを飛ばして直接設定できます。</b>
+          <b>ここから上げることはできません。</b>
+          昇格は、条件を満たしたときに会員証の「昇格させる」ボタンから行います。
           <br />
-          DIAMOND から先は、こちらでしか設定できません。下げることもできます。
+          下げるほうは、いつでもできます。
         </p>
-        <label className="field">
-          <span className="field-label">ランクを直接設定する</span>
-          <select
-            className="input"
-            value={client.rank}
-            onChange={(e) => void changeRank(e.target.value as Rank)}
-            disabled={busy}
-          >
-            {RANKS.map((r) => (
-              <option key={r} value={r}>
-                {rankLabel(r)}
-              </option>
-            ))}
-          </select>
-        </label>
+
+        {ranksBelow(client.rank).length === 0 ? (
+          <p className="field-hint">いちばん下のランクなので、下げられません。</p>
+        ) : (
+          <label className="field">
+            <span className="field-label">ランクを下げる</span>
+            <select
+              className="input"
+              value=""
+              onChange={(e) => {
+                if (e.target.value !== '') void demote(e.target.value as Rank);
+              }}
+              disabled={busy}
+            >
+              <option value="">選んでください</option>
+              {ranksBelow(client.rank).map((r) => (
+                <option key={r} value={r}>
+                  {rankLabel(r)} に下げる
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">
+              選ぶとすぐに変わります。<b>下げたことは相手の画面にも出ます。</b>
+            </span>
+          </label>
+        )}
+      </section>
+
+      <section className="card">
+        <h3 className="card-title">DIAMOND から先の条件</h3>
+        <p className="note">
+          RUBY・SAPPHIRE・EMERALD の条件は決まっています。
+          <b>その先は、この人に何を続けてほしいかで決めてください。</b>
+          <br />
+          決めていないランクへは、記録がいくらあっても上がりません。
+        </p>
+
+        {RANKS.filter((r) => rankOrder(r) > rankOrder(AUTO_MAX_RANK)).map((r) => (
+          <GoalRow
+            key={r}
+            rank={r}
+            goal={client.rankGoals[r] ?? null}
+            busy={busy}
+            onSave={(goal) => void saveGoal(r, goal)}
+          />
+        ))}
       </section>
 
       {/* ★ 完全削除は、いちばん下に、いちばん目立たない形で置きます。

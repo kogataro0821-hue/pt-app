@@ -10,7 +10,17 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
-import { DEFAULT_TARGETS, INITIAL_RANK, toRank, type Rank, type Targets } from '@pt/core';
+import {
+  DEFAULT_TARGETS,
+  INITIAL_RANK,
+  RANKS,
+  rankOrder,
+  toRank,
+  toRankGoals,
+  type Rank,
+  type RankGoals,
+  type Targets,
+} from '@pt/core';
 import { clientIdToEmail, getFirebaseConfig } from '@/config/firebase';
 import { getDb } from '@/lib/firebase';
 import {
@@ -184,8 +194,9 @@ export async function updateClient(
  * ★ 管理者だけが呼びます。Rules 側でも、契約者は rank を書けません
  *   （clients の update で契約者に許した項目に入っていないため）。
  *
- * ★ 上げるときも下げるときも、同じ入口を通します。
- *   自動での降格はありませんが、トレーナーの判断で下げることはできます。
+ * ★ 上げられるのは「条件を満たしたとき」だけです。
+ *   画面側では、条件を満たしていないランクへ上げるボタンを出しません。
+ *   下げるほうは、トレーナーの判断でいつでもできます。
  */
 export async function setClientRank(clientId: string, rank: Rank): Promise<void> {
   const now = Date.now();
@@ -194,6 +205,34 @@ export async function setClientRank(clientId: string, rank: Rank): Promise<void>
     { rank, rankUpdatedAt: now, updatedAt: now },
     { merge: true },
   );
+}
+
+/**
+ * DIAMOND から先の昇格条件を決める（追加仕様: 会員ランク）。
+ *
+ * ★ 条件を消したいときは goal に null を渡します。
+ *   消すと、そのランクから先へは上がらなくなります（目標が無いため）。
+ */
+export async function setRankGoal(
+  client: Client,
+  rank: Rank,
+  goal: RankGoals[Rank] | null,
+): Promise<RankGoals> {
+  const next: RankGoals = { ...client.rankGoals };
+  if (goal === null) delete next[rank];
+  else next[rank] = goal;
+
+  await setDoc(
+    doc(getDb(), 'clients', client.clientId),
+    { rankGoals: next, updatedAt: Date.now() },
+    { merge: true },
+  );
+  return next;
+}
+
+/** そのランクより下のランク（降格で選べる先） */
+export function ranksBelow(rank: Rank): Rank[] {
+  return RANKS.filter((r) => rankOrder(r) < rankOrder(rank));
 }
 
 /**
@@ -290,6 +329,7 @@ function toClient(id: string, data: Record<string, unknown>): Client {
     aiConsent: toConsent(data.aiConsent),
     rank: toRank(data.rank),
     rankUpdatedAt: num(data.rankUpdatedAt),
+    rankGoals: toRankGoals(data.rankGoals),
     memberNo: num(data.memberNo),
     extra: (data.extra as Record<string, unknown> | undefined) ?? {},
     createdAt: num(data.createdAt),
@@ -315,6 +355,7 @@ function toFirestore(client: Client): Record<string, unknown> {
     aiConsent: client.aiConsent,
     rank: client.rank,
     rankUpdatedAt: client.rankUpdatedAt,
+    rankGoals: client.rankGoals,
     memberNo: client.memberNo,
     extra: client.extra,
     createdAt: client.createdAt,

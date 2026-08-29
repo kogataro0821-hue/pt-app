@@ -57,10 +57,15 @@ describe('会員証に出るもの', () => {
     expect(await screen.findByText('No. 0003')).toBeInTheDocument();
   });
 
-  it('会員IDとランクを出す', async () => {
-    show(aClient({ clientId: 'taro', rank: 'SAPPHIRE' }));
-    expect(await screen.findByText('taro')).toBeInTheDocument();
+  it('表示名とランクを出す', async () => {
+    show(aClient({ clientId: 'taro', displayName: '小賀 太郎', rank: 'SAPPHIRE' }));
+    expect(await screen.findByText('小賀 太郎')).toBeInTheDocument();
     expect(screen.getByText('SAPPHIRE')).toBeInTheDocument();
+  });
+
+  it('表示名が空なら、会員IDで代わりに出す', async () => {
+    show(aClient({ clientId: 'taro', displayName: '', rank: 'SAPPHIRE' }));
+    expect(await screen.findByText('taro')).toBeInTheDocument();
   });
 
   it('CROWN AMBASSADOR は空白で区切って出す', async () => {

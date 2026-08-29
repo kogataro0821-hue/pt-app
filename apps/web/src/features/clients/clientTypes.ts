@@ -1,4 +1,4 @@
-import { DEFAULT_TARGETS, INITIAL_RANK, type Rank, type Targets } from '@pt/core';
+import { DEFAULT_TARGETS, INITIAL_RANK, type Rank, type RankGoals, type Targets } from '@pt/core';
 
 /**
  * 契約者のデータ（設計書 §4 / §5.3）。
@@ -101,6 +101,14 @@ export interface Client {
   /** ランクが最後に変わった時刻 */
   rankUpdatedAt: number | null;
   /**
+   * DIAMOND から先の昇格条件（追加仕様: 会員ランク）。
+   *
+   * ★ RUBY・SAPPHIRE・EMERALD の条件は決まっていますが、
+   *   その先はトレーナーが一人ひとりに決めます。
+   *   決めていないランクは入っていません（＝そこから先へは上がりません）。
+   */
+  rankGoals: RankGoals;
+  /**
    * 会員整理番号（0001 から）。
    *
    * ★ 契約者IDとは別に持ちます。
@@ -135,6 +143,7 @@ export function emptyClient(clientId: string): Client {
     aiConsent: { ...NO_CONSENT },
     rank: INITIAL_RANK,
     rankUpdatedAt: null,
+    rankGoals: {},
     memberNo: null,
     extra: {},
     createdAt: null,
