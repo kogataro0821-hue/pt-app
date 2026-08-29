@@ -11,6 +11,13 @@ export default tseslint.config(
       '**/.expo/**',
       '**/expo-env.d.ts',
       'apps/mobile/assets/**',
+
+      // ★ 説明書の画面写真を撮るための道具（docs/manual/tools）。
+      //
+      //   製品には1行も入りません。ブラウザの中で動かす偽物や、
+      //   撮影用の使い捨てスクリプトなので、アプリ本体と同じ規則で
+      //   縛る意味がありません。ここで対象外にしておきます。
+      'docs/manual/tools/**',
     ],
   },
 

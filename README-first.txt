@@ -1,22 +1,19 @@
-﻿PT-app  番号の整理と報告書
-==========================
+﻿PT-app  説明書のバックアップ（docs/manual）
+==========================================
 
 【Firestore Rules の貼り直し: 不要です】
 
-  firebase/firestore.rules は入っていますが、
-  変わったのは「コメントの文言」だけです。
-  判定（誰が何をできるか）は1文字も変わっていません。
-  Firebase コンソールへの貼り直しは要りません。
+  今回はルールを1文字も触っていません。
 
 
 やること
 --------
 
 1. この ZIP を展開する
-2. 中の apps / docs / firebase / packages を
-   C:\Users\user\Desktop\pt-app の上に、そのまま上書きコピー
+2. 中の docs と eslint.config.mjs を
+   C:\\Users\\user\\Desktop\\pt-app の上に、そのまま上書きコピー
 3. GitHub Desktop で Changes を確認する
-     → 24ファイルのはずです
+     → 59 ファイルのはずです
      → 「削除された」ファイルが1つも無いことを確認
 4. コミットして Push
 
@@ -24,79 +21,113 @@
 コミットメッセージ
 ------------------
 
-  フェーズ番号の整理と、Phase 10 以降の報告書
+  説明書（契約者用・管理者用）と、その作り直し一式
 
 
-今回やったこと
+入っているもの
 --------------
 
-1. フェーズ番号のずれを直しました
+  docs/manual/pdf/      配布する PDF 2冊（これが本体）
+  docs/manual/*.html    本文（次に直すのはここ）
+  docs/manual/style.css 体裁（A4・余白・囲み・表）
+  docs/manual/img/      画面写真 43枚
+  docs/manual/tools/    画面写真を撮り直して PDF を作り直す道具一式
+  docs/manual/README.md 直すときの手順
 
-   設計書に無いものを途中で追加し、
-   コードのコメントで Phase 11〜14 と書いていました。
-   設計書の Phase 11（テスト強化）・12（実機運用）とぶつかっていました。
+  eslint.config.mjs … docs/manual/tools を検査の対象外にする指定を1つ足しただけ
 
-   直した形:
-     AI評価              → Phase 10（設計書の Phase 10 そのもの）
-     写真の7週間保存      → 追加仕様: 写真の保存期間（番号なし）
-     トレーナーの確認     → 同上
-     成分表示の読み取り   → 追加仕様: 成分表示の読み取り（番号なし）
 
-   番号は増やしません。増やすと設計書とまたぶつかります。
+次に説明書を直すとき
+--------------------
 
-2. 設計書 §13 の表を更新しました
-   - Phase 5〜10 に完了マーク
-   - 「追加仕様（番号を持たないもの）」の表を新設
+  文章だけ直す場合:
+      HTML を直して、PDF を作り直すだけ。写真はそのままです。
 
-3. 報告書を3本書きました
-     docs/PHASE-10-REPORT.md
-       トレーナーのコメント と AI評価
-     docs/EXTRA-PHOTO-RETENTION-REPORT.md
-       写真の保存期間 と トレーナーの確認
-     docs/EXTRA-LABEL-READING-REPORT.md
-       成分表示の読み取り
+  画面が変わった場合:
+      docs/manual/README.md に、6行のコマンドが書いてあります。
+      アプリ本体は1行も書き換えません。
+      撮れない画面があると、その場で止まって画面名を教えます。
 
 
 確認したこと
 ------------
 
-  GitHub から新しく clone したものに、この24ファイルを重ねて、
+  GitHub から新しく clone したものに、この一式を重ねて、
 
     npm ci         OK
-    npm run verify OK
-      @pt/core        239 件
-      @pt/ai-contract  39 件
-      Worker           15 件
+    npm run verify OK  （core 239 / ai-contract 39 / worker 15）
     npm run build  OK
 
-  Rules テスト 161 件は、この作業環境ではエミュレータが
-  起動できないため、CI でのみ実行されます。
-  CI が緑になるのを確認してから使ってください。
+  そのうえで、説明書の作り直しも最初から通しました。
+  画面写真43枚、PDF 2冊、どちらも作り直せています。
 
 
-入っているファイル（24）
+ひとつ気づいたこと
+------------------
+
+  前回の ZIP に入れていた README-first.txt が、
+  リポジトリの一番上にコミットされています。
+  作業用のメモなので、消してしまって構いません。
+  （今回の ZIP には入れ直していないので、消しても何も壊れません）
+
+入っているファイル（59）
 ------------------------
-  apps/web/src/features/ai/AiTextPanel.tsx
-  apps/web/src/features/ai/gemini.ts
-  apps/web/src/features/calendar/CalendarScreen.tsx
-  apps/web/src/features/days/CheckCard.tsx
-  apps/web/src/features/days/dayTypes.ts
-  apps/web/src/features/days/daysRepo.ts
-  apps/web/src/features/foods/FoodEditor.tsx
-  apps/web/src/features/foods/LabelScanner.tsx
-  apps/web/src/features/foods/RequestsScreen.tsx
-  apps/web/src/features/foods/requestsRepo.ts
-  apps/web/src/features/meals/ItemForm.tsx
-  apps/web/src/features/meals/LabelItemPanel.tsx
-  apps/web/src/features/review/ReviewSection.tsx
-  apps/web/src/features/review/reviewRepo.ts
-  docs/00_DESIGN.md
-  docs/EXTRA-LABEL-READING-REPORT.md
-  docs/EXTRA-PHOTO-RETENTION-REPORT.md
-  docs/PHASE-10-REPORT.md
-  firebase/firestore.rules
-  firebase/tests/rules.test.ts
-  packages/ai-contract/src/wire.ts
-  packages/core/src/food/label.ts
-  packages/core/src/photo/retention.ts
-  packages/core/src/review/safety.ts
+  docs/manual/README.md
+  docs/manual/admin.html
+  docs/manual/client.html
+  docs/manual/img/adm-account.png
+  docs/manual/img/adm-basic.png
+  docs/manual/img/adm-can.png
+  docs/manual/img/adm-check-confirm.png
+  docs/manual/img/adm-check.png
+  docs/manual/img/adm-client-new.png
+  docs/manual/img/adm-clients.png
+  docs/manual/img/adm-food-editor.png
+  docs/manual/img/adm-foods-2.png
+  docs/manual/img/adm-foods.png
+  docs/manual/img/adm-note.png
+  docs/manual/img/adm-request-open-2.png
+  docs/manual/img/adm-request-open.png
+  docs/manual/img/adm-requests.png
+  docs/manual/img/adm-target.png
+  docs/manual/img/adm-tone.png
+  docs/manual/img/ai-consent-detail.png
+  docs/manual/img/ai-consent.png
+  docs/manual/img/cal-warn.png
+  docs/manual/img/cal.png
+  docs/manual/img/day-body.png
+  docs/manual/img/day-exercise.png
+  docs/manual/img/day-finalize.png
+  docs/manual/img/day-full.png
+  docs/manual/img/day-map.png
+  docs/manual/img/day-meal.png
+  docs/manual/img/day-note.png
+  docs/manual/img/day-pending.png
+  docs/manual/img/day-photos.png
+  docs/manual/img/day-review.png
+  docs/manual/img/day-totals.png
+  docs/manual/img/entry-buttons.png
+  docs/manual/img/first-password.png
+  docs/manual/img/item-form.png
+  docs/manual/img/login.png
+  docs/manual/img/panel-label.png
+  docs/manual/img/panel-photo.png
+  docs/manual/img/panel-text-result-2.png
+  docs/manual/img/panel-text-result.png
+  docs/manual/img/panel-text.png
+  docs/manual/img/weight.png
+  docs/manual/pdf/PT-Manager-使い方ガイド-契約者用.pdf
+  docs/manual/pdf/PT-Manager-運用ガイド-管理者用.pdf
+  docs/manual/style.css
+  docs/manual/tools/.gitignore
+  docs/manual/tools/finish_images.py
+  docs/manual/tools/make_photos.py
+  docs/manual/tools/make_seed.py
+  docs/manual/tools/shoot.mjs
+  docs/manual/tools/stubs/firebase-app.js
+  docs/manual/tools/stubs/firebase-auth.js
+  docs/manual/tools/stubs/firebase-firestore.js
+  docs/manual/tools/stubs/gemini.js
+  docs/manual/tools/topdf.mjs
+  docs/manual/tools/vite.harness.config.mjs
+  eslint.config.mjs

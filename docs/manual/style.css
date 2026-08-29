@@ -1,0 +1,265 @@
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm 16mm;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.85;
+  color: #23241f;
+}
+
+body { margin: 0; }
+
+/* ---------- 表紙 ---------- */
+.cover {
+  height: 253mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  page-break-after: always;
+  text-align: left;
+}
+.cover .kicker {
+  font-size: 11pt;
+  letter-spacing: .18em;
+  color: #6d7a63;
+  margin: 0 0 10mm 0;
+}
+.cover h1 {
+  font-size: 30pt;
+  line-height: 1.35;
+  margin: 0 0 6mm 0;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.cover .who {
+  display: inline-block;
+  font-size: 13pt;
+  font-weight: 700;
+  color: #ffffff;
+  background: #1f4d3d;
+  padding: 2mm 7mm;
+  border-radius: 999px;
+  margin-bottom: 10mm;
+}
+.cover .who.admin { background: #7a4a1e; }
+.cover .lede {
+  font-size: 11.5pt;
+  color: #3d4038;
+  max-width: 118mm;
+  margin: 0 0 16mm 0;
+}
+.cover .meta {
+  border-top: 1.6pt solid #1f4d3d;
+  padding-top: 4mm;
+  font-size: 9.5pt;
+  color: #5c6154;
+}
+.cover.admin .meta { border-top-color: #7a4a1e; }
+
+/* ---------- 目次 ---------- */
+.toc { page-break-after: always; }
+.toc h2 { margin-top: 0; }
+.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+.toc > ol > li {
+  counter-increment: toc;
+  padding: 1.6mm 0;
+  border-bottom: .4pt solid #e2e4dd;
+  font-weight: 700;
+}
+.toc > ol > li::before {
+  content: counter(toc);
+  display: inline-block;
+  width: 9mm;
+  color: #1f4d3d;
+}
+.admin .toc > ol > li::before { color: #7a4a1e; }
+.toc .sub {
+  font-weight: 400;
+  font-size: 9.5pt;
+  color: #5c6154;
+  padding-left: 9mm;
+  line-height: 1.7;
+}
+
+/* ---------- 見出し ---------- */
+h2 {
+  font-size: 16pt;
+  margin: 0 0 5mm 0;
+  padding-bottom: 2.5mm;
+  border-bottom: 1.6pt solid #1f4d3d;
+  page-break-after: avoid;
+}
+.admin h2 { border-bottom-color: #7a4a1e; }
+h2 .num {
+  display: inline-block;
+  min-width: 12mm;
+  color: #1f4d3d;
+}
+.admin h2 .num { color: #7a4a1e; }
+
+h3 {
+  font-size: 12pt;
+  margin: 8mm 0 3mm 0;
+  padding-left: 3mm;
+  border-left: 3pt solid #1f4d3d;
+  page-break-after: avoid;
+}
+.admin h3 { border-left-color: #7a4a1e; }
+
+h4 {
+  font-size: 10.5pt;
+  margin: 5mm 0 2mm 0;
+  color: #2f3a2c;
+  page-break-after: avoid;
+}
+
+p { margin: 0 0 3.5mm 0; }
+b, strong { font-weight: 700; }
+
+.chapter { page-break-before: always; }
+
+/* ---------- 手順 ---------- */
+ol.steps { counter-reset: st; list-style: none; padding: 0; margin: 0 0 5mm 0; }
+ol.steps > li {
+  counter-increment: st;
+  position: relative;
+  padding: 0 0 0 10mm;
+  margin-bottom: 3.5mm;
+  page-break-inside: avoid;
+}
+ol.steps > li::before {
+  content: counter(st);
+  position: absolute;
+  left: 0;
+  top: .6mm;
+  width: 6.5mm;
+  height: 6.5mm;
+  line-height: 6.5mm;
+  text-align: center;
+  border-radius: 50%;
+  background: #1f4d3d;
+  color: #fff;
+  font-size: 9pt;
+  font-weight: 700;
+}
+.admin ol.steps > li::before { background: #7a4a1e; }
+
+ul.plain { padding-left: 5mm; margin: 0 0 4mm 0; }
+ul.plain li { margin-bottom: 1.5mm; }
+
+/* ---------- 画面写真 ---------- */
+figure {
+  margin: 4mm 0 6mm 0;
+  page-break-inside: avoid;
+}
+figure img {
+  display: block;
+  max-width: 100%;
+  max-height: 148mm;   /* 1ページに収まる高さ。超えると縮む */
+  width: auto;
+  height: auto;
+  border: .8pt solid #d5d8ce;
+  border-radius: 3mm;
+  background: #fff;
+}
+figure img.narrow { max-width: 62mm; }
+figure img.mid { max-width: 86mm; }
+figure img.wide { max-width: 128mm; }
+figure img.map { max-width: 150mm; max-height: 176mm; }
+figcaption {
+  font-size: 8.5pt;
+  color: #6a6f61;
+  margin-top: 1.8mm;
+  padding-left: 1mm;
+}
+.shots { display: flex; gap: 5mm; align-items: flex-start; page-break-inside: avoid; }
+.shots figure { flex: 1; margin-top: 0; }
+
+/* ---------- 囲み ---------- */
+.box {
+  border-radius: 3mm;
+  padding: 4mm 5mm;
+  margin: 4mm 0 5mm 0;
+  page-break-inside: avoid;
+  font-size: 10pt;
+}
+.box p:last-child { margin-bottom: 0; }
+.box .t { font-weight: 700; margin-bottom: 1.5mm; display: block; }
+
+.note   { background: #f0f3ec; border-left: 3.5pt solid #4c6b4a; }
+.warn   { background: #fbf0e4; border-left: 3.5pt solid #b5762c; }
+.stop   { background: #fbeceb; border-left: 3.5pt solid #b0453c; }
+.tip    { background: #eef1f6; border-left: 3.5pt solid #4a6285; }
+
+/* ---------- 表 ---------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 3mm 0 6mm 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+th, td {
+  border: .5pt solid #d8dbd1;
+  padding: 2mm 3mm;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #eef1ea; font-weight: 700; }
+.admin th { background: #f5efe7; }
+td.k { width: 34%; font-weight: 700; background: #fafbf8; }
+
+/* ---------- Q&A ---------- */
+.qa { margin-bottom: 5mm; page-break-inside: avoid; }
+.qa .q {
+  font-weight: 700;
+  padding-left: 8mm;
+  position: relative;
+  margin-bottom: 1.5mm;
+}
+.qa .q::before {
+  content: "Q";
+  position: absolute; left: 0; top: 0;
+  color: #1f4d3d; font-weight: 700;
+}
+.admin .qa .q::before { color: #7a4a1e; }
+.qa .a {
+  padding-left: 8mm;
+  position: relative;
+  color: #3d4038;
+}
+.qa .a::before {
+  content: "A";
+  position: absolute; left: 0; top: 0;
+  color: #8a8f80; font-weight: 700;
+}
+
+.lead {
+  font-size: 11pt;
+  color: #3d4038;
+  border-left: 3pt solid #cdd3c6;
+  padding-left: 4mm;
+  margin-bottom: 6mm;
+}
+
+.kbd {
+  font-size: 9.5pt;
+  background: #eceee8;
+  border: .5pt solid #d3d7cb;
+  border-radius: 1.5mm;
+  padding: .3mm 1.5mm;
+  white-space: nowrap;
+}
+
+.endmark {
+  margin-top: 12mm;
+  padding-top: 4mm;
+  border-top: .8pt solid #d5d8ce;
+  font-size: 9pt;
+  color: #6a6f61;
+}
