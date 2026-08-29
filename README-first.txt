@@ -1,128 +1,149 @@
-﻿PT-app  Phase 11A  画面のテスト
+﻿PT-app  Phase 11B  Rules の網羅
 ================================
 
 【Firestore Rules の貼り直し: 不要です】
 
-  今回はルールを1文字も触っていません。
+  firestore.rules は1文字も触っていません。
+
+
+★ このファイル（README-first.txt）はリポジトリに入れないでください
+------------------------------------------------------------------
+
+  前回、これがリポジトリの一番上にコミットされています。
+  作業用のメモなので、消して構いません。
+  今回も、下の「やること」では docs / apps / firebase だけをコピーしてください。
 
 
 やること
 --------
 
 1. この ZIP を展開する
-2. 中の apps / docs / package-lock.json を
+2. 中の apps / docs / firebase を
    C:\\Users\\user\\Desktop\\pt-app の上に、そのまま上書きコピー
+     （README-first.txt はコピーしない）
 3. GitHub Desktop で Changes を確認する
-     → 27 ファイルのはずです
+     → 5ファイルのはずです
      → 「削除された」ファイルが1つも無いことを確認
 4. コミットして Push
-5. CI（Actions）が緑になるのを確認する
+5. CI（Actions）が緑になるのを確認する  ← 今回はここが本番です
 
 
 コミットメッセージ
 ------------------
 
-  Phase 11A: 画面のテストを入れる（172件）
+  Phase 11B: Rules のテストを網羅する（161→265件）
 
 
-今回やったこと
---------------
+★ 今回いちばん大事なこと
+------------------------
 
-  apps/web にテストが1件もありませんでした。そこに172件入れました。
+  新しく足した104件の Rules テストは、まだ一度も実行されていません。
 
-  これまで実際に出たバグは、全部この「テストが無かった側」で起きています。
-  同じものが二度と出ないように固定するのが、今回の目的です。
+  エミュレータのダウンロード先がこの作業環境から塞がれていて、
+  Rules のテストはここでは動かせないためです。最初に走るのは CI です。
+
+  机の上ではできるだけのことをしました。
+    ・ルール全文とテストを1行ずつ突き合わせ、期待値を検証（疑わしいもの0件）
+    ・typecheck と lint は通っている
+    ・既存の通っているテストと、書き方を完全にそろえた
+
+  それでも赤くなる可能性はゼロではありません。
+  赤くなったらログを見せてください。すぐ直します。
 
 
-特に守ったこと（4つ）
----------------------
+何が抜けていたのか
+------------------
 
-  1. 契約者は栄養値を入力できない
-       画面に kcal/P/F/C の欄が出ないこと。
-       未登録の食材が「栄養値0・登録待ち」で渡ること。
+  161件ありましたが、テストが1件も無い場所が5つありました。
 
-  2. 契約者はトレーナーのコメントを書けない
-       書く欄も、編集・削除のボタンも出ないこと。
-       （ここは実装中、一度ほんとうに書き換えられる状態でした）
+    clients/{cid}/aiSessions/{sid}/messages/{mid}
+        AIとの会話の本文。何を食べたかがそのまま入る場所。
+        契約者どうしの分離が、ここだけ一度も確かめられていませんでした。
 
-  3. 管理者は代わりにAI利用へ同意できない
-       管理者の画面にボタンが1つも無いこと。
+    clients/{cid}/favorites/{fid}      お気に入り
+    clients/{cid}/recipes/{rid}        個人のレシピ
+    /recipes/{rid}                     共通レシピ
+    match /{document=**}               既定の全拒否
 
-  4. AI評価は、出す前に必ず検査される
-       病名や、体に負担のかかるやり方が混ざった文章は表示も保存もしない。
-       疲れ・むくみ程度の話は通す。免責は常に出す。
-       AIに送るのが数字だけであること（氏名・契約者ID・体重を送らない）。
+  「既定の全拒否」は、ルールに書き忘れたパスを塞いでいる1行です。
+  ここが外れると、書き忘れた場所すべてが誰でも読み書きできる状態になります。
+  その1行を試すテストが、ありませんでした。
+
+  ほかにも、他人の体重記録への「書き込み」、他人の変更履歴への差し込み、
+  users の一覧・作成・削除、日データの削除などが未検証でした。
+  未認証のテストは6件しかなく、写真・評価・コメント・体重・履歴は
+  すべて手つかずでした。
+
+
+同じ見落としを繰り返さないために
+--------------------------------
+
+  テストを足すだけでは、次に新しいコレクションを足したとき、
+  また同じことが起きます。
+
+  そこで見張りを作りました（firebase/tests/coverage.test.ts、25件）。
+
+    ・ルールの match ブロックすべてに、テストが1件以上あるか
+    ・既定の全拒否が残っているか
+    ・isAdmin に「有効なアカウントか」が入っているか
+    ・isClient に「本人かどうか」の比較が入っているか
+
+  この見張りはエミュレータを使いません。
+  npm run verify に乗せたので、どこでも・CIでも毎回走ります。
+
+  わざとルールを壊して、実際に止まることを確かめました。
+
+
+おわびと訂正
+------------
+
+  前回（Phase 11A）の ZIP に、apps/web/src/features/photos/resize.test.ts が
+  入っていませんでした。私の差分の取り方の誤りです。
+  「photos という名前のフォルダ」をまとめて除外してしまい、
+  説明書用のフォルダと一緒に、アプリ側のフォルダまで消えていました。
+
+  被害はこの1ファイル（テスト4件）だけで、CI は緑のままでした。
+  今回の ZIP に入れてあります。除外の仕方も直しました。
 
 
 テストの数
 ----------
 
-  @pt/web         172 件  ← 今回追加（これまで0件）
   @pt/core        239 件
+  @pt/web         172 件  ← resize.test.ts の4件が戻って172
   @pt/ai-contract  39 件
+  Rules の見張り   25 件  ← 今回追加
   Worker           15 件
   ---------------------------
-  合計            465 件
+  毎回動くもの    490 件
 
-  Security Rules  161 件（CIのみ）
-
-  npm run verify に乗っているので、CIが自動で全部走ります。
+  Security Rules  265 件（CIのみ / 今回 161 → 265）
 
 
 確認したこと
 ------------
 
-  GitHub から新しく clone したものに、この一式を重ねて、
+  GitHub から新しく clone したものに、この5ファイルを重ねて、
 
     npm ci         OK
-    npm run verify OK  （typecheck / lint / test すべて）
+    npm run verify OK
     npm run build  OK
 
-
-書きながら気づいたこと
-----------------------
-
-  ItemForm の「食材の名前を入力してください。」などの文言は、
-  実際には画面に出ません。条件を満たすまでボタンが押せないためです。
-  害はないので直していません（押せない理由がその場で分かるほうが親切です）。
-  報告書の 4-1 に書いてあります。
+  Rules の265件だけは、CI で初めて走ります。
 
 
-次にやること（Phase 11 の続き）
--------------------------------
+次にやること
+------------
 
-  11B  Rules網羅  … 161件を全分岐で洗い直す
-  11C  E2E        … ログイン→記録→依頼→登録→反映→確定 を通しで
-  11D  Worker     … JWT検証・レート制限
+  11C  E2E     … ログイン→記録→依頼→登録→反映→確定 を通しで
+  11D  Worker  … JWT検証・レート制限
 
-  くわしくは docs/PHASE-11A-REPORT.md を見てください。
+  くわしくは docs/PHASE-11B-REPORT.md を見てください。
 
-入っているファイル（27）
+入っているファイル（5）
 ------------------------
-  apps/web/package.json
-  apps/web/src/config/firebase.test.ts
-  apps/web/src/features/ai/AiConsentCard.test.tsx
-  apps/web/src/features/ai/gemini.test.ts
-  apps/web/src/features/auth/authTypes.test.ts
-  apps/web/src/features/clients/clientTypes.test.ts
-  apps/web/src/features/days/CheckCard.test.tsx
-  apps/web/src/features/days/dayTypes.test.ts
-  apps/web/src/features/days/daysRepo.test.ts
-  apps/web/src/features/exercises/exercisesRepo.test.ts
-  apps/web/src/features/foods/RequestsScreen.test.tsx
-  apps/web/src/features/foods/bulkReplace.test.ts
-  apps/web/src/features/foods/foodsRepo.test.ts
-  apps/web/src/features/foods/requestsRepo.test.ts
-  apps/web/src/features/meals/ItemForm.test.tsx
-  apps/web/src/features/meals/LabelItemPanel.test.tsx
-  apps/web/src/features/notes/NotesSection.test.tsx
-  apps/web/src/features/review/ReviewSection.test.tsx
-  apps/web/src/lib/firestoreError.test.ts
-  apps/web/src/test/factories.ts
-  apps/web/src/test/helpers.ts
-  apps/web/src/test/setup.ts
-  apps/web/src/test/vitest.d.ts
-  apps/web/tsconfig.json
-  apps/web/vitest.config.ts
-  docs/PHASE-11A-REPORT.md
-  package-lock.json
+  apps/web/src/features/photos/resize.test.ts
+  docs/PHASE-11B-REPORT.md
+  firebase/package.json
+  firebase/tests/coverage.test.ts
+  firebase/tests/rules.test.ts

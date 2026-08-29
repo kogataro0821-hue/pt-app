@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Firestore Security Rules と、その自動テスト（設計書 §7 / §16.7）",
   "scripts": {
+    "test": "vitest run tests/coverage.test.ts",
     "rules:test": "firebase emulators:exec --only firestore --project pt-app-rules-test \"vitest run\"",
     "rules:watch": "firebase emulators:exec --only firestore --project pt-app-rules-test \"vitest\"",
     "emulator": "firebase emulators:start --only firestore --project pt-app-rules-test",

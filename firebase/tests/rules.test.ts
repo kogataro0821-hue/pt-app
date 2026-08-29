@@ -85,6 +85,25 @@ beforeEach(async () => {
       clientId: 'dave',
       active: true,
     });
+    // role が 'admin' でも 'client' でもないユーザー。
+    // Firebase Auth に勝手に登録された人が、ここに当たります（isKnownUser の検証用）
+    await setDoc(doc(db, 'users/mallory-uid'), {
+      role: 'guest',
+      clientId: null,
+      active: true,
+    });
+    // 無効にされた管理者（isAdmin の active 判定の検証用）
+    await setDoc(doc(db, 'users/exadmin-uid'), {
+      role: 'admin',
+      clientId: null,
+      active: false,
+    });
+    // permissions を持たない、移行前のかたちの契約者（windowDays の検証用）
+    await setDoc(doc(db, 'users/frank-uid'), {
+      role: 'client',
+      clientId: 'frank',
+      active: true,
+    });
 
     for (const cid of ['alice', 'bob', 'carol']) {
       await setDoc(doc(db, `clients/${cid}`), {
@@ -101,6 +120,15 @@ beforeEach(async () => {
       active: true,
       targets: { kcal: 1800, p: 130, f: 50, c: 200 },
       permissions: { pastEditWindowDays: 7, allowFoodCreate: false, allowRecipeCreate: false },
+      reviewMode: 'standard',
+    });
+
+    // ★ permissions が無い、移行前のかたちの契約者。
+    //   inWindow が日数を取り出せないので、日付に紐づく書き込みは通りません。
+    await setDoc(doc(db, 'clients/frank'), {
+      displayName: 'frank',
+      active: true,
+      targets: { kcal: 1800, p: 130, f: 50, c: 200 },
       reviewMode: 'standard',
     });
 
@@ -132,6 +160,24 @@ const bob = () => env.authenticatedContext('bob-uid').firestore();
 const carol = () => env.authenticatedContext('carol-uid').firestore();
 const dave = () => env.authenticatedContext('dave-uid').firestore();
 const guest = () => env.unauthenticatedContext().firestore();
+/** role が 'admin' でも 'client' でもないユーザー */
+const mallory = () => env.authenticatedContext('mallory-uid').firestore();
+/** 無効にされた管理者 */
+const exAdmin = () => env.authenticatedContext('exadmin-uid').firestore();
+/** permissions を持たない、移行前のかたちの契約者 */
+const frank = () => env.authenticatedContext('frank-uid').firestore();
+
+/**
+ * Rules を迂回して、そのテストだけの前提を1件つくる。
+ *
+ * ★ 共有のシードに足すと、既存のテストで create だったものが update になり、
+ *   踏む分岐が変わってしまいます。テスト固有の前提はここで作ります。
+ */
+async function seed(path: string, data: Record<string, unknown>): Promise<void> {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), path), data);
+  });
+}
 
 // =============================================================================
 
@@ -1368,5 +1414,725 @@ describe('動作の健全性チェック', () => {
     expect(TODAY).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(TEN_DAYS_AGO < THREE_DAYS_AGO).toBe(true);
     expect(THREE_DAYS_AGO < TODAY).toBe(true);
+  });
+});
+
+// =============================================================================
+// Phase 11B — 分岐の網羅
+//
+// ★ ここから下は、既存のテストが踏んでいなかった分岐を埋めるものです。
+//
+//   161件あっても「全部見た」ことにはなりません。
+//   ルールを1行ずつ数えたところ、テストが1件も無い match ブロックが
+//   5つありました（recipes / favorites / aiSessions の messages /
+//   共通レシピ / 既定の全拒否）。
+//   そこは、壊しても誰も気づけない状態でした。
+// =============================================================================
+
+describe('★ テストが1件も無かった場所 — 契約者間の分離', () => {
+  // -------------------------------------------------------------------------
+  // お気に入り。日付に紐づかないので、ウィンドウも確定状態も効きません。
+  // 守っているのは canRead(cid) の1本だけです。
+  // -------------------------------------------------------------------------
+  describe('お気に入り（favorites）', () => {
+    it('契約者は自分のお気に入りを読み書きできる', async () => {
+      await assertSucceeds(getDoc(doc(alice(), 'clients/alice/favorites/f1')));
+      await assertSucceeds(setDoc(doc(alice(), 'clients/alice/favorites/f1'), { name: '朝の定番' }));
+    });
+
+    it('契約者は他人のお気に入りを読めない', async () => {
+      await seed('clients/alice/favorites/f1', { name: '朝の定番' });
+      await assertFails(getDoc(doc(bob(), 'clients/alice/favorites/f1')));
+      await assertFails(getDocs(collection(bob(), 'clients/alice/favorites')));
+    });
+
+    it('契約者は他人のお気に入りを書き換えられない', async () => {
+      await assertFails(setDoc(doc(bob(), 'clients/alice/favorites/f1'), { name: '乗っ取り' }));
+    });
+
+    it('契約者は他人のお気に入りを消せない', async () => {
+      await seed('clients/alice/favorites/f1', { name: '朝の定番' });
+      await assertFails(deleteDoc(doc(bob(), 'clients/alice/favorites/f1')));
+    });
+
+    it('管理者は読める', async () => {
+      await assertSucceeds(getDocs(collection(admin(), 'clients/alice/favorites')));
+    });
+
+    it('ログインしていなければ触れない', async () => {
+      await assertFails(getDoc(doc(guest(), 'clients/alice/favorites/f1')));
+      await assertFails(setDoc(doc(guest(), 'clients/alice/favorites/f1'), { name: 'x' }));
+    });
+
+    it('無効化された契約者は、自分のお気に入りも読めない', async () => {
+      await assertFails(getDoc(doc(carol(), 'clients/carol/favorites/f1')));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // AIとの会話履歴。ここには食事の内容がそのまま入ります。
+  // 親（aiSessions）には他人拒否のテストが1件ありましたが、
+  // 本文が入る messages のほうは読み書きとも1件もありませんでした。
+  // -------------------------------------------------------------------------
+  describe('AIの会話履歴（aiSessions / messages）', () => {
+    it('契約者は自分の会話を読み書きできる', async () => {
+      await assertSucceeds(setDoc(doc(alice(), 'clients/alice/aiSessions/s1'), { startedAt: 1 }));
+      await assertSucceeds(
+        setDoc(doc(alice(), 'clients/alice/aiSessions/s1/messages/m1'), { text: '白米180g' }),
+      );
+      await assertSucceeds(getDoc(doc(alice(), 'clients/alice/aiSessions/s1/messages/m1')));
+    });
+
+    it('契約者は他人の会話の本文を読めない', async () => {
+      // ★ ここがいちばん危ないところです。
+      //   会話には、その人が何を食べたかがそのまま入ります。
+      await seed('clients/alice/aiSessions/s1/messages/m1', { text: '白米180g' });
+      await assertFails(getDoc(doc(bob(), 'clients/alice/aiSessions/s1/messages/m1')));
+      await assertFails(getDocs(collection(bob(), 'clients/alice/aiSessions/s1/messages')));
+    });
+
+    it('契約者は他人の会話に書き込めない', async () => {
+      await assertFails(setDoc(doc(bob(), 'clients/alice/aiSessions/s1'), { startedAt: 1 }));
+      await assertFails(
+        setDoc(doc(bob(), 'clients/alice/aiSessions/s1/messages/m1'), { text: '偽の記録' }),
+      );
+    });
+
+    it('契約者は他人の会話を消せない', async () => {
+      await seed('clients/alice/aiSessions/s1/messages/m1', { text: '白米180g' });
+      await assertFails(deleteDoc(doc(bob(), 'clients/alice/aiSessions/s1/messages/m1')));
+    });
+
+    it('管理者は読める', async () => {
+      await seed('clients/alice/aiSessions/s1/messages/m1', { text: '白米180g' });
+      await assertSucceeds(getDoc(doc(admin(), 'clients/alice/aiSessions/s1/messages/m1')));
+    });
+
+    it('ログインしていなければ触れない', async () => {
+      await assertFails(getDoc(doc(guest(), 'clients/alice/aiSessions/s1/messages/m1')));
+      await assertFails(
+        setDoc(doc(guest(), 'clients/alice/aiSessions/s1/messages/m1'), { text: 'x' }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 個人のレシピ。ここだけ「契約者も書ける」条件があります。
+  // その条件（mayCreateRecipe）は、これまで一度も呼ばれていませんでした。
+  // -------------------------------------------------------------------------
+  describe('個人のレシピ（recipes）', () => {
+    it('契約者は自分のレシピを読める', async () => {
+      await assertSucceeds(getDocs(collection(alice(), 'clients/alice/recipes')));
+    });
+
+    it('契約者は他人のレシピを読めない', async () => {
+      await seed('clients/alice/recipes/r1', { name: '鶏むねの作り置き' });
+      await assertFails(getDoc(doc(bob(), 'clients/alice/recipes/r1')));
+      await assertFails(getDocs(collection(bob(), 'clients/alice/recipes')));
+    });
+
+    it('契約者は他人のレシピを書き換えられない', async () => {
+      await assertFails(setDoc(doc(bob(), 'clients/alice/recipes/r1'), { name: '乗っ取り' }));
+    });
+
+    it('許可されている契約者は、自分のレシピを作れる（既定は許可）', async () => {
+      // alice の permissions には allowRecipeCreate がありません。
+      // 既定値 true が効いていることを確かめます（移行前のデータでも動くように）
+      await assertSucceeds(setDoc(doc(alice(), 'clients/alice/recipes/r1'), { name: '作り置き' }));
+    });
+
+    it('止められている契約者は、自分のレシピでも作れない', async () => {
+      // dave は allowRecipeCreate: false
+      await assertFails(setDoc(doc(dave(), 'clients/dave/recipes/r1'), { name: '作り置き' }));
+    });
+
+    it('止められていても、管理者なら書ける', async () => {
+      await assertSucceeds(setDoc(doc(admin(), 'clients/dave/recipes/r1'), { name: '作り置き' }));
+    });
+
+    it('ログインしていなければ触れない', async () => {
+      await assertFails(getDoc(doc(guest(), 'clients/alice/recipes/r1')));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 共通のレシピ。/foods と同じ形なのに、テストだけが無い状態でした。
+  // -------------------------------------------------------------------------
+  describe('共通レシピ（/recipes）', () => {
+    it('登録済みの契約者は読める', async () => {
+      await assertSucceeds(getDoc(doc(alice(), 'recipes/common-1')));
+    });
+
+    it('管理者は書ける', async () => {
+      await assertSucceeds(setDoc(doc(admin(), 'recipes/common-1'), { name: '鶏むねの作り置き' }));
+    });
+
+    it('契約者は書き換えられない', async () => {
+      await seed('recipes/common-1', { name: '鶏むねの作り置き' });
+      await assertFails(setDoc(doc(alice(), 'recipes/common-1'), { name: '書き換え' }));
+      await assertFails(deleteDoc(doc(alice(), 'recipes/common-1')));
+    });
+
+    it('ログインしていなければ読めない', async () => {
+      await assertFails(getDoc(doc(guest(), 'recipes/common-1')));
+    });
+
+    it('無効化された契約者は読めない', async () => {
+      await assertFails(getDoc(doc(carol(), 'recipes/common-1')));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // ルールに書いていないパス。既定の全拒否が効いているか。
+  // -------------------------------------------------------------------------
+  describe('ルールに書いていないパス（既定の全拒否）', () => {
+    it('管理者でも読み書きできない', async () => {
+      await assertFails(getDoc(doc(admin(), 'somethingNew/x')));
+      await assertFails(setDoc(doc(admin(), 'somethingNew/x'), { a: 1 }));
+    });
+
+    it('契約者も読み書きできない', async () => {
+      await assertFails(getDoc(doc(alice(), 'somethingNew/x')));
+      await assertFails(setDoc(doc(alice(), 'somethingNew/x'), { a: 1 }));
+    });
+
+    it('契約者データの下に、勝手なコレクションを作れない', async () => {
+      await assertFails(setDoc(doc(alice(), 'clients/alice/secretStash/x'), { a: 1 }));
+    });
+
+    it('ログインしていなくても、もちろんできない', async () => {
+      await assertFails(getDoc(doc(guest(), 'somethingNew/x')));
+    });
+  });
+});
+
+describe('★ 他人のデータに手が届かないか（残りの経路）', () => {
+  it('契約者は他人の体重記録を書き換えられない', async () => {
+    // 読み取り側のテストはありましたが、書き込み側がありませんでした
+    await assertFails(
+      setDoc(doc(bob(), `clients/alice/measurements/${TODAY}`), { weightKg: 99 }),
+    );
+  });
+
+  it('契約者は他人の体重記録を一覧できない', async () => {
+    await assertFails(getDocs(collection(bob(), 'clients/alice/measurements')));
+  });
+
+  it('契約者は自分の体重記録を一覧できる', async () => {
+    await assertSucceeds(getDocs(collection(alice(), 'clients/alice/measurements')));
+  });
+
+  it('契約者は他人の変更履歴に、偽の記録を差し込めない', async () => {
+    await assertFails(
+      setDoc(doc(bob(), 'clients/alice/audits/a1'), { type: 'food-bulk-replace', by: 'bob' }),
+    );
+  });
+
+  it('契約者は他人の食事を消せない', async () => {
+    // write のうち delete だけが踏まれていませんでした
+    await seed(`clients/alice/days/${TODAY}/meals/m1`, { label: '1食目' });
+    await assertFails(deleteDoc(doc(bob(), `clients/alice/days/${TODAY}/meals/m1`)));
+  });
+
+  it('契約者は他人の日データを消せない', async () => {
+    await seed(`clients/alice/days/${THREE_DAYS_AGO}`, { date: THREE_DAYS_AGO, status: 'open' });
+    await assertFails(deleteDoc(doc(bob(), `clients/alice/days/${THREE_DAYS_AGO}`)));
+  });
+
+  it('契約者は他人の photoOldestAt を書き換えられない', async () => {
+    // ★ この抜け道は inWindow も確定状態も見ません。isClient(cid) の1本だけで守っています。
+    //   その1本が効いているかを、ここで確かめます。
+    await assertFails(
+      setDoc(
+        doc(bob(), 'clients/alice/days/2026-01-15'),
+        { photoOldestAt: 1, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('契約者は他人が積んだ依頼の記録を消せない', async () => {
+    await seed('foodRequests/karaage/from/alice', { variant: 'からあげ', count: 1, dates: [] });
+    await assertFails(deleteDoc(doc(bob(), 'foodRequests/karaage/from/alice')));
+  });
+
+  it('契約者は自分が積んだ依頼の記録も消せない（消せるのは管理者だけ）', async () => {
+    await seed('foodRequests/karaage/from/alice', { variant: 'からあげ', count: 1, dates: [] });
+    await assertFails(deleteDoc(doc(alice(), 'foodRequests/karaage/from/alice')));
+  });
+});
+
+describe('★ 権限を自分で上げられないか', () => {
+  it('契約者は users を一覧できない', async () => {
+    // 一覧できると、他人の uid と役割がまとめて見えます
+    await assertFails(getDocs(collection(alice(), 'users')));
+  });
+
+  it('契約者は users のドキュメントを新しく作れない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'users/brand-new-uid'), { role: 'admin', clientId: null, active: true }),
+    );
+  });
+
+  it('契約者は自分の users ドキュメントを消せない', async () => {
+    // 消してから作り直せると、役割を選び直せてしまいます
+    await assertFails(deleteDoc(doc(alice(), 'users/alice-uid')));
+  });
+
+  it('契約者は他人の users ドキュメントを消せない', async () => {
+    await assertFails(deleteDoc(doc(alice(), 'users/bob-uid')));
+  });
+
+  it('契約者は自分の契約者データを消せない', async () => {
+    await assertFails(deleteDoc(doc(alice(), 'clients/alice')));
+  });
+
+  it('契約者は他人の契約者データを消せない', async () => {
+    await assertFails(deleteDoc(doc(alice(), 'clients/bob')));
+  });
+
+  it('契約者は契約者データを新しく作れない', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/erin'), { displayName: 'erin', active: true }));
+  });
+
+  it('管理者は契約者データを新しく作れる', async () => {
+    // 既存の「作成・削除できる」は、シード済みの dave が相手なので
+    // 実際には update を踏んでいました。作成そのものはここで確かめます
+    await assertSucceeds(setDoc(doc(admin(), 'clients/erin'), { displayName: 'erin', active: true }));
+  });
+
+  it('管理者は users を読める・一覧できる', async () => {
+    await assertSucceeds(getDoc(doc(admin(), 'users/alice-uid')));
+    await assertSucceeds(getDocs(collection(admin(), 'users')));
+  });
+
+  it('管理者は users を書き換えられる・消せる', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), 'users/dave-uid'), { role: 'client', clientId: 'dave', active: false }),
+    );
+    await assertSucceeds(deleteDoc(doc(admin(), 'users/dave-uid')));
+  });
+
+  it('ログインしていなければ users を一覧できない', async () => {
+    await assertFails(getDocs(collection(guest(), 'users')));
+  });
+});
+
+describe('★ 登録されていない人・無効にされた人', () => {
+  it('role が admin でも client でもない人は、共通マスタを読めない', async () => {
+    // Firebase Auth には誰でも登録できます。
+    // users ドキュメントが管理者にしか作れないことで塞いでいますが、
+    // 役割が変な値だったときにどうなるかは、これまで確かめていませんでした
+    await assertFails(getDoc(doc(mallory(), 'foods/common-1')));
+    await assertFails(getDoc(doc(mallory(), 'config/app')));
+  });
+
+  it('role が変な値の人は、依頼も積めない', async () => {
+    await assertFails(setDoc(doc(mallory(), 'foodRequests/karaage'), { key: 'karaage' }));
+  });
+
+  it('無効にされた管理者は、管理者として扱われない', async () => {
+    await assertFails(getDocs(collection(exAdmin(), 'clients')));
+    await assertFails(setDoc(doc(exAdmin(), 'foods/common-1'), { name: '書き換え' }));
+    await assertFails(getDocs(collection(exAdmin(), 'foodRequests')));
+  });
+
+  it('無効にされた契約者は、共通マスタも設定も読めない', async () => {
+    await assertFails(getDoc(doc(carol(), 'foods/common-1')));
+    await assertFails(getDoc(doc(carol(), 'config/app')));
+  });
+
+  it('permissions が無い古いかたちの契約者は、日付に紐づく書き込みが通らない', async () => {
+    // ★ 移行前のデータで起こりうる形です。
+    //   期間を判定できないので、通してしまうより止めるほうを選んでいます。
+    //   直すには、その契約者に permissions を入れ直します。
+    await assertFails(
+      setDoc(doc(frank(), `clients/frank/days/${TODAY}/meals/m1`), { label: '1食目' }),
+    );
+  });
+
+  it('permissions が無くても、読むことはできる', async () => {
+    await assertSucceeds(getDoc(doc(frank(), 'clients/frank')));
+    await assertSucceeds(getDoc(doc(frank(), 'foods/common-1')));
+  });
+});
+
+describe('★ 未認証で、どこまで届くか', () => {
+  // これまで未認証のテストは6件しかなく、日次データ・写真・評価・コメント・
+  // 体重・履歴には1件もありませんでした。
+  // いまは me() の get() が落ちて塞がっていますが、
+  // どのヘルパーからも signedIn() が外れると一斉に開きます。
+  it('日次データを読めない', async () => {
+    await assertFails(getDoc(doc(guest(), `clients/alice/days/${TODAY}`)));
+    await assertFails(getDocs(collection(guest(), 'clients/alice/days')));
+  });
+
+  it('食事・運動を読めない', async () => {
+    await assertFails(getDocs(collection(guest(), `clients/alice/days/${YESTERDAY}/meals`)));
+    await assertFails(getDocs(collection(guest(), `clients/alice/days/${TODAY}/exercises`)));
+  });
+
+  it('写真を読めない・足せない', async () => {
+    await assertFails(getDocs(collection(guest(), `clients/alice/days/${TODAY}/photos`)));
+    await assertFails(
+      setDoc(doc(guest(), `clients/alice/days/${TODAY}/photos/p1`), { dataUrl: 'x' }),
+    );
+  });
+
+  it('AI評価とコメントを読めない・書けない', async () => {
+    await assertFails(getDoc(doc(guest(), `clients/alice/days/${TODAY}/review/latest`)));
+    await assertFails(getDocs(collection(guest(), `clients/alice/days/${TODAY}/notes`)));
+    await assertFails(
+      setDoc(doc(guest(), `clients/alice/days/${TODAY}/notes/n1`), { text: 'x', by: 'x' }),
+    );
+  });
+
+  it('体重記録と変更履歴を読めない', async () => {
+    await assertFails(getDocs(collection(guest(), 'clients/alice/measurements')));
+    await assertFails(getDocs(collection(guest(), 'clients/alice/audits')));
+  });
+
+  it('アプリ設定を読めない', async () => {
+    await assertFails(getDoc(doc(guest(), 'config/app')));
+  });
+
+  it('依頼の中身を読めない', async () => {
+    await assertFails(getDocs(collection(guest(), 'foodRequests')));
+    await assertFails(getDoc(doc(guest(), 'foodRequests/karaage/from/alice')));
+  });
+});
+
+describe('★ 管理者にしかできない操作（成功する側）', () => {
+  it('アプリ設定を書ける', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'config/app'), { appName: 'PT Manager' }));
+  });
+
+  it('登録済みの契約者はアプリ設定を読める', async () => {
+    await assertSucceeds(getDoc(doc(alice(), 'config/app')));
+  });
+
+  it('共通マスタを読める', async () => {
+    await assertSucceeds(getDoc(doc(admin(), 'foods/common-1')));
+  });
+
+  it('依頼そのものを作れる・書き換えられる', async () => {
+    // これまで管理者側の依頼の書き込みは、すべて Rules を迂回して作っていました
+    await assertSucceeds(setDoc(doc(admin(), 'foodRequests/karaage'), { key: 'karaage' }));
+    await assertSucceeds(
+      setDoc(doc(admin(), 'foodRequests/karaage'), { key: 'karaage', name: 'からあげ' }),
+    );
+  });
+
+  it('依頼の中の1件も作れる・読める', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), 'foodRequests/karaage/from/alice'), {
+        variant: 'からあげ',
+        count: 1,
+        dates: [TODAY],
+      }),
+    );
+    await assertSucceeds(getDoc(doc(admin(), 'foodRequests/karaage/from/alice')));
+  });
+
+  it('契約者の食事を読める', async () => {
+    await assertSucceeds(getDocs(collection(admin(), `clients/alice/days/${YESTERDAY}/meals`)));
+  });
+
+  it('契約者のコメントを読める', async () => {
+    await assertSucceeds(getDocs(collection(admin(), `clients/alice/days/${TODAY}/notes`)));
+  });
+
+  it('ウィンドウの外でも、運動・体重・写真を書ける', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TEN_DAYS_AGO}/exercises/e1`), { name: '走る' }),
+    );
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/measurements/${TEN_DAYS_AGO}`), { weightKg: 55 }),
+    );
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p1`), { dataUrl: 'x' }),
+    );
+  });
+
+  it('確定済みの日でも、運動を書ける', async () => {
+    await assertSucceeds(
+      setDoc(doc(admin(), `clients/alice/days/${YESTERDAY}/exercises/e1`), { name: '走る' }),
+    );
+  });
+
+  it('日データを消せる（ウィンドウの外でも）', async () => {
+    await assertSucceeds(deleteDoc(doc(admin(), 'clients/alice/days/2026-01-15')));
+  });
+
+  it('個人マスタを消せる', async () => {
+    await assertSucceeds(deleteDoc(doc(admin(), 'clients/alice/foods/f1')));
+  });
+
+  it('写真は管理者でも上書きできない（消して撮り直す）', async () => {
+    await seed(`clients/alice/days/${TODAY}/photos/p1`, { dataUrl: 'x', createdAt: 1 });
+    await assertFails(
+      setDoc(doc(admin(), `clients/alice/days/${TODAY}/photos/p1`), { dataUrl: 'y' }),
+    );
+  });
+});
+
+describe('★ 契約者が自分のぶんでできること（成功する側）', () => {
+  it('開いている日の記録を、あとから書き足せる', async () => {
+    // ★ この経路（既にある日を契約者が更新する）を踏むテストが1件もありませんでした。
+    //   誤ってここが常に false になっても、テストは緑のまま
+    //   「アプリだけが壊れている」状態になります。
+    await seed(`clients/alice/days/${THREE_DAYS_AGO}`, {
+      date: THREE_DAYS_AGO,
+      status: 'open',
+      updatedAt: 1,
+    });
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), `clients/alice/days/${THREE_DAYS_AGO}`),
+        { weightKg: 53.4, updatedAt: 2 },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('開いている日の記録を、自分で消せる', async () => {
+    await seed(`clients/alice/days/${THREE_DAYS_AGO}`, { date: THREE_DAYS_AGO, status: 'open' });
+    await assertSucceeds(deleteDoc(doc(alice(), `clients/alice/days/${THREE_DAYS_AGO}`)));
+  });
+
+  it('確定済みの日は、自分では消せない', async () => {
+    await assertFails(deleteDoc(doc(alice(), `clients/alice/days/${YESTERDAY}`)));
+  });
+
+  it('ウィンドウの外の日は、自分では消せない', async () => {
+    await assertFails(deleteDoc(doc(alice(), 'clients/alice/days/2026-01-15')));
+  });
+
+  it('自分の運動・評価・写真を読める', async () => {
+    await assertSucceeds(getDocs(collection(alice(), `clients/alice/days/${TODAY}/exercises`)));
+    await assertSucceeds(getDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`)));
+    await assertSucceeds(getDocs(collection(alice(), `clients/alice/days/${TODAY}/review`)));
+    await assertSucceeds(getDocs(collection(alice(), `clients/alice/days/${TODAY}/photos`)));
+  });
+
+  it('自分の日データを1件だけ読める', async () => {
+    await assertSucceeds(getDoc(doc(alice(), `clients/alice/days/${YESTERDAY}`)));
+  });
+
+  it('確定済みの日には、運動を書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${YESTERDAY}/exercises/e1`), { name: '走る' }),
+    );
+  });
+
+  it('ウィンドウの外の日には、写真を足せない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p1`), { dataUrl: 'x' }),
+    );
+  });
+
+  it('AI評価は、あとから書き直せる', async () => {
+    // これまで踏んでいたのは create だけで、update 側が空白でした
+    await seed(`clients/alice/days/${TODAY}/review/latest`, {
+      text: '前の評価',
+      mode: 'standard',
+      by: 'alice-uid',
+      createdAt: 1,
+    });
+    await assertSucceeds(
+      setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), {
+        text: '書き直した評価',
+        mode: 'standard',
+        by: 'alice-uid',
+        createdAt: 2,
+      }),
+    );
+  });
+
+  it('表示名やAI同意は自分で変えられる', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(alice(), 'clients/alice'),
+        { aiConsent: { granted: true, updatedAt: 1, version: 1 }, updatedAt: 1 },
+        { merge: true },
+      ),
+    );
+    await assertSucceeds(
+      setDoc(doc(alice(), 'clients/alice'), { extra: { note: 'x' } }, { merge: true }),
+    );
+  });
+});
+
+describe('★ 値の検査 — 境界のちょうどと、型', () => {
+  // これまでは「上限+1で落ちる」側だけを見ていました。
+  // ちょうどの値が通ることも確かめないと、
+  // うっかり <= を < に変えたときに気づけません。
+  describe('ちょうどの値は通る', () => {
+    // ★ ここだけ半角文字を使っています。
+    //
+    //   Rules の size() が「文字の数」なのか「バイトの数」なのかを、
+    //   この作業環境では確かめられません（エミュレータを起動できないため）。
+    //   半角なら、どちらの数え方でも同じ値になります。
+    //   上限を超えて落ちる側（全角）のテストは、これまでどおり別にあります。
+    it('AI評価は1200文字ちょうどまで', async () => {
+      await assertSucceeds(
+        setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), {
+          text: 'a'.repeat(1200),
+          mode: 'standard',
+          by: 'alice-uid',
+          createdAt: 1,
+        }),
+      );
+    });
+
+    it('コメントは2000文字ちょうどまで', async () => {
+      await assertSucceeds(
+        setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), {
+          text: 'a'.repeat(2000),
+          by: 'admin-uid',
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      );
+    });
+
+    it('依頼の名前は60文字ちょうどまで', async () => {
+      await assertSucceeds(
+        setDoc(doc(alice(), 'foodRequests/karaage'), {
+          key: 'karaage',
+          name: 'a'.repeat(60),
+          updatedAt: 1,
+        }),
+      );
+    });
+
+    it('候補の説明は200文字ちょうどまで', async () => {
+      await assertSucceeds(
+        setDoc(doc(alice(), 'foodRequests/karaage/from/alice'), {
+          variant: 'からあげ',
+          count: 1,
+          dates: [TODAY],
+          candidateNote: 'a'.repeat(200),
+        }),
+      );
+    });
+
+    it('表記は60文字ちょうどまで', async () => {
+      await assertSucceeds(
+        setDoc(doc(alice(), 'foodRequests/karaage/from/alice'), {
+          variant: 'a'.repeat(60),
+          count: 1,
+          dates: [TODAY],
+        }),
+      );
+    });
+
+    it('使った日は400件ちょうどまで', async () => {
+      await assertSucceeds(
+        setDoc(doc(alice(), 'foodRequests/karaage/from/alice'), {
+          variant: 'からあげ',
+          count: 1,
+          dates: Array.from({ length: 400 }, (_, i) => `2026-01-${String((i % 28) + 1)}`),
+        }),
+      );
+    });
+  });
+
+  describe('依頼の中の1件は、形が合っていないと書けない', () => {
+    // ★ ここは契約者が自由に値を入れられる、数少ない場所です。
+    //   4つの条件がありましたが、テストは1件もありませんでした。
+    const base = { variant: 'からあげ', count: 1, dates: [TODAY] };
+    const path = 'foodRequests/karaage/from/alice';
+
+    it('表記が空だと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, variant: '' }));
+    });
+
+    it('表記が61文字だと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, variant: 'あ'.repeat(61) }));
+    });
+
+    it('表記が文字列でないと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, variant: 123 }));
+    });
+
+    it('回数が整数でないと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, count: 1.5 }));
+      await assertFails(setDoc(doc(alice(), path), { ...base, count: '1' }));
+    });
+
+    it('使った日が配列でないと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, dates: TODAY }));
+    });
+
+    it('使った日が401件だと書けない', async () => {
+      await assertFails(
+        setDoc(doc(alice(), path), {
+          ...base,
+          dates: Array.from({ length: 401 }, (_, i) => `2026-01-${String((i % 28) + 1)}`),
+        }),
+      );
+    });
+
+    it('候補の説明が文字列でないと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, candidateNote: 123 }));
+    });
+
+    it('写真が文字列でないと書けない', async () => {
+      await assertFails(setDoc(doc(alice(), path), { ...base, candidatePhoto: 123 }));
+    });
+  });
+
+  describe('文字列であるべきところに、別の型は入らない', () => {
+    it('AI評価の本文', async () => {
+      await assertFails(
+        setDoc(doc(alice(), `clients/alice/days/${TODAY}/review/latest`), {
+          text: 12345,
+          mode: 'standard',
+          by: 'alice-uid',
+          createdAt: 1,
+        }),
+      );
+    });
+
+    it('コメントの本文', async () => {
+      await assertFails(
+        setDoc(doc(admin(), `clients/alice/days/${TODAY}/notes/n1`), {
+          text: ['配列'],
+          by: 'admin-uid',
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      );
+    });
+
+    it('写真の中身', async () => {
+      await assertFails(
+        setDoc(doc(alice(), `clients/alice/days/${TODAY}/photos/p1`), { dataUrl: 12345 }),
+      );
+    });
+
+    it('依頼の名前', async () => {
+      await assertFails(
+        setDoc(doc(alice(), 'foodRequests/karaage'), { key: 'karaage', name: 123, updatedAt: 1 }),
+      );
+    });
+  });
+
+  describe('写真の期限は、ちょうど49日で切り替わる', () => {
+    it('49日ちょうど経っていれば、ウィンドウの外でも消せる', async () => {
+      // 少しだけ余裕を持たせる（判定は request.time なので、テスト中に進む）
+      const createdAt = Date.now() - 49 * DAY_MS - 60_000;
+      await seed(`clients/alice/days/${TEN_DAYS_AGO}/photos/p1`, { dataUrl: 'x', createdAt });
+      await assertSucceeds(
+        deleteDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p1`)),
+      );
+    });
+
+    it('48日しか経っていなければ、ウィンドウの外では消せない', async () => {
+      const createdAt = Date.now() - 48 * DAY_MS;
+      await seed(`clients/alice/days/${TEN_DAYS_AGO}/photos/p2`, { dataUrl: 'x', createdAt });
+      await assertFails(deleteDoc(doc(alice(), `clients/alice/days/${TEN_DAYS_AGO}/photos/p2`)));
+    });
   });
 });
