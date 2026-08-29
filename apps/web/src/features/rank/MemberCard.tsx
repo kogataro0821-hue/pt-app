@@ -3,6 +3,7 @@ import { rankLabel, rankProgress, readyRank, type Rank, type RecordStats } from 
 import type { Client } from '@/features/clients/clientTypes';
 import { setClientRank, updateClient } from '@/features/clients/clientsRepo';
 import { loadRankStats } from './rankRepo';
+import logoUrl from './taro-zap.png';
 
 /**
  * 会員証（追加仕様: 会員ランク）。
@@ -11,14 +12,15 @@ import { loadRankStats } from './rankRepo';
  *   記録画面に入る前に必ず目に入ります。
  *   「今日も記録しよう」と思う理由が、そこにあるようにします。
  *
- * ★ 出しているもの
+ * ★ 形はクレジットカードと同じ比率（85.60 × 53.98mm）にしてあります。
  *
- *     会員整理番号 ／ 会員ID ／ RANK（筆記体）
- *     次のランクまでの進み具合
- *     MEMBER SINCE（入会年月）
- *     累計の記録日数
+ *   会員証として持っている感じを出したいので、カードそのものは
+ *   「ロゴ・整理番号・ランク・会員ID・入会年月」だけに絞りました。
  *
- *   進み具合をいちばん大きく出しています。
+ *   進み具合や累計は**カードの外**に出します。
+ *   カードの中に詰め込むと、比率が崩れるか、字が読めない大きさになります。
+ *
+ * ★ 進み具合は、カードのすぐ下にいちばん大きく出しています。
  *   いまのランクは「済んだこと」で、明日の行動を変えるのは「あと何日か」のほうです。
  *
  * ★ 昇格はここでは確定しません。
@@ -95,21 +97,29 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
   }
 
   return (
-    <section className={`member-card rank-${rank.toLowerCase()}`}>
-      <div className="member-card-head">
+    <div className="member-block">
+      {/* ★ ここはクレジットカードと同じ比率です。中身は絞ってあります */}
+      <section className={`member-card rank-${rank.toLowerCase()}`}>
+        <img className="member-logo" src={logoUrl} alt="たろZAP" />
         <span className="member-no">
           No. {client.memberNo === null ? '----' : pad4(client.memberNo)}
         </span>
-        <span className="member-id">{client.clientId}</span>
-      </div>
 
-      <div className="member-rank">
-        <span className="member-rank-label">RANK</span>
-        <span className="member-rank-name">{rankLabel(rank)}</span>
-      </div>
+        <div className="member-rank">
+          <span className="member-rank-label">RANK</span>
+          <span className="member-rank-name">{rankLabel(rank)}</span>
+        </div>
+
+        <div className="member-card-foot">
+          <span className="member-id">{client.clientId}</span>
+          <span className="member-since">
+            MEMBER SINCE {client.startDate === null ? '----.--' : memberSince(client.startDate)}
+          </span>
+        </div>
+      </section>
 
       {progress !== null && (
-        <>
+        <div className="member-extra">
           {progress.steps.length > 0 && progress.next !== null && (
             <div className="member-progress">
               <span className="member-progress-title">
@@ -163,15 +173,10 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
               </p>
             ))}
 
-          <div className="member-foot">
-            <span>
-              MEMBER SINCE {client.startDate === null ? '----.--' : memberSince(client.startDate)}
-            </span>
-            <span>
-              食事 {progress.stats.mealDays}日 ／ 運動 {progress.stats.exerciseDays}日
-            </span>
-          </div>
-        </>
+          <p className="member-totals">
+            食事 {progress.stats.mealDays}日 ／ 運動 {progress.stats.exerciseDays}日
+          </p>
+        </div>
       )}
 
       {error !== null && (
@@ -179,7 +184,7 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
           {error}
         </p>
       )}
-    </section>
+    </div>
   );
 }
 

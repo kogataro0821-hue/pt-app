@@ -247,3 +247,31 @@ describe('★ 昇格の目印（トレーナーが気づけるようにする）
     });
   });
 });
+
+describe('カードの見た目', () => {
+  it('ロゴが入っている', async () => {
+    show();
+    expect(await screen.findByAltText('たろZAP')).toBeInTheDocument();
+  });
+
+  it('★ カードはクレジットカードと同じ比率のまま（中身を詰め込まない）', async () => {
+    // ★ 進み具合や累計はカードの外に出しています。
+    //   中に入れると、比率が崩れるか、字が読めない大きさになります。
+    loadRankStats.mockResolvedValue(stats({ longestMealStreak: 14, mealDays: 20 }));
+    show();
+
+    const card = (await screen.findByAltText('たろZAP')).closest('.member-card');
+    expect(card).not.toBeNull();
+    // カードの中にあるのは、ロゴ・番号・ランク・会員ID・入会年月だけ
+    expect(card).toHaveTextContent('No. 0003');
+    expect(card).toHaveTextContent('MEMBER SINCE 2026.04');
+    expect(card).not.toHaveTextContent('14 / 21');
+    expect(card).not.toHaveTextContent('食事 20日');
+  });
+
+  it('ランクごとに、カードの見た目が変わる', async () => {
+    show(aClient({ rank: 'CROWN_AMBASSADOR' }));
+    const card = (await screen.findByAltText('たろZAP')).closest('.member-card');
+    expect(card).toHaveClass('rank-crown_ambassador');
+  });
+});
