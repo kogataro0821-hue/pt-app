@@ -1976,6 +1976,212 @@ select.input {
   background-size: 140px 140px;
 }
 
+/* --- 動き（追加仕様: 会員ランク）------------------------------------------
+ *
+ * ★ 動かすのは「光」だけです。文字も飾りも動かしません。
+ *   画面の中で動くものが多いと、読むほうが疲れます。
+ *
+ * ★ 端末の「視差効果を減らす」が入っている人には、動かしません。
+ *   動きで気分が悪くなる人がいます。止まっていても成立する見た目にしてあります。
+ *
+ * ★ 動かすのは transform と opacity だけです。
+ *   位置や大きさを毎コマ計算させると、スマホでは発熱と電池に響きます。
+ * ------------------------------------------------------------------------ */
+
+/* 光の帯が、ゆっくり横切る */
+.member-shine {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 45%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.28) 45%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0.28) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-160%) skewX(-18deg);
+}
+
+/* 暗いカードは、光の帯を強くしないと見えません */
+.member-card.rank-crown_ambassador .member-shine {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 246, 214, 0.42) 45%,
+    rgba(255, 250, 232, 0.72) 50%,
+    rgba(255, 246, 214, 0.42) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+/* きらめき（追加仕様: 会員ランク）
+ *
+ * ★ 「太い星を数個」ではなく、「細かい粒をたくさん、たまに長い光条」にしています。
+ *
+ *   太い星を並べると、貼り付けた絵に見えます（実際そう見えました）。
+ *   本物のきらめきは、ほとんどが**目に留まらないくらい小さい粒**で、
+ *   その中にときどき、細く長い光がまじります。
+ *   粒の細かさと、大きさのばらつきが、そのまま質感になります。
+ *
+ * ★ 粒は 34 個。7個に1つだけ大きな光条にしてあります。
+ *   位置・大きさ・速さ・間隔は全部ばらばらです。
+ *   そろっていると、規則が見えて作り物に見えます。
+ */
+
+.member-sparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.member-sparks i {
+  position: absolute;
+  display: block;
+  aspect-ratio: 1;
+  opacity: 0;
+  /* 小さい粒。ぼやけた点でしかありません */
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(230, 244, 255, 0.9) 22%,
+    rgba(150, 205, 255, 0) 70%
+  );
+}
+
+/* 大きいものだけ、長い光条にします */
+/* 大きいものだけ、細く長い光条にします。
+   太い星にすると、貼り付けた絵に見えます。細さが効きます。 */
+.member-sparks i:nth-child(7),
+.member-sparks i:nth-child(14),
+.member-sparks i:nth-child(21),
+.member-sparks i:nth-child(28) {
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22c%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%221%22%2F%3E%3Cstop%20offset%3D%220.35%22%20stop-color%3D%22%23cfe8ff%22%20stop-opacity%3D%220.75%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2379c0ff%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22v%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%220.5%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%221%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22h%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%220.5%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%221%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%2246%22%20fill%3D%22url(%23c)%22%2F%3E%3Crect%20x%3D%2298.4%22%20y%3D%222%22%20width%3D%223.2%22%20height%3D%22196%22%20fill%3D%22url(%23v)%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%2298.4%22%20width%3D%22196%22%20height%3D%223.2%22%20fill%3D%22url(%23h)%22%2F%3E%3Cg%20transform%3D%22rotate(45%20100%20100)%22%20opacity%3D%220.55%22%3E%3Crect%20x%3D%2299%22%20y%3D%2234%22%20width%3D%222%22%20height%3D%22132%22%20fill%3D%22url(%23v)%22%2F%3E%3Crect%20x%3D%2234%22%20y%3D%2299%22%20width%3D%22132%22%20height%3D%222%22%20fill%3D%22url(%23h)%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%226%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+/* 金のカードでは、粒も光条も金にします */
+.member-card.rank-crown .member-sparks i,
+.member-card.rank-crown_ambassador .member-sparks i {
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 238, 190, 0.9) 22%,
+    rgba(255, 205, 110, 0) 70%
+  );
+}
+
+.member-card.rank-crown .member-sparks i:nth-child(7),.member-card.rank-crown .member-sparks i:nth-child(14),.member-card.rank-crown .member-sparks i:nth-child(21),.member-card.rank-crown .member-sparks i:nth-child(28),
+.member-card.rank-crown_ambassador .member-sparks i:nth-child(7),.member-card.rank-crown_ambassador .member-sparks i:nth-child(14),.member-card.rank-crown_ambassador .member-sparks i:nth-child(21),.member-card.rank-crown_ambassador .member-sparks i:nth-child(28) {
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22c%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%221%22%2F%3E%3Cstop%20offset%3D%220.35%22%20stop-color%3D%22%23ffe6a8%22%20stop-opacity%3D%220.75%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffcd24%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22v%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%220.5%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%221%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22h%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%220.5%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%221%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%2246%22%20fill%3D%22url(%23c)%22%2F%3E%3Crect%20x%3D%2298.4%22%20y%3D%222%22%20width%3D%223.2%22%20height%3D%22196%22%20fill%3D%22url(%23v)%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%2298.4%22%20width%3D%22196%22%20height%3D%223.2%22%20fill%3D%22url(%23h)%22%2F%3E%3Cg%20transform%3D%22rotate(45%20100%20100)%22%20opacity%3D%220.55%22%3E%3Crect%20x%3D%2299%22%20y%3D%2234%22%20width%3D%222%22%20height%3D%22132%22%20fill%3D%22url(%23v)%22%2F%3E%3Crect%20x%3D%2234%22%20y%3D%2299%22%20width%3D%22132%22%20height%3D%222%22%20fill%3D%22url(%23h)%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%226%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+.member-sparks i:nth-child(1) { left: 23.7%; top: 14.6%; width: 1.0%; --dur: 5.4s; --delay: 5.5s; --drift: -8.6px; --sway: 1.1px; }
+.member-sparks i:nth-child(2) { left: 28.9%; top: 79.1%; width: 2.1%; --dur: 5.7s; --delay: 5.4s; --drift: -11.9px; --sway: 5.4px; }
+.member-sparks i:nth-child(3) { left: 50.5%; top: 70.2%; width: 1.7%; --dur: 4.9s; --delay: 5.8s; --drift: -8.1px; --sway: 4.2px; }
+.member-sparks i:nth-child(4) { left: 63.8%; top: 19.5%; width: 1.4%; --dur: 5.3s; --delay: 5.6s; --drift: -4.6px; --sway: 5.2px; }
+.member-sparks i:nth-child(5) { left: 32.4%; top: 75.4%; width: 1.3%; --dur: 4.2s; --delay: 2.1s; --drift: -6.6px; --sway: -5.4px; }
+.member-sparks i:nth-child(6) { left: 24.4%; top: 37.0%; width: 1.2%; --dur: 5.9s; --delay: 5.3s; --drift: -11.5px; --sway: -4.4px; }
+.member-sparks i:nth-child(7) { left: 55.5%; top: 11.9%; width: 6.5%; --dur: 4.2s; --delay: 3.1s; --drift: -9.3px; --sway: 0.6px; --big: 1; }
+.member-sparks i:nth-child(8) { left: 69.9%; top: 27.1%; width: 1.1%; --dur: 4.1s; --delay: 1.0s; --drift: -8.2px; --sway: -4.7px; }
+.member-sparks i:nth-child(9) { left: 55.8%; top: 74.0%; width: 2.2%; --dur: 3.3s; --delay: 0.2s; --drift: -5.4px; --sway: -4.3px; }
+.member-sparks i:nth-child(10) { left: 80.3%; top: 69.7%; width: 1.9%; --dur: 3.2s; --delay: 0.8s; --drift: -8.3px; --sway: 4.3px; }
+.member-sparks i:nth-child(11) { left: 71.1%; top: 73.5%; width: 1.8%; --dur: 3.7s; --delay: 4.5s; --drift: -7.1px; --sway: 0.8px; }
+.member-sparks i:nth-child(12) { left: 10.4%; top: 83.8%; width: 1.5%; --dur: 4.3s; --delay: 5.5s; --drift: -11.8px; --sway: 0.8px; }
+.member-sparks i:nth-child(13) { left: 4.9%; top: 26.3%; width: 2.2%; --dur: 4.1s; --delay: 2.3s; --drift: -12.0px; --sway: 4.5px; }
+.member-sparks i:nth-child(14) { left: 59.1%; top: 82.9%; width: 8.5%; --dur: 3.5s; --delay: 0.1s; --drift: -9.9px; --sway: 1.5px; --big: 1; }
+.member-sparks i:nth-child(15) { left: 69.5%; top: 18.7%; width: 2.2%; --dur: 3.3s; --delay: 2.7s; --drift: -9.8px; --sway: 5.1px; }
+.member-sparks i:nth-child(16) { left: 76.4%; top: 77.8%; width: 2.0%; --dur: 4.3s; --delay: 4.4s; --drift: -4.8px; --sway: 3.0px; }
+.member-sparks i:nth-child(17) { left: 81.0%; top: 48.0%; width: 1.8%; --dur: 3.8s; --delay: 2.8s; --drift: -4.7px; --sway: -2.3px; }
+.member-sparks i:nth-child(18) { left: 79.2%; top: 77.2%; width: 1.4%; --dur: 4.8s; --delay: 3.7s; --drift: -13.6px; --sway: 1.2px; }
+.member-sparks i:nth-child(19) { left: 50.7%; top: 64.5%; width: 1.7%; --dur: 4.5s; --delay: 2.2s; --drift: -4.8px; --sway: 1.1px; }
+.member-sparks i:nth-child(20) { left: 33.3%; top: 29.9%; width: 1.3%; --dur: 6.0s; --delay: 4.7s; --drift: -10.7px; --sway: 4.8px; }
+.member-sparks i:nth-child(21) { left: 70.9%; top: 22.7%; width: 7.7%; --dur: 4.2s; --delay: 4.0s; --drift: -12.0px; --sway: 3.1px; --big: 1; }
+.member-sparks i:nth-child(22) { left: 27.4%; top: 38.8%; width: 2.1%; --dur: 4.4s; --delay: 1.0s; --drift: -10.3px; --sway: -1.3px; }
+.member-sparks i:nth-child(23) { left: 50.6%; top: 31.6%; width: 2.1%; --dur: 3.8s; --delay: 2.0s; --drift: -13.4px; --sway: -3.6px; }
+.member-sparks i:nth-child(24) { left: 92.2%; top: 78.7%; width: 1.5%; --dur: 4.8s; --delay: 0.8s; --drift: -12.5px; --sway: -3.9px; }
+.member-sparks i:nth-child(25) { left: 53.6%; top: 13.9%; width: 1.6%; --dur: 5.2s; --delay: 5.3s; --drift: -7.3px; --sway: 5.0px; }
+.member-sparks i:nth-child(26) { left: 90.9%; top: 35.7%; width: 2.2%; --dur: 5.7s; --delay: 2.0s; --drift: -6.9px; --sway: -5.8px; }
+.member-sparks i:nth-child(27) { left: 33.6%; top: 18.3%; width: 2.4%; --dur: 4.6s; --delay: 1.3s; --drift: -7.0px; --sway: -5.6px; }
+.member-sparks i:nth-child(28) { left: 24.1%; top: 32.4%; width: 8.8%; --dur: 6.1s; --delay: 1.5s; --drift: -10.6px; --sway: 5.5px; --big: 1; }
+.member-sparks i:nth-child(29) { left: 17.1%; top: 37.2%; width: 1.1%; --dur: 3.9s; --delay: 4.5s; --drift: -6.7px; --sway: -0.5px; }
+.member-sparks i:nth-child(30) { left: 24.0%; top: 65.0%; width: 1.6%; --dur: 5.9s; --delay: 1.7s; --drift: -5.6px; --sway: 5.6px; }
+.member-sparks i:nth-child(31) { left: 69.6%; top: 44.9%; width: 0.9%; --dur: 6.0s; --delay: 1.2s; --drift: -11.8px; --sway: 0.3px; }
+.member-sparks i:nth-child(32) { left: 88.2%; top: 31.3%; width: 1.4%; --dur: 4.8s; --delay: 1.4s; --drift: -11.4px; --sway: -0.2px; }
+.member-sparks i:nth-child(33) { left: 50.2%; top: 11.3%; width: 1.2%; --dur: 4.4s; --delay: 2.0s; --drift: -9.7px; --sway: 5.8px; }
+.member-sparks i:nth-child(34) { left: 81.2%; top: 56.4%; width: 1.0%; --dur: 5.3s; --delay: 0.1s; --drift: -4.8px; --sway: -0.4px; }
+
+@keyframes member-shine-sweep {
+  0%   { opacity: 0; transform: translateX(-160%) skewX(-18deg); }
+  8%   { opacity: 1; }
+  46%  { opacity: 1; }
+  60%  { opacity: 0; transform: translateX(320%) skewX(-18deg); }
+  100% { opacity: 0; transform: translateX(320%) skewX(-18deg); }
+}
+
+/* 粒は「出て、ゆっくり流れて、消える」。まとめて明滅させると作り物に見えます */
+@keyframes member-spark-drift {
+  0%   { opacity: 0; transform: translate3d(0, 0, 0) scale(0.5); }
+  18%  { opacity: var(--peak, 0.9); }
+  55%  {
+    opacity: var(--peak, 0.9);
+    transform: translate3d(calc(var(--sway, 0px) * 0.6), calc(var(--drift, -8px) * 0.6), 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--sway, 0px), var(--drift, -8px), 0) scale(0.7);
+  }
+}
+
+/* ★ 動かすのは DIAMOND から上だけです。
+      下のランクまで動かすと、上がったときの差が出ません。 */
+@media (prefers-reduced-motion: no-preference) {
+  .member-card.rank-diamond .member-shine {
+    animation: member-shine-sweep 5.5s ease-in-out infinite;
+  }
+  .member-card.rank-crown .member-shine {
+    animation: member-shine-sweep 7s ease-in-out infinite;
+    opacity: 0.7;
+  }
+  .member-card.rank-crown_ambassador .member-shine {
+    animation: member-shine-sweep 6s ease-in-out infinite;
+  }
+
+  .member-card.rank-diamond .member-sparks,
+  .member-card.rank-crown .member-sparks,
+  .member-card.rank-crown_ambassador .member-sparks {
+    display: block;
+  }
+  /* 1粒ずつ、速さも間隔も違います。そろえると規則が見えて作り物になります */
+  .member-card.rank-diamond .member-sparks i,
+  .member-card.rank-crown .member-sparks i,
+  .member-card.rank-crown_ambassador .member-sparks i {
+    animation: member-spark-drift var(--dur, 4s) ease-in-out var(--delay, 0s) infinite;
+  }
+}
+
+/* ★ 動かさない設定の人には、きらめきを「止まったまま」出します。
+      動きが無いだけで、寂しくならないように。 */
+@media (prefers-reduced-motion: reduce) {
+  .member-card.rank-diamond .member-sparks,
+  .member-card.rank-crown .member-sparks,
+  .member-card.rank-crown_ambassador .member-sparks {
+    display: block;
+  }
+  .member-card.rank-diamond .member-sparks i,
+  .member-card.rank-crown .member-sparks i,
+  .member-card.rank-crown_ambassador .member-sparks i {
+    opacity: 0.75;
+    transform: none;
+  }
+}
+
 /* 斜めの光沢。ランクが上がるほど強くします */
 .member-card::after {
   content: '';
@@ -2142,7 +2348,6 @@ select.input {
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
 }
 .member-card.rank-platinum::before,
-.member-card.rank-diamond::before,
 .member-card.rank-crown::before {
   background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20856%20540%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234a3712%22%20stroke-linecap%3D%22round%22%3E%3Cg%20opacity%3D%220.6%22%3E%3Crect%20x%3D%2217%22%20y%3D%2217%22%20width%3D%22822%22%20height%3D%22506%22%20rx%3D%2215%22%20stroke-width%3D%221.6%22%2F%3E%3Crect%20x%3D%2225%22%20y%3D%2225%22%20width%3D%22806%22%20height%3D%22490%22%20rx%3D%2210%22%20stroke-width%3D%220.7%22%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D%220.9%22%20stroke-width%3D%221.8%22%3E%3Cg%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(856%2C0)%20scale(-1%2C1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(0%2C540)%20scale(1%2C-1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(856%2C540)%20scale(-1%2C-1)%22%3E%3Cpath%20d%3D%22M18%2066%20C18%2040%2040%2018%2066%2018%22%2F%3E%3Cpath%20d%3D%22M26%2076%20C26%2046%2046%2026%2076%2026%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M66%2018%20C82%2018%2092%2026%2096%2036%22%20stroke-width%3D%221.2%22%2F%3E%3Cpath%20d%3D%22M18%2066%20C18%2082%2026%2092%2036%2096%22%20stroke-width%3D%221.2%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%223.6%22%20stroke%3D%22none%22%20fill%3D%22%234a3712%22%2F%3E%3Cpath%20d%3D%22M54%2028%20C64%2031%2071%2038%2074%2048%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M28%2054%20C31%2064%2038%2071%2048%2074%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20d%3D%22M92%2020%20l0%2010%20M20%2092%20l10%200%22%20stroke-width%3D%221%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
@@ -2171,63 +2376,68 @@ select.input {
   border-color: rgba(170, 240, 205, 0.55);
 }
 
-/* ★ DIAMOND — ここから先はトレーナーの裁量。見た目もはっきり変えます。
+/* ★ DIAMOND
  *
- *   PLATINUM（銀の一枚板）との差が出るように、作りそのものを変えています。
- *     ・虹の反射を重ねる（プリズム）
- *     ・光の点を3つ置く（きらめき）
- *     ・縁を白く光らせる
- *   銀は「磨いた金属」、ダイヤは「光を割る石」。そこを分けています。
+ *   最初は「白くて明るい板」にしていましたが、2つ問題がありました。
+ *     ・PLATINUM（銀）との差が出ない
+ *     ・**白い上に白い粒を置いても、きらめきが見えない**
+ *
+ *   そこで「明るい石」ではなく「**濃い石**」にしました。
+ *   本物のダイヤも、光っているのは石そのものではなく、
+ *   暗い背景の中で割れて返ってくる光のほうです。
+ *
+ *   濃くしたことで、細かい粒がはっきり光ります。
+ *   虹は残していますが、面の奥のほうで控えめに出しています。
  */
 .member-card.rank-diamond {
-  --sheen: 0.62;
-  --orn: 0.85;
-  --grain: 0.05;
-  color: #0d1620;
-  border-color: rgba(255, 255, 255, 0.95);
+  --sheen: 0.3;
+  --orn: 0.9;
+  --grain: 0.09;
+  --peak: 1;
+  color: #eaf4ff;
+  border-color: rgba(190, 225, 255, 0.75);
   background:
-    /* きらめき。丸い光ではなく、四方にとがった輝きにします。
-       丸だと「ぼんやり明るい」で終わり、宝石には見えません */
-    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20856%20540%22%3E%3Cpath%20d%3D%22M640%2086%20C647.36%20121.88%20650.12%20124.64%20686%20132%20C650.12%20139.36%20647.36%20142.12%20640%20178%20C632.64%20142.12%20629.88%20139.36%20594%20132%20C629.88%20124.64%20632.64%20121.88%20640%2086%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.95%22%2F%3E%3Cpath%20d%3D%22M196%20362%20C200.8%20385.4%20202.6%20387.2%20226%20392%20C202.6%20396.8%20200.8%20398.6%20196%20422%20C191.2%20398.6%20189.4%20396.8%20166%20392%20C189.4%20387.2%20191.2%20385.4%20196%20362%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.85%22%2F%3E%3Cpath%20d%3D%22M760%20402%20C763.52%20419.16%20764.84%20420.48%20782%20424%20C764.84%20427.52%20763.52%20428.84%20760%20446%20C756.48%20428.84%20755.16%20427.52%20738%20424%20C755.16%20420.48%20756.48%20419.16%20760%20402%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M392%2080%20C394.56%2092.48%20395.52%2093.44%20408%2096%20C395.52%2098.56%20394.56%2099.52%20392%20112%20C389.44%2099.52%20388.48%2098.56%20376%2096%20C388.48%2093.44%20389.44%2092.48%20392%2080%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.7%22%2F%3E%3Cpath%20d%3D%22M520%20288%20C521.92%20297.36%20522.64%20298.08%20532%20300%20C522.64%20301.92%20521.92%20302.64%20520%20312%20C518.08%20302.64%20517.36%20301.92%20508%20300%20C517.36%20298.08%20518.08%20297.36%20520%20288%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.55%22%2F%3E%3Cpath%20d%3D%22M112%20136%20C114.24%20146.92%20115.08%20147.76%20126%20150%20C115.08%20152.24%20114.24%20153.08%20112%20164%20C109.76%20153.08%20108.92%20152.24%2098%20150%20C108.92%20147.76%20109.76%20146.92%20112%20136%20Z%22%20fill%3D%22%23fff%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%22640%22%20cy%3D%22132%22%20r%3D%2210%22%20fill%3D%22%23fff%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%22196%22%20cy%3D%22392%22%20r%3D%226%22%20fill%3D%22%23fff%22%20opacity%3D%220.45%22%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat,
-    /* 虹の反射（プリズム） */
+    /* 虹の反射。奥のほうで、控えめに */
     linear-gradient(
-      68deg,
-      rgba(255, 150, 200, 0.5) 3%,
-      rgba(140, 205, 255, 0.44) 20%,
-      rgba(170, 255, 220, 0.4) 38%,
-      rgba(255, 240, 150, 0.5) 56%,
-      rgba(195, 170, 255, 0.5) 74%,
-      rgba(150, 235, 255, 0.44) 92%
+      66deg,
+      rgba(255, 120, 190, 0.16) 6%,
+      rgba(90, 190, 255, 0.14) 26%,
+      rgba(120, 255, 220, 0.1) 44%,
+      rgba(255, 226, 120, 0.14) 62%,
+      rgba(170, 130, 255, 0.16) 80%
     ),
-    /* 石の面（カット）。境目をはっきりさせて、磨いた板ではなく割れた面に見せます */
+    /* 面に走る光。等間隔の縞にすると、シャツの柄に見えます。
+       本数を減らし、境目をぼかして、幅も変えます */
     linear-gradient(
-      152deg,
-      #ffffff 0%, #ffffff 14%,
-      #cfe0ef 15%, #cfe0ef 30%,
-      #ffffff 31%, #ffffff 46%,
-      #bcd3e6 47%, #bcd3e6 58%,
-      #ffffff 59%, #ffffff 74%,
-      #c7dbec 75%, #c7dbec 88%,
-      #ffffff 89%, #ffffff 100%
-    );
+      148deg,
+      rgba(255, 255, 255, 0) 8%,
+      rgba(180, 230, 255, 0.34) 17%,
+      rgba(255, 255, 255, 0) 26%,
+      rgba(255, 255, 255, 0) 44%,
+      rgba(150, 215, 255, 0.2) 50%,
+      rgba(255, 255, 255, 0) 57%,
+      rgba(255, 255, 255, 0) 74%,
+      rgba(190, 235, 255, 0.26) 81%,
+      rgba(255, 255, 255, 0) 90%
+    ),
+    /* 石そのもの。奥ほど深い青 */
+    radial-gradient(120% 150% at 22% 8%, #2a6288 0%, #123350 38%, #071827 78%, #040f19 100%);
   box-shadow:
-    0 10px 26px rgba(120, 165, 205, 0.45),
-    inset 0 0 34px rgba(255, 255, 255, 0.85),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+    0 10px 26px rgba(20, 60, 95, 0.45),
+    inset 0 0 30px rgba(120, 195, 255, 0.28),
+    inset 0 0 0 1px rgba(190, 225, 255, 0.45);
 }
 .member-card.rank-diamond .member-rank-name {
-  /* ★ 背景が虹色で忙しいので、文字はグラデーションにしません。
-        濃い一色にして、白い光を回りに置きます。
-        文字までキラキラさせると、どこも読めなくなります。 */
-  color: #0b1c2c;
+  /* 濃い石の上なので、文字は明るく。回りに青い光を置きます */
+  color: #f2f9ff;
   text-shadow:
-    0 0 6px rgba(255, 255, 255, 0.95),
-    0 0 14px rgba(255, 255, 255, 0.8),
-    0 1px 2px rgba(255, 255, 255, 0.9);
+    0 0 8px rgba(120, 200, 255, 0.85),
+    0 0 18px rgba(80, 165, 230, 0.6),
+    0 1px 2px rgba(0, 0, 0, 0.45);
 }
 .member-card.rank-diamond .member-no,
 .member-card.rank-diamond .member-card-foot {
-  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 20, 40, 0.6);
 }
 
 .member-card.rank-crown {

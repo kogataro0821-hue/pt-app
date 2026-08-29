@@ -280,3 +280,24 @@ describe('カードの見た目', () => {
     expect(card).toHaveClass('rank-crown_ambassador');
   });
 });
+
+describe('動き', () => {
+  it('光ときらめきの層がある（動かすのはCSS側で決めます）', async () => {
+    // ★ 出しているのは器だけです。どのランクで動かすかは CSS が決めます。
+    //   端末の「視差効果を減らす」が入っている人には、動きません。
+    show(aClient({ rank: 'DIAMOND' }));
+    const card = (await screen.findByAltText('たろZAP')).closest('.member-card');
+    expect(card?.querySelector('.member-shine')).not.toBeNull();
+    // ★ 「太い星を数個」ではなく「細かい粒をたくさん」。粒の数が質感になります
+    expect(card?.querySelectorAll('.member-sparks i').length).toBeGreaterThanOrEqual(30);
+  });
+
+  it('★ 動く飾りは、読み上げには出さない', async () => {
+    // 光やきらめきは意味を持ちません。読み上げると邪魔になるだけです
+    show(aClient({ rank: 'DIAMOND' }));
+    const card = (await screen.findByAltText('たろZAP')).closest('.member-card');
+    for (const cls of ['.member-shine', '.member-sparks', '.member-grain']) {
+      expect(card?.querySelector(cls)?.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+});

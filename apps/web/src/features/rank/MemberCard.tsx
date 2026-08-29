@@ -102,6 +102,44 @@ export function MemberCard({ client, isAdmin }: { client: Client; isAdmin: boole
       <section className={`member-card rank-${rank.toLowerCase()}`}>
         {/* 紙の質感。飾りではなく、のっぺりしたグラデーションから抜けるためのもの */}
         <span className="member-grain" aria-hidden="true" />
+        {/* 光の帯と、きらめき。動かすのは DIAMOND から上だけです（CSS側で制御） */}
+        <span className="member-shine" aria-hidden="true" />
+        <span className="member-sparks" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
         <img className="member-logo" src={logoUrl} alt="たろZAP" />
         <span className="member-no">
           No. {client.memberNo === null ? '----' : pad4(client.memberNo)}
