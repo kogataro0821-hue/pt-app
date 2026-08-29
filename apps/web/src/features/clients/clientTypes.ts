@@ -101,6 +101,19 @@ export interface Client {
   /** ランクが最後に変わった時刻 */
   rankUpdatedAt: number | null;
   /**
+   * 作るときに初期ランクを指定して作られた契約者か（追加仕様: 会員ランク）。
+   *
+   * ★ この枠は、システム全体で**1人だけ**です。
+   *
+   *   初期ランクを自由に付けられると、ランクの意味が無くなります。
+   *   「条件を満たした人だけが上がる」という前提が、
+   *   作るときに好きな段から始められるなら成り立ちません。
+   *
+   *   トレーナー自身のアカウントのように、
+   *   本当に例外的な1つのためだけに開けてあります。
+   */
+  rankSeeded: boolean;
+  /**
    * DIAMOND から先の昇格条件（追加仕様: 会員ランク）。
    *
    * ★ RUBY・SAPPHIRE・EMERALD の条件は決まっていますが、
@@ -143,6 +156,7 @@ export function emptyClient(clientId: string): Client {
     aiConsent: { ...NO_CONSENT },
     rank: INITIAL_RANK,
     rankUpdatedAt: null,
+    rankSeeded: false,
     rankGoals: {},
     memberNo: null,
     extra: {},

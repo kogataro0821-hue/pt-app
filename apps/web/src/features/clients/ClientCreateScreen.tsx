@@ -1,7 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { INITIAL_RANK, RANKS, checkClientId, clientIdErrorMessage, rankLabel, type Rank } from '@pt/core';
 import { CLIENT_LOGIN_DOMAIN } from '@/config/firebase';
-import { ClientOperationError, createClient, createClientErrorMessage } from './clientsRepo';
+import {
+  ClientOperationError,
+  createClient,
+  createClientErrorMessage,
+  seededRankClient,
+} from './clientsRepo';
+import type { Client } from './clientTypes';
 
 /**
  * 契約者の新規作成（設計書 §11.3 A-2 / §6.5）。
@@ -23,6 +29,21 @@ export function ClientCreateScreen({
   const [memberNo, setMemberNo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * 初期ランクの枠を、すでに使っている契約者（追加仕様: 会員ランク）。
+   * いれば、初期ランクは選べません（枠はシステム全体で1人だけ）。
+   */
+  const [seeded, setSeeded] = useState<Client | null | undefined>(undefined);
+
+  useEffect(() => {
+    void seededRankClient()
+      .then(setSeeded)
+      // 調べられなければ、安全側に倒して「使われている」扱いにします。
+      // 分からないまま2人目を作らせるより、作れないほうがましです。
+      .catch(() => setSeeded(null));
+  }, []);
+
+  const rankLocked = seeded !== null;
 
   const idCheck = checkClientId(clientId);
   const idProblem =
@@ -148,20 +169,38 @@ export function ClientCreateScreen({
           <span className="field-label">初期ランク</span>
           <select
             className="input"
-            value={rank}
+            value={rankLocked ? 'PLATINUM' : rank}
             onChange={(e) => setRank(e.target.value as Rank)}
+            disabled={rankLocked}
           >
-            {RANKS.map((r) => (
+            {(rankLocked ? [INITIAL_RANK] : RANKS).map((r) => (
               <option key={r} value={r}>
                 {rankLabel(r)}
               </option>
             ))}
           </select>
           <span className="field-hint">
-            ふつうは <b>PLATINUM</b> のままで大丈夫です。
-            <br />
-            <b>作ったあとに上げることはできません</b>（昇格は条件を満たしたときだけ）。
-            上の段から始めたいときだけ、ここで選んでください。
+            {seeded === undefined ? (
+              '調べています…'
+            ) : seeded !== null ? (
+              <>
+                <b>この欄は使えません。</b>
+                初期ランクを指定して作れる契約者は<b>1人だけ</b>で、すでに{' '}
+                <b>{seeded.displayName.length > 0 ? seeded.displayName : seeded.clientId}</b>{' '}
+                が使っています。
+                <br />
+                誰でも上の段から始められると、ランクの意味が無くなるためです。
+              </>
+            ) : (
+              <>
+                ふつうは <b>PLATINUM</b> のままで大丈夫です。
+                <br />
+                <b>作ったあとに上げることはできません</b>（昇格は条件を満たしたときだけ）。
+                <br />
+                ★ <b>ここで PLATINUM 以外を選べるのは、この1人だけ</b>です。
+                トレーナー自身のアカウントのような、例外のために開けてあります。
+              </>
+            )}
           </span>
         </label>
 

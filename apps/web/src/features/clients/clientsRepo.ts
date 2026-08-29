@@ -67,7 +67,13 @@ export async function clientIdExists(clientId: string): Promise<boolean> {
 // -----------------------------------------------------------------------------
 
 export type CreateClientError =
-  'idTaken' | 'weakPassword' | 'emailInUse' | 'permissionDenied' | 'unknown';
+  | 'idTaken'
+  | 'weakPassword'
+  | 'emailInUse'
+  | 'permissionDenied'
+  /** 初期ランクの枠（1人だけ）を、すでに他の契約者が使っている */
+  | 'rankAlreadySeeded'
+  | 'unknown';
 
 export class ClientOperationError extends Error {
   constructor(
@@ -117,6 +123,14 @@ export async function createClient(input: {
     throw new ClientOperationError('idTaken', 'reserve');
   }
 
+  // ★ 初期ランクの枠は、システム全体で1人だけです（追加仕様: 会員ランク）。
+  //   画面でも欄を閉じていますが、ここでも確かめます。
+  //   画面の作りは変わりますが、ここを通らずに契約者は作れません。
+  const seeded = input.rank !== undefined && input.rank !== INITIAL_RANK;
+  if (seeded && (await seededRankClient()) !== null) {
+    throw new ClientOperationError('rankAlreadySeeded', 'reserve');
+  }
+
   // 会員整理番号。指定がなければ「いまある番号の最大+1」（追加仕様: 会員ランク）
   const memberNo = input.memberNo !== undefined ? input.memberNo : await nextMemberNo();
 
@@ -127,6 +141,7 @@ export async function createClient(input: {
     reviewMode: input.reviewMode ?? 'standard',
     permissions: input.permissions ?? { ...DEFAULT_PERMISSIONS },
     rank: input.rank ?? INITIAL_RANK,
+    rankSeeded: seeded,
     memberNo,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -239,6 +254,21 @@ export async function setRankGoal(
   return next;
 }
 
+/**
+ * 初期ランクの枠を、すでに使っている契約者（追加仕様: 会員ランク）。
+ *
+ * ★ この枠はシステム全体で1人だけです。
+ *   誰も使っていなければ null を返します。
+ *
+ * ★ その契約者を削除すれば、枠は空きます。
+ *   「1人だけ」を数で管理せず、実在する契約者で数えているためです。
+ *   数だけ持つと、消したあとに合わなくなります。
+ */
+export async function seededRankClient(): Promise<Client | null> {
+  const all = await listClients();
+  return all.find((c) => c.rankSeeded) ?? null;
+}
+
 /** そのランクより下のランク（降格で選べる先） */
 export function ranksBelow(rank: Rank): Rank[] {
   return RANKS.filter((r) => rankOrder(r) < rankOrder(rank));
@@ -338,6 +368,7 @@ function toClient(id: string, data: Record<string, unknown>): Client {
     aiConsent: toConsent(data.aiConsent),
     rank: toRank(data.rank),
     rankUpdatedAt: num(data.rankUpdatedAt),
+    rankSeeded: data.rankSeeded === true,
     rankGoals: toRankGoals(data.rankGoals),
     memberNo: num(data.memberNo),
     extra: (data.extra as Record<string, unknown> | undefined) ?? {},
@@ -364,6 +395,7 @@ function toFirestore(client: Client): Record<string, unknown> {
     aiConsent: client.aiConsent,
     rank: client.rank,
     rankUpdatedAt: client.rankUpdatedAt,
+    rankSeeded: client.rankSeeded,
     rankGoals: client.rankGoals,
     memberNo: client.memberNo,
     extra: client.extra,
@@ -417,6 +449,8 @@ async function safeDeleteApp(app: FirebaseApp): Promise<void> {
 
 export function createClientErrorMessage(error: ClientOperationError): string {
   switch (error.kind) {
+    case 'rankAlreadySeeded':
+      return '初期ランクを指定して作れる契約者は、1人だけです。すでに別の契約者が使っています。';
     case 'idTaken':
       return 'その契約者IDはすでに使われています。別のIDにしてください。';
     case 'emailInUse':
