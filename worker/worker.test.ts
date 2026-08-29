@@ -197,3 +197,377 @@ describe('★ ログイン証明の検証（ここが甘いとAI枠を他人に�
     await expect(verifyFirebaseToken(makeToken(), '')).rejects.toThrow(/not configured/);
   });
 });
+
+// =============================================================================
+// Phase 11D — 入口そのものの検証
+//
+// ★ ここまでのテストは、トークンの検証（verifyFirebaseToken）だけを見ていました。
+//   実際に外から叩かれるのは fetch ハンドラのほうで、そこには1件もありませんでした。
+//
+//   このWorkerのURLは公開情報です。知られる前提で守る必要があります。
+//   守りが1枚でも抜けると、あなたのAI枠を他人に使われ、
+//   無料枠が尽きて契約者全員のAIが止まります。
+// =============================================================================
+
+import worker from './worker.js';
+
+const GOOGLE_KEYS =
+  'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+
+const API_KEY = 'SECRET-GEMINI-KEY-do-not-leak';
+
+function env(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    GEMINI_API_KEY: API_KEY,
+    FIREBASE_PROJECT: PROJECT,
+    ALLOWED_ORIGIN: 'https://example.github.io',
+    ...over,
+  };
+}
+
+interface UpstreamReply {
+  ok?: boolean;
+  status?: number;
+  body?: string;
+  throws?: boolean;
+}
+
+/** 記録された、Gemini への呼び出し */
+let calls: { url: string; init?: RequestInit }[] = [];
+
+/**
+ * 外への通信を、まとめて偽物に差し替える。
+ *
+ * ★ Google の鍵置き場と Gemini の2か所へ出ていきます。
+ *   URLで振り分けて、どちらも本物には触らせません。
+ */
+function stubNetwork(upstream: UpstreamReply = {}) {
+  calls = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+
+      if (String(url).startsWith(GOOGLE_KEYS)) {
+        return {
+          ok: true,
+          headers: new Map([['Cache-Control', 'max-age=3600']]) as unknown as Headers,
+          json: async () => ({ 'test-kid': certPem }),
+        };
+      }
+
+      if (upstream.throws === true) throw new Error('network down');
+
+      return {
+        ok: upstream.ok ?? true,
+        status: upstream.status ?? 200,
+        text: async () => upstream.body ?? '{"candidates":[]}',
+        json: async () => JSON.parse(upstream.body ?? '{"models":[]}'),
+      };
+    }),
+  );
+}
+
+function post(token: string | null, body = '{"contents":[]}'): Request {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token !== null) headers.Authorization = `Bearer ${token}`;
+  return new Request('https://relay.example.workers.dev/', { method: 'POST', headers, body });
+}
+
+describe('★ AI中継役の入口（このURLは公開情報）', () => {
+  describe('ログイン証明が無い・おかしい依頼は通さない', () => {
+    it('Authorization が無ければ 401', async () => {
+      stubNetwork();
+      const res = await worker.fetch(post(null), env());
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ error: 'missing_token' });
+    });
+
+    it('Bearer が付いていなければ 401', async () => {
+      stubNetwork();
+      const req = new Request('https://relay.example.workers.dev/', {
+        method: 'POST',
+        headers: { Authorization: makeToken() },
+        body: '{}',
+      });
+      expect((await worker.fetch(req, env())).status).toBe(401);
+    });
+
+    it('中身を書き換えたトークンは 401', async () => {
+      stubNetwork();
+      const [h, , s] = makeToken().split('.');
+      const forged = b64url(
+        JSON.stringify({
+          iss: `https://securetoken.google.com/${PROJECT}`,
+          aud: PROJECT,
+          sub: 'attacker',
+          iat: Math.floor(Date.now() / 1000) - 60,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      );
+      const res = await worker.fetch(post(`${h}.${forged}.${s}`), env());
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ error: 'invalid_token' });
+    });
+
+    it('期限切れのトークンは 401', async () => {
+      stubNetwork();
+      const res = await worker.fetch(
+        post(makeToken({ exp: Math.floor(Date.now() / 1000) - 10 })),
+        env(),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it('別のプロジェクト宛のトークンは 401', async () => {
+      stubNetwork();
+      expect((await worker.fetch(post(makeToken({ aud: 'other' })), env())).status).toBe(401);
+    });
+
+    it('通らなかった依頼は、Gemini まで届かない', async () => {
+      // ★ ここが要です。門で止まっていなければ、AI枠は使われます。
+      stubNetwork();
+      await worker.fetch(post(null), env());
+      await worker.fetch(post('garbage'), env());
+      expect(calls.filter((c) => c.url.includes('generativelanguage'))).toHaveLength(0);
+    });
+  });
+
+  describe('APIキーが外に出ないこと', () => {
+    it('鍵はURLに付き、返事の本文には出てこない', async () => {
+      stubNetwork({ body: '{"candidates":[{"text":"ok"}]}' });
+      const res = await worker.fetch(post(makeToken()), env());
+
+      const sent = calls.find((c) => c.url.includes('generativelanguage'));
+      expect(sent?.url).toContain(`key=${API_KEY}`);
+      expect(await res.text()).not.toContain(API_KEY);
+    });
+
+    it('Gemini が失敗しても、鍵は返事に混ざらない', async () => {
+      // 上流のエラー本文をそのまま返すと、鍵が混ざることがあります
+      stubNetwork({
+        ok: false,
+        status: 400,
+        body: `{"error":{"message":"API key not valid: ${API_KEY}"}}`,
+      });
+      const res = await worker.fetch(post(makeToken()), env());
+      const text = await res.text();
+
+      expect(res.status).toBe(400);
+      expect(text).not.toContain(API_KEY);
+      expect(JSON.parse(text)).toMatchObject({ error: 'rejected' });
+    });
+
+    it('Cloudflare のログにも、鍵は残らない', async () => {
+      // ★ ここは実際に見つかった漏れ道です。
+      //
+      //   Gemini はキーが不正なとき、エラー文にキーを入れて返します。
+      //   その本文をそのままログに書いていたので、キーが平文で残っていました。
+      //
+      //   しかも起きるのは「キーがおかしいとき」＝ログを見て人に相談する場面です。
+      //   画面を撮って送った先に、キーごと渡ります。
+      stubNetwork({
+        ok: false,
+        status: 400,
+        body: `{"error":{"message":"API key not valid: ${API_KEY}"}}`,
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      await worker.fetch(post(makeToken()), env());
+
+      const written = log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(written).not.toContain(API_KEY);
+      // 伏せたうえで、原因を追えるだけの情報は残す
+      expect(written).toContain('400');
+      expect(written).toContain('user-123');
+      log.mockRestore();
+    });
+
+    it('鍵が長くても、切り詰めのすき間から漏れない', async () => {
+      // 500文字で切る処理があります。切ってから伏せると、
+      // 切れ目でキーが半分になり、前半だけが残ります
+      stubNetwork({
+        ok: false,
+        status: 400,
+        body: `{"error":{"message":"${'x'.repeat(480)} ${API_KEY}"}}`,
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      await worker.fetch(post(makeToken()), env());
+
+      const written = log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(written).not.toContain(API_KEY);
+      expect(written).not.toContain(API_KEY.slice(0, 12));
+      log.mockRestore();
+    });
+
+    it('動作確認の画面にも、鍵は出てこない', async () => {
+      stubNetwork({ body: '{"models":[{"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]}]}' });
+      const res = await worker.fetch(
+        new Request('https://relay.example.workers.dev/', { method: 'GET' }),
+        env(),
+      );
+      expect(await res.text()).not.toContain(API_KEY);
+    });
+  });
+
+  describe('上流の失敗を、種類ごとに伝える', () => {
+    it('429 は混み合いとして伝える', async () => {
+      stubNetwork({ ok: false, status: 429, body: '{"error":"quota"}' });
+      const res = await worker.fetch(post(makeToken()), env());
+      expect(res.status).toBe(429);
+      expect(await res.json()).toMatchObject({ error: 'rate_limited' });
+    });
+
+    it('500番台は「つながらない」として伝える', async () => {
+      stubNetwork({ ok: false, status: 503, body: '{}' });
+      expect(await (await worker.fetch(post(makeToken()), env())).json()).toMatchObject({
+        error: 'unavailable',
+      });
+    });
+
+    it('400番台は「断られた」として伝える', async () => {
+      stubNetwork({ ok: false, status: 400, body: '{}' });
+      expect(await (await worker.fetch(post(makeToken()), env())).json()).toMatchObject({
+        error: 'rejected',
+      });
+    });
+
+    it('そもそも届かなければ 502', async () => {
+      stubNetwork({ throws: true });
+      const res = await worker.fetch(post(makeToken()), env());
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({ error: 'upstream_unreachable' });
+    });
+
+    it('どのモデルで失敗したかを返す（設定間違いの切り分けのため）', async () => {
+      stubNetwork({ ok: false, status: 404, body: '{}' });
+      const res = await worker.fetch(post(makeToken()), env({ GEMINI_MODEL: 'gemini-9-ultra' }));
+      expect(await res.json()).toMatchObject({ model: 'gemini-9-ultra' });
+    });
+  });
+
+  describe('うまくいったとき', () => {
+    it('Gemini の返事を、そのまま返す', async () => {
+      const body = '{"candidates":[{"content":{"parts":[{"text":"講評"}]}}]}';
+      stubNetwork({ body });
+      const res = await worker.fetch(post(makeToken()), env());
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(body);
+    });
+
+    it('送った本文を、そのまま上流へ渡す', async () => {
+      stubNetwork();
+      const body = '{"contents":[{"role":"user","parts":[{"text":"白米180g"}]}]}';
+      await worker.fetch(post(makeToken(), body), env());
+      expect(calls.find((c) => c.url.includes('generativelanguage'))?.init?.body).toBe(body);
+    });
+
+    it('設定したモデルを使う', async () => {
+      stubNetwork();
+      await worker.fetch(post(makeToken()), env({ GEMINI_MODEL: 'gemini-2.5-pro' }));
+      expect(calls.find((c) => c.url.includes('generativelanguage'))?.url).toContain(
+        'models/gemini-2.5-pro:generateContent',
+      );
+    });
+
+    it('モデルの設定が無ければ、既定のモデルを使う', async () => {
+      stubNetwork();
+      await worker.fetch(post(makeToken()), env({ GEMINI_MODEL: undefined }));
+      expect(calls.find((c) => c.url.includes('generativelanguage'))?.url).toContain(
+        'models/gemini-2.5-flash:generateContent',
+      );
+    });
+
+    it('記録に残すのは誰が使ったかと大きさだけ。食事の中身は残さない', async () => {
+      // ★ Cloudflare のログに食事の内容が残ると、
+      //   「AIには最小限だけ渡す」と決めた意味が無くなります
+      stubNetwork();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      await worker.fetch(
+        post(makeToken(), '{"contents":[{"parts":[{"text":"焼肉とビール"}]}]}'),
+        env(),
+      );
+
+      const written = log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(written).toContain('user-123');
+      expect(written).not.toContain('焼肉');
+      log.mockRestore();
+    });
+  });
+
+  describe('入口の作法', () => {
+    it('OPTIONS には 204 と、通信を許す印を返す', async () => {
+      stubNetwork();
+      const res = await worker.fetch(
+        new Request('https://relay.example.workers.dev/', { method: 'OPTIONS' }),
+        env(),
+      );
+      expect(res.status).toBe(204);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://example.github.io');
+      expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    });
+
+    it('POST でも GET でも OPTIONS でもない依頼は 405', async () => {
+      stubNetwork();
+      for (const method of ['DELETE', 'PUT', 'PATCH']) {
+        const res = await worker.fetch(
+          new Request('https://relay.example.workers.dev/', { method }),
+          env(),
+        );
+        expect(res.status).toBe(405);
+      }
+    });
+
+    it('断るときにも、通信を許す印を付ける（画面にエラーが出るように）', async () => {
+      // ★ これが無いと、ブラウザは応答そのものを読めず、
+      //   画面には原因の分からない失敗しか出ません
+      stubNetwork();
+      const res = await worker.fetch(post(null), env());
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://example.github.io');
+    });
+
+    it('大きすぎる本文は 413 で止める', async () => {
+      stubNetwork();
+      const huge = 'x'.repeat(2_000_001);
+      const res = await worker.fetch(post(makeToken(), huge), env());
+      expect(res.status).toBe(413);
+      expect(calls.filter((c) => c.url.includes('generativelanguage'))).toHaveLength(0);
+    });
+
+    it('鍵が設定されていなければ、通信せずに 500', async () => {
+      stubNetwork();
+      const res = await worker.fetch(post(makeToken()), env({ GEMINI_API_KEY: undefined }));
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({ error: 'server_not_configured' });
+      expect(calls.filter((c) => c.url.includes('generativelanguage'))).toHaveLength(0);
+    });
+
+    it('動作確認の画面は、鍵が無ければ理由を返す', async () => {
+      stubNetwork();
+      const res = await worker.fetch(
+        new Request('https://relay.example.workers.dev/', { method: 'GET' }),
+        env({ GEMINI_API_KEY: undefined }),
+      );
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({ ok: false });
+    });
+
+    it('動作確認の画面は、使えるモデルの一覧を返す', async () => {
+      stubNetwork({
+        body: JSON.stringify({
+          models: [
+            { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/embedding-001', supportedGenerationMethods: ['embedContent'] },
+          ],
+        }),
+      });
+      const res = await worker.fetch(
+        new Request('https://relay.example.workers.dev/', { method: 'GET' }),
+        env(),
+      );
+      const data = (await res.json()) as { ok: boolean; usableModels: string[] };
+      expect(data.ok).toBe(true);
+      // 文章を作れないモデルは省く（選んでも動かないため）
+      expect(data.usableModels).toEqual(['models/gemini-2.5-flash']);
+    });
+  });
+});

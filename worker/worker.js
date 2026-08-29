@@ -170,13 +170,25 @@ export default {
       // ★ 失敗の理由は Cloudflare のログに残します。
       //   これが無いと「AIに接続できませんでした」としか分からず、
       //   原因の切り分けに何往復もかかります。
-      //   APIキーは URL のクエリにあり、応答本文には含まれません。
+      //
+      // ★ ただし、書く前に必ずAPIキーを伏せます。
+      //
+      //   ここは一度間違えていました。
+      //   「APIキーは URL のクエリにあるので、応答本文には含まれない」
+      //   と思い込んでいましたが、Gemini はキーが不正なときに
+      //       {"error":{"message":"API key not valid: AIza..."}}
+      //   のように、**エラー文にキーを入れて返します**。
+      //   そのままログに書くと、キーが平文で残ります。
+      //
+      //   しかも、それが起きるのは「キーがおかしいとき」＝
+      //   まさにログを見て人に相談する場面です。
+      //   画面を撮って送った先に、キーごと渡ることになります。
       console.log(
         JSON.stringify({
           uid,
           result: 'error',
           status: upstream.status,
-          detail: text.slice(0, 500),
+          detail: redact(text, env.GEMINI_API_KEY).slice(0, 500),
         }),
       );
 
@@ -262,6 +274,18 @@ async function getPublicKey(kid) {
 // ---------------------------------------------------------------------------
 // 小道具
 // ---------------------------------------------------------------------------
+
+/**
+ * ログに残す前に、APIキーを伏せる。
+ *
+ * ★ 短く切ってから伏せるのでは間に合いません。
+ *   切れ目でキーが半分になると、伏せ字に引っかからず、
+ *   前半だけがログに残ります。伏せてから切ります。
+ */
+function redact(text, apiKey) {
+  if (!apiKey) return text;
+  return text.split(apiKey).join('[APIキーは伏せました]');
+}
 
 function corsHeaders(origin) {
   return {
