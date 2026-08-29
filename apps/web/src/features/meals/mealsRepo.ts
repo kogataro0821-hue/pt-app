@@ -9,6 +9,7 @@ import {
   type Nutrients,
 } from '@pt/core';
 import { getDb } from '@/lib/firebase';
+import { clearRankCache } from '@/features/rank/rankRepo';
 
 /**
  * 食事の読み書き（設計書 §5.3 / §14）。
@@ -59,6 +60,8 @@ export async function syncDayMealFlag(
     { date, hasMeals, updatedAt: Date.now() },
     { merge: true },
   );
+  // 会員ランクの「食事を記録した日数」が変わりました（追加仕様: 会員ランク）
+  clearRankCache(clientId);
 }
 
 /** ドキュメントIDを作る。時系列に並ぶので、並び順が壊れても復元しやすい。 */

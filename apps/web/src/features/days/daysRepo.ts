@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { monthRange, photoWarnThreshold, type DateKey, type MonthKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
+import { clearRankCache } from '@/features/rank/rankRepo';
 import { emptyDay, type Day, type DayStatus } from './dayTypes';
 
 /**
@@ -126,6 +127,8 @@ export async function syncDayExerciseFlag(
     { date, hasExercise, updatedAt: Date.now() },
     { merge: true },
   );
+  // 会員ランクの「運動を記録した日数」が変わりました（追加仕様: 会員ランク）
+  clearRankCache(clientId);
 }
 
 /**

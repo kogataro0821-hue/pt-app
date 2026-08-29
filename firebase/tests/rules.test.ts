@@ -2250,3 +2250,72 @@ describe('★ 契約者を完全に削除できるか（管理者）', () => {
     await assertFails(deleteDoc(doc(guest(), 'clients/bob/audits/b1')));
   });
 });
+
+// =============================================================================
+// 追加仕様: 会員ランク
+//
+// ★ ここが開くと、契約者が自分でいきなり CROWN AMBASSADOR になれます。
+//   「契約者は自分の権限を上げられない」というこのアプリの約束と、同じ性質の話です。
+//
+//   画面側にもボタンを置いていませんが、画面は迂回できます。守るのはここです。
+// =============================================================================
+
+describe('★ 会員ランクを、契約者が自分で書き換えられないか', () => {
+  it('契約者は自分のランクを書き換えられない', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/alice'), { rank: 'CROWN' }, { merge: true }));
+  });
+
+  it('1段だけでも書き換えられない', async () => {
+    // ★ 「少しなら」を許すと、時間をかければ最上位まで行けます
+    await assertFails(setDoc(doc(alice(), 'clients/alice'), { rank: 'RUBY' }, { merge: true }));
+  });
+
+  it('会員整理番号も書き換えられない', async () => {
+    // 番号が変わると、会員証が別人のものになります
+    await assertFails(setDoc(doc(alice(), 'clients/alice'), { memberNo: 1 }, { merge: true }));
+  });
+
+  it('昇格した時刻も書き換えられない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'clients/alice'), { rankUpdatedAt: 0 }, { merge: true }),
+    );
+  });
+
+  it('許されている項目に混ぜても、通らない', async () => {
+    // ★ 表示名の更新に紛れ込ませる手。affectedKeys が全部を見ているので止まります
+    await assertFails(
+      setDoc(
+        doc(alice(), 'clients/alice'),
+        { displayName: 'アリス', rank: 'CROWN_AMBASSADOR' },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('他人のランクも書き換えられない', async () => {
+    await assertFails(setDoc(doc(alice(), 'clients/bob'), { rank: 'CROWN' }, { merge: true }));
+  });
+
+  it('未認証では、そもそも書けない', async () => {
+    await assertFails(setDoc(doc(guest(), 'clients/alice'), { rank: 'CROWN' }, { merge: true }));
+  });
+
+  it('管理者は書き換えられる（上げるのも下げるのも）', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'clients/alice'), { rank: 'CROWN' }, { merge: true }));
+    await assertSucceeds(
+      setDoc(doc(admin(), 'clients/alice'), { rank: 'PLATINUM' }, { merge: true }),
+    );
+    await assertSucceeds(setDoc(doc(admin(), 'clients/alice'), { memberNo: 7 }, { merge: true }));
+  });
+
+  it('契約者は自分のランクを読める（会員証に出すため）', async () => {
+    await assertSucceeds(getDoc(doc(alice(), 'clients/alice')));
+  });
+
+  it('★ ランクの判定に使う日データは、他人のぶんを読めない', async () => {
+    // 会員証は days を全部読んで数えます。そこが開くと、
+    // 他人が何日記録したかが分かってしまいます
+    await assertFails(getDocs(collection(alice(), 'clients/bob/days')));
+    await assertSucceeds(getDocs(collection(alice(), 'clients/alice/days')));
+  });
+});

@@ -10,7 +10,7 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
-import { DEFAULT_TARGETS, type Targets } from '@pt/core';
+import { DEFAULT_TARGETS, INITIAL_RANK, toRank, type Rank, type Targets } from '@pt/core';
 import { clientIdToEmail, getFirebaseConfig } from '@/config/firebase';
 import { getDb } from '@/lib/firebase';
 import {
@@ -96,12 +96,19 @@ export async function createClient(input: {
     throw new ClientOperationError('idTaken', 'reserve');
   }
 
+  // 会員整理番号を、いまある番号の次にする（追加仕様: 会員ランク）
+  const existing = await listClients();
+  const memberNo =
+    existing.reduce((n, c) => (c.memberNo !== null && c.memberNo > n ? c.memberNo : n), 0) + 1;
+
   const base: Client = {
     ...emptyClient(clientId),
     displayName: input.displayName.trim(),
     targets: input.targets ?? { ...DEFAULT_TARGETS },
     reviewMode: input.reviewMode ?? 'standard',
     permissions: input.permissions ?? { ...DEFAULT_PERMISSIONS },
+    rank: INITIAL_RANK,
+    memberNo,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -169,6 +176,43 @@ export async function updateClient(
     { ...stripUndefined(patch), updatedAt: Date.now() },
     { merge: true },
   );
+}
+
+/**
+ * 会員ランクを変える（追加仕様: 会員ランク）。
+ *
+ * ★ 管理者だけが呼びます。Rules 側でも、契約者は rank を書けません
+ *   （clients の update で契約者に許した項目に入っていないため）。
+ *
+ * ★ 上げるときも下げるときも、同じ入口を通します。
+ *   自動での降格はありませんが、トレーナーの判断で下げることはできます。
+ */
+export async function setClientRank(clientId: string, rank: Rank): Promise<void> {
+  const now = Date.now();
+  await setDoc(
+    doc(getDb(), 'clients', clientId),
+    { rank, rankUpdatedAt: now, updatedAt: now },
+    { merge: true },
+  );
+}
+
+/**
+ * 次に使う会員整理番号（追加仕様: 会員ランク）。
+ *
+ * ★ 「いまある番号のいちばん大きいもの + 1」です。
+ *   サーバーが無いので厳密な連番は保証できませんが、
+ *   契約者を作るのは管理者1人なので、実用上ぶつかりません。
+ *
+ * ★ 自動では振りません。
+ *
+ *   動作確認用のアカウントや、トレーナー自身のアカウントには
+ *   番号を振りたくない／別の番号にしたい、ということがあります。
+ *   画面を開いただけで勝手に番号が付くと、あとから直す手間になります。
+ *   番号を入れるのは、人が決めたときだけにします。
+ */
+export async function nextMemberNo(): Promise<number> {
+  const all = await listClients();
+  return all.reduce((n, c) => (c.memberNo !== null && c.memberNo > n ? c.memberNo : n), 0) + 1;
 }
 
 /**
@@ -244,6 +288,9 @@ function toClient(id: string, data: Record<string, unknown>): Client {
     provisionStatus: data.provisionStatus === 'ready' ? 'ready' : 'provisioning',
     passwordChangedAt: num(data.passwordChangedAt),
     aiConsent: toConsent(data.aiConsent),
+    rank: toRank(data.rank),
+    rankUpdatedAt: num(data.rankUpdatedAt),
+    memberNo: num(data.memberNo),
     extra: (data.extra as Record<string, unknown> | undefined) ?? {},
     createdAt: num(data.createdAt),
     updatedAt: num(data.updatedAt),
@@ -266,6 +313,9 @@ function toFirestore(client: Client): Record<string, unknown> {
     provisionStatus: client.provisionStatus,
     passwordChangedAt: client.passwordChangedAt,
     aiConsent: client.aiConsent,
+    rank: client.rank,
+    rankUpdatedAt: client.rankUpdatedAt,
+    memberNo: client.memberNo,
     extra: client.extra,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,

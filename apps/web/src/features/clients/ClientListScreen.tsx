@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listClients } from './clientsRepo';
 import { reviewModeLabel, type Client } from './clientTypes';
+import { rankLabel, readyRank } from '@pt/core';
 
 /**
  * 契約者の一覧（設計書 §11.3 A-1）。
@@ -107,6 +108,8 @@ function ClientRow({
   onOpen: (id: string) => void;
   onSettings: (id: string) => void;
 }) {
+  const ready = readyRank(client.extra, client.rank);
+
   return (
     <div className="client-row-wrap">
       <button className="client-row" type="button" onClick={() => onOpen(client.clientId)}>
@@ -118,6 +121,8 @@ function ClientRow({
             {client.clientId} · {client.targets.kcal}kcal · {reviewModeLabel(client.reviewMode)}
           </span>
         </span>
+        {/* ★ 追加の読み取りは0回です。契約者の情報はもう読んでいます */}
+        {ready !== null && <span className="badge wait">{rankLabel(ready)}に昇格できます</span>}
         {!client.active && <span className="badge wait">無効</span>}
         {client.active && client.passwordChangedAt === null && (
           <span className="badge wait">初期パスワード</span>

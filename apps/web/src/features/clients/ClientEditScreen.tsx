@@ -1,8 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { macroMismatchWarning, validateTargets, type Targets } from '@pt/core';
-import { deleteProvisioningClient, getClient, setClientActive, updateClient } from './clientsRepo';
+import {
+  deleteProvisioningClient,
+  nextMemberNo,
+  getClient,
+  setClientActive,
+  setClientRank,
+  updateClient,
+} from './clientsRepo';
 import { REVIEW_MODES, sexLabel, type Client, type ReviewMode, type Sex } from './clientTypes';
 import { DangerZone } from './DangerZone';
+import { RANKS, rankLabel, type Rank } from '@pt/core';
 
 /**
  * 契約者の編集（設計書 §11.3 A-3）。
@@ -16,6 +24,8 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** 会員整理番号の入力欄。空欄 = 未採番 */
+  const [memberNoText, setMemberNoText] = useState('');
 
   useEffect(() => {
     void (async () => {
@@ -23,6 +33,8 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
         const loaded = await getClient(clientId);
         setClient(loaded);
         setDraft(loaded);
+        setMemberNoText(loaded === null || loaded.memberNo === null ? '' : String(loaded.memberNo));
+
       } catch {
         setError('契約者の情報を読み込めませんでした。');
       }
@@ -33,6 +45,7 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
     return <p className="lede">{error ?? '読み込んでいます…'}</p>;
   }
 
+  const currentMemberNoText = client.memberNo === null ? '' : String(client.memberNo);
   const issues = validateTargets(draft.targets);
   const warning = macroMismatchWarning(draft.targets);
 
@@ -91,6 +104,62 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
       patch({ active: next });
     } catch {
       setError('切り替えに失敗しました。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 入力欄の文字列を、保存できる値に直す。空欄は「未採番」 */
+  function parseMemberNo(text: string): number | null | 'invalid' {
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return null;
+    const n = Number(trimmed);
+    if (!Number.isInteger(n) || n < 0 || n > 9999) return 'invalid';
+    return n;
+  }
+
+  async function saveMemberNo() {
+    if (busy || client === null) return;
+    const value = parseMemberNo(memberNoText);
+    if (value === 'invalid') {
+      setError('会員整理番号は 0 から 9999 の整数で入れてください。空欄なら未採番になります。');
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await updateClient(client.clientId, { memberNo: value });
+      setClient({ ...client, memberNo: value });
+    } catch {
+      setError('会員整理番号を保存できませんでした。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function fillNextMemberNo() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setMemberNoText(String(await nextMemberNo()));
+    } catch {
+      setError('次の番号を調べられませんでした。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeRank(rank: Rank) {
+    if (busy || client === null || rank === client.rank) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await setClientRank(client.clientId, rank);
+      setClient({ ...client, rank });
+    } catch {
+      setError('ランクを変更できませんでした。');
     } finally {
       setBusy(false);
     }
@@ -371,6 +440,77 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
         >
           {client.active ? 'この契約者を無効にする' : 'この契約者を有効に戻す'}
         </button>
+      </section>
+
+      <section className="card">
+        <h3 className="card-title">会員ランク</h3>
+        <p className="note">
+          現在のランク <b>{rankLabel(client.rank)}</b>
+        </p>
+
+        {/* ★ 番号は自動では振りません（追加仕様: 会員ランク）。
+               動作確認用のアカウントや、トレーナー自身のアカウントには
+               番号を振りたくない／別の番号にしたい、ということがあります。
+               画面を開いただけで勝手に付くと、あとから直す手間になります。 */}
+        <label className="field">
+          <span className="field-label">会員整理番号</span>
+          <input
+            className="input"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={1}
+            value={memberNoText}
+            onChange={(e) => setMemberNoText(e.target.value)}
+            placeholder="未採番"
+          />
+          <span className="field-hint">
+            空欄にすると「未採番」になり、会員証には <b>No. ----</b> と出ます。
+            <b>0 も使えます</b>（トレーナー自身のアカウントを 0000 にする、など）。
+            一度決めた番号は、なるべく変えないでください。会員証の番号が変わると、別人の証になります。
+          </span>
+        </label>
+
+        <div className="item-form-actions">
+          <button
+            className="button-secondary compact"
+            type="button"
+            onClick={() => void saveMemberNo()}
+            disabled={busy || memberNoText.trim() === currentMemberNoText}
+          >
+            整理番号を保存する
+          </button>
+          <button
+            className="button-quiet compact"
+            type="button"
+            onClick={() => void fillNextMemberNo()}
+            disabled={busy}
+          >
+            次の番号を入れる
+          </button>
+        </div>
+
+        <p className="note">
+          RUBY・SAPPHIRE・EMERALD は、記録の量で条件を満たすとカレンダーの下に
+          「昇格させる」ボタンが出ます。<b>ここでは、それを飛ばして直接設定できます。</b>
+          <br />
+          DIAMOND から先は、こちらでしか設定できません。下げることもできます。
+        </p>
+        <label className="field">
+          <span className="field-label">ランクを直接設定する</span>
+          <select
+            className="input"
+            value={client.rank}
+            onChange={(e) => void changeRank(e.target.value as Rank)}
+            disabled={busy}
+          >
+            {RANKS.map((r) => (
+              <option key={r} value={r}>
+                {rankLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
 
       {/* ★ 完全削除は、いちばん下に、いちばん目立たない形で置きます。

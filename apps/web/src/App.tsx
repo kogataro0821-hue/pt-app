@@ -12,6 +12,7 @@ import { FoodsScreen } from '@/features/foods/FoodsScreen';
 import { RequestsScreen } from '@/features/foods/RequestsScreen';
 import type { Client } from '@/features/clients/clientTypes';
 import { CalendarScreen } from '@/features/calendar/CalendarScreen';
+import { MemberCard } from '@/features/rank/MemberCard';
 import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AiConsentCard } from '@/features/ai/AiConsentCard';
@@ -342,6 +343,9 @@ function CalendarRoute({ onChangePassword }: { onChangePassword: () => void }) {
             )}
           </div>
           <CalendarScreen clientId={client.clientId} month={month} />
+          {/* ★ カレンダーの下に置きます（追加仕様: 会員ランク）。
+                 記録画面に入る前に、必ず目に入る場所です。 */}
+          <MemberCard client={client} isAdmin={isAdmin} />
         </Shell>
       )}
     </ClientGate>

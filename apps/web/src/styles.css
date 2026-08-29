@@ -1897,3 +1897,258 @@ select.input {
   /* 確定した数字より、一段おとなしく見せます */
   opacity: 0.85;
 }
+
+/* =============================================================================
+ * 会員証（追加仕様: 会員ランク）
+ *
+ * ★ カレンダーの下に置きます。記録画面に入る前に必ず目に入る場所です。
+ *
+ * ★ ランクが上がるほど「豪華に」。
+ *   やっているのは3つだけです。
+ *     1. 背景を、その宝石の色にする
+ *     2. 光沢（斜めの明るい帯）を強くする
+ *     3. 縁の金属感（枠の色）を強くする
+ *   派手さを足すのではなく、同じ作りの中で段階を上げます。
+ *   ばらばらの装飾にすると、並べたときに順位が読めなくなります。
+ * ========================================================================== */
+
+.member-card {
+  position: relative;
+  overflow: hidden;
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #fff;
+  /* 既定は PLATINUM。ランクごとに下で上書きします */
+  background: linear-gradient(135deg, #8e9aa3 0%, #cfd6da 45%, #7f8a92 100%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+/* 斜めの光沢。ランクが上がるほど強くします */
+.member-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, var(--sheen, 0.12)) 48%,
+    rgba(255, 255, 255, 0) 62%
+  );
+}
+
+.member-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-sm);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+}
+
+.member-no {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.member-id {
+  opacity: 0.8;
+}
+
+.member-rank {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin: 6px 0 var(--space-md);
+}
+
+.member-rank-label {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  opacity: 0.75;
+}
+
+/* ★ ここが筆記体です。読み込めなければ端末の筆記体に落ちます */
+.member-rank-name {
+  font-family: 'Great Vibes', 'Snell Roundhand', 'Apple Chancery', cursive;
+  font-size: 34px;
+  line-height: 1.1;
+  /* 筆記体は細いので、影を薄く入れて背景から浮かせます */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.member-progress {
+  display: grid;
+  gap: 8px;
+  padding: var(--space-md);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.member-progress-title {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.member-step-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: 12px;
+}
+
+.member-step-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  flex: none;
+}
+
+.member-bar {
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.member-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #fff;
+  transition: width 0.4s ease;
+}
+
+.member-note {
+  margin: var(--space-md) 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.member-promote {
+  margin-top: var(--space-md);
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.member-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.9;
+}
+
+/* --- ランクごとの見た目 ---------------------------------------------------
+ * 上へ行くほど、光沢（--sheen）と縁の明るさを上げています。
+ * ------------------------------------------------------------------------ */
+
+.member-card.rank-platinum {
+  --sheen: 0.14;
+  background: linear-gradient(135deg, #7e8b94 0%, #d3dade 45%, #78848c 100%);
+  color: #1b2226;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.member-card.rank-platinum .member-rank-name {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
+}
+.member-card.rank-platinum .member-progress {
+  background: rgba(255, 255, 255, 0.45);
+}
+.member-card.rank-platinum .member-bar {
+  background: rgba(0, 0, 0, 0.15);
+}
+.member-card.rank-platinum .member-bar-fill {
+  background: #2b3237;
+}
+
+.member-card.rank-ruby {
+  --sheen: 0.18;
+  background: linear-gradient(135deg, #6d0a1c 0%, #c21f3a 48%, #7d1024 100%);
+  border-color: rgba(255, 190, 200, 0.45);
+}
+
+.member-card.rank-sapphire {
+  --sheen: 0.22;
+  background: linear-gradient(135deg, #0b2160 0%, #1f52b8 48%, #10285f 100%);
+  border-color: rgba(180, 205, 255, 0.5);
+}
+
+.member-card.rank-emerald {
+  --sheen: 0.26;
+  background: linear-gradient(135deg, #06341f 0%, #0f8a53 48%, #063a24 100%);
+  border-color: rgba(170, 240, 205, 0.55);
+}
+
+/* DIAMOND から先はトレーナーの裁量。見た目もはっきり変えます */
+.member-card.rank-diamond {
+  --sheen: 0.5;
+  background:
+    linear-gradient(135deg, #cfe6f2 0%, #ffffff 40%, #d8e2ef 60%, #b9cfe0 100%);
+  color: #14202b;
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 8px 22px rgba(90, 140, 180, 0.35),
+    inset 0 0 30px rgba(255, 255, 255, 0.6);
+}
+.member-card.rank-diamond .member-rank-name {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+.member-card.rank-diamond .member-progress {
+  background: rgba(255, 255, 255, 0.55);
+}
+.member-card.rank-diamond .member-bar {
+  background: rgba(0, 0, 0, 0.14);
+}
+.member-card.rank-diamond .member-bar-fill {
+  background: #14202b;
+}
+
+.member-card.rank-crown {
+  --sheen: 0.4;
+  background: linear-gradient(135deg, #6b4a06 0%, #e0b23c 45%, #8a6310 100%);
+  color: #241a02;
+  border-color: rgba(255, 236, 180, 0.85);
+  box-shadow: 0 8px 22px rgba(150, 110, 20, 0.35);
+}
+.member-card.rank-crown .member-rank-name {
+  text-shadow: 0 1px 2px rgba(255, 245, 205, 0.7);
+}
+.member-card.rank-crown .member-progress {
+  background: rgba(255, 255, 255, 0.35);
+}
+.member-card.rank-crown .member-bar {
+  background: rgba(0, 0, 0, 0.18);
+}
+.member-card.rank-crown .member-bar-fill {
+  background: #241a02;
+}
+
+.member-card.rank-crown_ambassador {
+  --sheen: 0.45;
+  background:
+    linear-gradient(135deg, #0b0b0d 0%, #24242a 40%, #0b0b0d 70%, #1a1a1f 100%);
+  border: 1px solid rgba(224, 178, 60, 0.85);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(224, 178, 60, 0.25);
+}
+.member-card.rank-crown_ambassador .member-rank-name {
+  /* 文字そのものを金にします。ここだけ別格の扱いです */
+  background: linear-gradient(100deg, #d9a441 0%, #fff3c4 45%, #c8912f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+.member-card.rank-crown_ambassador .member-rank-label,
+.member-card.rank-crown_ambassador .member-no {
+  color: #e5c473;
+}

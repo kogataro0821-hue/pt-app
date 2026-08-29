@@ -1,4 +1,4 @@
-import { DEFAULT_TARGETS, type Targets } from '@pt/core';
+import { DEFAULT_TARGETS, INITIAL_RANK, type Rank, type Targets } from '@pt/core';
 
 /**
  * 契約者のデータ（設計書 §4 / §5.3）。
@@ -90,6 +90,26 @@ export interface Client {
   passwordChangedAt: number | null;
   /** AI利用への同意（設計書 §35） */
   aiConsent: AiConsent;
+
+  /**
+   * 会員ランク（追加仕様: 会員ランク）。
+   *
+   * ★ 契約者は書き換えられません（Rules の update で許した項目に入っていない）。
+   *   上げるのはトレーナーだけです。自動では下がりません。
+   */
+  rank: Rank;
+  /** ランクが最後に変わった時刻 */
+  rankUpdatedAt: number | null;
+  /**
+   * 会員整理番号（0001 から）。
+   *
+   * ★ 契約者IDとは別に持ちます。
+   *   契約者IDはログインに使う文字列で、会員証に出すには生々しすぎます。
+   *   採番は「いまある番号のいちばん大きいもの + 1」です。
+   *   サーバーが無いので厳密な連番は保証できませんが、
+   *   契約者を作るのは管理者1人なので、実用上ぶつかりません。
+   */
+  memberNo: number | null;
   /** 後から項目を足すための入れ物（設計書 §4） */
   extra: Record<string, unknown>;
   createdAt: number | null;
@@ -113,6 +133,9 @@ export function emptyClient(clientId: string): Client {
     provisionStatus: 'provisioning',
     passwordChangedAt: null,
     aiConsent: { ...NO_CONSENT },
+    rank: INITIAL_RANK,
+    rankUpdatedAt: null,
+    memberNo: null,
     extra: {},
     createdAt: null,
     updatedAt: null,
