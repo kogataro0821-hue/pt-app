@@ -97,6 +97,17 @@ export async function createClient(input: {
   targets?: Targets;
   reviewMode?: ReviewMode;
   permissions?: ClientPermissions;
+  /**
+   * 開始のランク（追加仕様: 会員ランク）。省略すると PLATINUM。
+   *
+   * ★ これは「昇格」ではありません。**開始地点**です。
+   *   作ったあとに上げることはできません（条件を満たしたときだけ）。
+   *   トレーナー自身のアカウントのように、
+   *   最初から上の段で始めたい場合のためのものです。
+   */
+  rank?: Rank;
+  /** 会員整理番号。省略すると「いまある番号の最大+1」 */
+  memberNo?: number | null;
 }): Promise<void> {
   const db = getDb();
   const { clientId } = input;
@@ -106,10 +117,8 @@ export async function createClient(input: {
     throw new ClientOperationError('idTaken', 'reserve');
   }
 
-  // 会員整理番号を、いまある番号の次にする（追加仕様: 会員ランク）
-  const existing = await listClients();
-  const memberNo =
-    existing.reduce((n, c) => (c.memberNo !== null && c.memberNo > n ? c.memberNo : n), 0) + 1;
+  // 会員整理番号。指定がなければ「いまある番号の最大+1」（追加仕様: 会員ランク）
+  const memberNo = input.memberNo !== undefined ? input.memberNo : await nextMemberNo();
 
   const base: Client = {
     ...emptyClient(clientId),
@@ -117,7 +126,7 @@ export async function createClient(input: {
     targets: input.targets ?? { ...DEFAULT_TARGETS },
     reviewMode: input.reviewMode ?? 'standard',
     permissions: input.permissions ?? { ...DEFAULT_PERMISSIONS },
-    rank: INITIAL_RANK,
+    rank: input.rank ?? INITIAL_RANK,
     memberNo,
     createdAt: Date.now(),
     updatedAt: Date.now(),

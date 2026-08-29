@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { checkClientId, clientIdErrorMessage } from '@pt/core';
+import { INITIAL_RANK, RANKS, checkClientId, clientIdErrorMessage, rankLabel, type Rank } from '@pt/core';
 import { CLIENT_LOGIN_DOMAIN } from '@/config/firebase';
 import { ClientOperationError, createClient, createClientErrorMessage } from './clientsRepo';
 
@@ -19,6 +19,8 @@ export function ClientCreateScreen({
   const [clientId, setClientId] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [rank, setRank] = useState<Rank>(INITIAL_RANK);
+  const [memberNo, setMemberNo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -42,6 +44,13 @@ export function ClientCreateScreen({
       setError('表示名を入力してください。');
       return;
     }
+    if (memberNo.trim().length > 0) {
+      const n = Number(memberNo);
+      if (!Number.isInteger(n) || n < 0 || n > 9999) {
+        setError('会員整理番号は 0 から 9999 の整数で入れてください。空欄なら自動で振ります。');
+        return;
+      }
+    }
 
     setError(null);
     setBusy(true);
@@ -50,6 +59,9 @@ export function ClientCreateScreen({
         clientId: idCheck.id,
         displayName,
         initialPassword: password,
+        rank,
+        // 空欄なら、いまある番号の次を自動で振ります
+        ...(memberNo.trim().length === 0 ? {} : { memberNo: Number(memberNo) }),
       });
       onDone(idCheck.id);
     } catch (e) {
@@ -125,6 +137,49 @@ export function ClientCreateScreen({
           <span className="field-hint">
             本人に口頭やメッセージでお伝えください。
             <b>初回ログイン時に、本人が必ず変更します。</b>
+          </span>
+        </label>
+
+        {/* ★ ここで決めるのは「開始地点」です（追加仕様: 会員ランク）。
+               作ったあとに上げることはできません（条件を満たしたときだけ）。
+               トレーナー自身のアカウントのように、
+               最初から上の段で始めたい場合のためのものです。 */}
+        <label className="field">
+          <span className="field-label">初期ランク</span>
+          <select
+            className="input"
+            value={rank}
+            onChange={(e) => setRank(e.target.value as Rank)}
+          >
+            {RANKS.map((r) => (
+              <option key={r} value={r}>
+                {rankLabel(r)}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">
+            ふつうは <b>PLATINUM</b> のままで大丈夫です。
+            <br />
+            <b>作ったあとに上げることはできません</b>（昇格は条件を満たしたときだけ）。
+            上の段から始めたいときだけ、ここで選んでください。
+          </span>
+        </label>
+
+        <label className="field">
+          <span className="field-label">会員整理番号</span>
+          <input
+            className="input"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={9999}
+            value={memberNo}
+            onChange={(e) => setMemberNo(e.target.value)}
+            placeholder="空欄なら自動"
+          />
+          <span className="field-hint">
+            空欄にすると、いまある番号の次が自動で入ります。
+            <b>0 も使えます</b>（トレーナー自身のアカウントを 0000 にする、など）。
           </span>
         </label>
 

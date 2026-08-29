@@ -118,7 +118,11 @@ function ClientRow({
             {client.displayName.length > 0 ? client.displayName : client.clientId}
           </span>
           <span className="client-meta">
-            {client.clientId} · {client.targets.kcal}kcal · {reviewModeLabel(client.reviewMode)}
+            {/* ★ 整理番号とランクを先に出します。
+                   一覧を見るだけで、誰がどの段階かが分かるように */}
+            {client.memberNo === null ? '----' : String(client.memberNo).padStart(4, '0')} ·{' '}
+            {rankLabel(client.rank)} · {client.clientId} · {client.targets.kcal}kcal ·{' '}
+            {reviewModeLabel(client.reviewMode)}
           </span>
         </span>
         {/* ★ 追加の読み取りは0回です。契約者の情報はもう読んでいます */}
