@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@pt/ai-contract": "*",
@@ -18,12 +20,17 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
     "@types/node": "^26.3.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.1",
     "@vitejs/plugin-react": "^5.1.0",
+    "jsdom": "^30.0.1",
     "typescript": "~5.9.3",
     "vite": "^7.1.12",
-    "vite-plugin-pwa": "^1.0.3"
+    "vite-plugin-pwa": "^1.0.3",
+    "vitest": "^3.2.4"
   }
 }

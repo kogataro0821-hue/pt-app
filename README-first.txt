@@ -1,5 +1,5 @@
-﻿PT-app  説明書のバックアップ（docs/manual）
-==========================================
+﻿PT-app  Phase 11A  画面のテスト
+================================
 
 【Firestore Rules の貼り直し: 不要です】
 
@@ -10,43 +10,63 @@
 --------
 
 1. この ZIP を展開する
-2. 中の docs と eslint.config.mjs を
+2. 中の apps / docs / package-lock.json を
    C:\\Users\\user\\Desktop\\pt-app の上に、そのまま上書きコピー
 3. GitHub Desktop で Changes を確認する
-     → 59 ファイルのはずです
+     → 27 ファイルのはずです
      → 「削除された」ファイルが1つも無いことを確認
 4. コミットして Push
+5. CI（Actions）が緑になるのを確認する
 
 
 コミットメッセージ
 ------------------
 
-  説明書（契約者用・管理者用）と、その作り直し一式
+  Phase 11A: 画面のテストを入れる（172件）
 
 
-入っているもの
+今回やったこと
 --------------
 
-  docs/manual/pdf/      配布する PDF 2冊（これが本体）
-  docs/manual/*.html    本文（次に直すのはここ）
-  docs/manual/style.css 体裁（A4・余白・囲み・表）
-  docs/manual/img/      画面写真 43枚
-  docs/manual/tools/    画面写真を撮り直して PDF を作り直す道具一式
-  docs/manual/README.md 直すときの手順
+  apps/web にテストが1件もありませんでした。そこに172件入れました。
 
-  eslint.config.mjs … docs/manual/tools を検査の対象外にする指定を1つ足しただけ
+  これまで実際に出たバグは、全部この「テストが無かった側」で起きています。
+  同じものが二度と出ないように固定するのが、今回の目的です。
 
 
-次に説明書を直すとき
---------------------
+特に守ったこと（4つ）
+---------------------
 
-  文章だけ直す場合:
-      HTML を直して、PDF を作り直すだけ。写真はそのままです。
+  1. 契約者は栄養値を入力できない
+       画面に kcal/P/F/C の欄が出ないこと。
+       未登録の食材が「栄養値0・登録待ち」で渡ること。
 
-  画面が変わった場合:
-      docs/manual/README.md に、6行のコマンドが書いてあります。
-      アプリ本体は1行も書き換えません。
-      撮れない画面があると、その場で止まって画面名を教えます。
+  2. 契約者はトレーナーのコメントを書けない
+       書く欄も、編集・削除のボタンも出ないこと。
+       （ここは実装中、一度ほんとうに書き換えられる状態でした）
+
+  3. 管理者は代わりにAI利用へ同意できない
+       管理者の画面にボタンが1つも無いこと。
+
+  4. AI評価は、出す前に必ず検査される
+       病名や、体に負担のかかるやり方が混ざった文章は表示も保存もしない。
+       疲れ・むくみ程度の話は通す。免責は常に出す。
+       AIに送るのが数字だけであること（氏名・契約者ID・体重を送らない）。
+
+
+テストの数
+----------
+
+  @pt/web         172 件  ← 今回追加（これまで0件）
+  @pt/core        239 件
+  @pt/ai-contract  39 件
+  Worker           15 件
+  ---------------------------
+  合計            465 件
+
+  Security Rules  161 件（CIのみ）
+
+  npm run verify に乗っているので、CIが自動で全部走ります。
 
 
 確認したこと
@@ -55,79 +75,54 @@
   GitHub から新しく clone したものに、この一式を重ねて、
 
     npm ci         OK
-    npm run verify OK  （core 239 / ai-contract 39 / worker 15）
+    npm run verify OK  （typecheck / lint / test すべて）
     npm run build  OK
 
-  そのうえで、説明書の作り直しも最初から通しました。
-  画面写真43枚、PDF 2冊、どちらも作り直せています。
+
+書きながら気づいたこと
+----------------------
+
+  ItemForm の「食材の名前を入力してください。」などの文言は、
+  実際には画面に出ません。条件を満たすまでボタンが押せないためです。
+  害はないので直していません（押せない理由がその場で分かるほうが親切です）。
+  報告書の 4-1 に書いてあります。
 
 
-ひとつ気づいたこと
-------------------
+次にやること（Phase 11 の続き）
+-------------------------------
 
-  前回の ZIP に入れていた README-first.txt が、
-  リポジトリの一番上にコミットされています。
-  作業用のメモなので、消してしまって構いません。
-  （今回の ZIP には入れ直していないので、消しても何も壊れません）
+  11B  Rules網羅  … 161件を全分岐で洗い直す
+  11C  E2E        … ログイン→記録→依頼→登録→反映→確定 を通しで
+  11D  Worker     … JWT検証・レート制限
 
-入っているファイル（59）
+  くわしくは docs/PHASE-11A-REPORT.md を見てください。
+
+入っているファイル（27）
 ------------------------
-  docs/manual/README.md
-  docs/manual/admin.html
-  docs/manual/client.html
-  docs/manual/img/adm-account.png
-  docs/manual/img/adm-basic.png
-  docs/manual/img/adm-can.png
-  docs/manual/img/adm-check-confirm.png
-  docs/manual/img/adm-check.png
-  docs/manual/img/adm-client-new.png
-  docs/manual/img/adm-clients.png
-  docs/manual/img/adm-food-editor.png
-  docs/manual/img/adm-foods-2.png
-  docs/manual/img/adm-foods.png
-  docs/manual/img/adm-note.png
-  docs/manual/img/adm-request-open-2.png
-  docs/manual/img/adm-request-open.png
-  docs/manual/img/adm-requests.png
-  docs/manual/img/adm-target.png
-  docs/manual/img/adm-tone.png
-  docs/manual/img/ai-consent-detail.png
-  docs/manual/img/ai-consent.png
-  docs/manual/img/cal-warn.png
-  docs/manual/img/cal.png
-  docs/manual/img/day-body.png
-  docs/manual/img/day-exercise.png
-  docs/manual/img/day-finalize.png
-  docs/manual/img/day-full.png
-  docs/manual/img/day-map.png
-  docs/manual/img/day-meal.png
-  docs/manual/img/day-note.png
-  docs/manual/img/day-pending.png
-  docs/manual/img/day-photos.png
-  docs/manual/img/day-review.png
-  docs/manual/img/day-totals.png
-  docs/manual/img/entry-buttons.png
-  docs/manual/img/first-password.png
-  docs/manual/img/item-form.png
-  docs/manual/img/login.png
-  docs/manual/img/panel-label.png
-  docs/manual/img/panel-photo.png
-  docs/manual/img/panel-text-result-2.png
-  docs/manual/img/panel-text-result.png
-  docs/manual/img/panel-text.png
-  docs/manual/img/weight.png
-  docs/manual/pdf/PT-Manager-使い方ガイド-契約者用.pdf
-  docs/manual/pdf/PT-Manager-運用ガイド-管理者用.pdf
-  docs/manual/style.css
-  docs/manual/tools/.gitignore
-  docs/manual/tools/finish_images.py
-  docs/manual/tools/make_photos.py
-  docs/manual/tools/make_seed.py
-  docs/manual/tools/shoot.mjs
-  docs/manual/tools/stubs/firebase-app.js
-  docs/manual/tools/stubs/firebase-auth.js
-  docs/manual/tools/stubs/firebase-firestore.js
-  docs/manual/tools/stubs/gemini.js
-  docs/manual/tools/topdf.mjs
-  docs/manual/tools/vite.harness.config.mjs
-  eslint.config.mjs
+  apps/web/package.json
+  apps/web/src/config/firebase.test.ts
+  apps/web/src/features/ai/AiConsentCard.test.tsx
+  apps/web/src/features/ai/gemini.test.ts
+  apps/web/src/features/auth/authTypes.test.ts
+  apps/web/src/features/clients/clientTypes.test.ts
+  apps/web/src/features/days/CheckCard.test.tsx
+  apps/web/src/features/days/dayTypes.test.ts
+  apps/web/src/features/days/daysRepo.test.ts
+  apps/web/src/features/exercises/exercisesRepo.test.ts
+  apps/web/src/features/foods/RequestsScreen.test.tsx
+  apps/web/src/features/foods/bulkReplace.test.ts
+  apps/web/src/features/foods/foodsRepo.test.ts
+  apps/web/src/features/foods/requestsRepo.test.ts
+  apps/web/src/features/meals/ItemForm.test.tsx
+  apps/web/src/features/meals/LabelItemPanel.test.tsx
+  apps/web/src/features/notes/NotesSection.test.tsx
+  apps/web/src/features/review/ReviewSection.test.tsx
+  apps/web/src/lib/firestoreError.test.ts
+  apps/web/src/test/factories.ts
+  apps/web/src/test/helpers.ts
+  apps/web/src/test/setup.ts
+  apps/web/src/test/vitest.d.ts
+  apps/web/tsconfig.json
+  apps/web/vitest.config.ts
+  docs/PHASE-11A-REPORT.md
+  package-lock.json
