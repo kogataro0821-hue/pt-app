@@ -65,7 +65,7 @@ export function ItemForm({
     c: '',
   });
   const [error, setError] = useState<string | null>(null);
-  /** 成分表示から読み取った候補。管理者へ一緒に送る（Phase 12） */
+  /** 成分表示から読み取った候補。管理者へ一緒に送る（追加仕様: 成分表示の読み取り） */
   const [candidate, setCandidate] = useState<LabelCandidate | null>(null);
   const [scanning, setScanning] = useState(false);
 
@@ -201,7 +201,7 @@ export function ItemForm({
         onManualChange={setManual}
       />
 
-      {/* ★ マスタに無い食材のときだけ出します（設計書 §47 / Phase 12）。
+      {/* ★ マスタに無い食材のときだけ出します（設計書 §47 / 追加仕様: 成分表示の読み取り）。
           読み取った値は、この場では使いません。
           管理者への登録依頼に「候補」として添えるだけです。
           栄養値を決めるのは管理者、という前提は変えません。 */}

@@ -13,7 +13,7 @@ import { AiError, aiErrorMessage, readNutritionLabel } from '@/features/ai/gemin
 import { PhotoResizeError, photoErrorMessage, resizePhoto } from '@/features/photos/resize';
 
 /**
- * 栄養成分表示の読み取り（設計書 §47 / Phase 12）。
+ * 栄養成分表示の読み取り（設計書 §47 / 追加仕様: 成分表示の読み取り）。
  *
  * ★ 手順を守っています。
  *

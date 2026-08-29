@@ -167,7 +167,7 @@ service cloud.firestore {
       match /days/{date} {
         allow get, list: if canRead(cid);
 
-        // ★ トレーナーの「確認しました」（checkedAt / checkedBy）は管理者だけ（Phase 11）。
+        // ★ トレーナーの「確認しました」（checkedAt / checkedBy）は管理者だけ（追加仕様: 写真の保存期間）。
         //
         //   契約者が自分で確認済みにできてしまうと、
         //   トレーナーが見たかどうかの記録になりません。
@@ -187,7 +187,7 @@ service cloud.firestore {
 
         allow delete: if mayEdit(cid, date);
 
-        // ★ 写真の掃除に伴う印の更新（Phase 11）。
+        // ★ 写真の掃除に伴う印の更新（追加仕様: 写真の保存期間）。
         //
         //   契約者は期限切れの写真を消せます（下の photos を参照）。
         //   消したあとに photoOldestAt を直せないと、
@@ -222,14 +222,14 @@ service cloud.firestore {
         allow write: if mayEdit(cid, date);
       }
 
-      // AI評価（設計書 §26 / Phase 14）。
+      // AI評価（設計書 §26 / Phase 10）。
       //
       // ★ 1日につき1件だけです（ドキュメントIDは 'latest' 固定）。
       //   評価は「いまの記録に対する言葉」なので、履歴に意味がありません。
       //   溜めると無料枠も食います。
       //
       // ★ 契約者も作れます。
-      //   その場で反応が返るほうが続くためです（Q: Phase 14）。
+      //   その場で反応が返るほうが続くためです（Q: Phase 10）。
       //   ただし文章は必ずAIから来たものに限りたいので、
       //   長さの上限だけはここで守ります。
       //   中身の検査（病名・危険なやり方）は画面側の決定論的な処理で行い、
@@ -274,7 +274,7 @@ service cloud.firestore {
       // 写真は base64 で Firestore に格納します（設計書 §4.3）。
       // Storage Rules が使えないぶん、サイズ上限をここで守ります。
       //
-      // ★ 削除だけ条件が3つあります（設計書 §8.2 / Phase 11）。
+      // ★ 削除だけ条件が3つあります（設計書 §8.2 / 追加仕様: 写真の保存期間）。
       //
       //   1. 管理者          … 「確認しました」でその日のぶんをまとめて消す
       //   2. 契約者（期間内）… 自分が撮ったものを撮り直す
@@ -414,7 +414,7 @@ service cloud.firestore {
         allow get: if isAdmin() || isClient(clientId);
         allow list, delete: if isAdmin();
 
-        // ★ candidatePer100g は「成分表示から読み取った候補」です（Phase 12）。
+        // ★ candidatePer100g は「成分表示から読み取った候補」です（追加仕様: 成分表示の読み取り）。
         //   契約者が書けますが、これはあくまで候補で、確定値ではありません。
         //   マスタへ入れるかどうかを決めるのは管理者のままです（foods は管理者のみ書込可）。
         //   ここが直接マスタに反映される経路は作っていません。

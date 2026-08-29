@@ -42,7 +42,7 @@ import { AiError, aiErrorMessage, analyzeMealPhoto, parseMealText } from './gemi
  *
  * ★ 栄養値は共通マスタからしか来ません。AIも契約者も決められません。
  *
- * ★ AIに送った写真は、写真欄に残します（Phase 13）。
+ * ★ AIに送った写真は、写真欄に残します（追加仕様: 成分表示の読み取り）。
  *
  *   残さないと、あとからトレーナーが見たときに
  *   「AIは何を見てこの数字を出したのか」を確かめる手段がありません。

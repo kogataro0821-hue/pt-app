@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { PHOTO_RETENTION_DAYS } from '@pt/core';
 
 /**
- * トレーナーの「確認しました」（Phase 11）。
+ * トレーナーの「確認しました」（追加仕様: 写真の保存期間）。
  *
  * ★ 1日確定とは別ものです。
  *

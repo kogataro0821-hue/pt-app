@@ -3,7 +3,7 @@ import type { DateKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 
 /**
- * AI評価の読み書き（設計書 §26 / Phase 14）。
+ * AI評価の読み書き（設計書 §26 / Phase 10）。
  *
  * 置き場所: clients/{cid}/days/{date}/review/latest
  *

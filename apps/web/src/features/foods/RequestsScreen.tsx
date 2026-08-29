@@ -129,7 +129,7 @@ function RequestCard({
   const [zoom, setZoom] = useState<string | null>(null);
 
   const candidates = findSimilarFoods(foods, request.name, 5);
-  /** 契約者が成分表示を撮っていれば、その値を初期値に使う（Phase 12） */
+  /** 契約者が成分表示を撮っていれば、その値を初期値に使う（追加仕様: 成分表示の読み取り） */
   const label = firstCandidate(request);
 
   async function absorbInto(food: Food) {
@@ -150,7 +150,7 @@ function RequestCard({
   }
 
   /**
-   * 承認した値を、待っている記録に入れる（Phase 13）。
+   * 承認した値を、待っている記録に入れる（追加仕様: 成分表示の読み取り）。
    *
    * ★ 以前は「過去も置き換えますか？」と聞いていました。やめました。
    *

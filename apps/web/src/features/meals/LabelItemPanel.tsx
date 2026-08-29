@@ -5,7 +5,7 @@ import type { LabelCandidate } from '@/features/foods/requestsRepo';
 import { newItemId } from './mealsRepo';
 
 /**
- * 成分表示から食材を1つ起こす（設計書 §47 / Phase 13）。
+ * 成分表示から食材を1つ起こす（設計書 §47 / 追加仕様: 成分表示の読み取り）。
  *
  * 「文章から」「写真から」と並ぶ、3つ目の入口です。
  *

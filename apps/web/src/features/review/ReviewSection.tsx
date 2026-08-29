@@ -11,7 +11,7 @@ import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { deleteReview, getReview, saveReview, type DayReview } from './reviewRepo';
 
 /**
- * AI評価（設計書 §26 / §13 / Phase 14）。
+ * AI評価（設計書 §26 / §13 / Phase 10）。
  *
  * ★ 押したときだけ作ります。
  *

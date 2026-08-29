@@ -65,12 +65,12 @@ export interface RequestEntry {
   variant: string;
   count: number;
   dates: DateKey[];
-  /** 成分表示から読み取った候補（Phase 12）。撮っていなければ null */
+  /** 成分表示から読み取った候補（追加仕様: 成分表示の読み取り）。撮っていなければ null */
   candidate: LabelCandidate | null;
 }
 
 /**
- * 成分表示から読み取った100gあたりの候補（設計書 §47 / Phase 12）。
+ * 成分表示から読み取った100gあたりの候補（設計書 §47 / 追加仕様: 成分表示の読み取り）。
  *
  * ★ これは「候補」であって、確定値ではありません。
  *   契約者が撮って、契約者が画面で確認した値です。

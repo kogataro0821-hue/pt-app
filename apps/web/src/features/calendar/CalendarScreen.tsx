@@ -57,7 +57,7 @@ export function CalendarScreen({ clientId, month }: { clientId: string; month: M
   }, [clientId, safeMonth]);
 
   /**
-   * もうすぐ消える写真がある日を探す（設計書 §8.2 / Phase 11）。
+   * もうすぐ消える写真がある日を探す（設計書 §8.2 / 追加仕様: 写真の保存期間）。
    *
    * ★ ここはカレンダー画面です。表示中の月とは関係なく探します。
    *   期限が来るのは7週間前に撮った写真なので、
