@@ -789,7 +789,7 @@ allow create: if request.resource.data.dataUrl.size() < 400000;  // base64で約
 |---|---|
 | AI APIキー | Worker Secret に格納。アプリのバンドルには入らない |
 | 誰でも叩ける問題 | **Firebase ID トークンの検証を必須化**。Google の公開鍵で JWT を検証し、`aud` がこのプロジェクトIDであることを確認 |
-| 濫用 | Workers KV に uid ごとの日次カウンタ。既定 1日50回まで ／ **⚠ 未実装。いまは「ログイン済みか」だけで、回数は数えていません** |
+| 濫用 | Workers KV に uid ごとの日次カウンタ。既定 1日50回まで（`DAILY_LIMIT` で変更可）。日付の変わり目は日本時間 ✅ Phase 11E ／ KV が結び付いていないときは数えず、止めもしません（動作確認の画面に状態が出ます） |
 | 画像サイズ | リクエストボディ 2MB 上限。超過は 413 で拒否 |
 | CORS | アプリのオリジンのみ許可 |
 
@@ -888,7 +888,7 @@ Cloud Functions の代わりに、Cloudflare Workers の無料プランで**AI�
 | # | 処理 | 目的 |
 |---|---|---|
 | 1 | Firebase ID トークンの検証 | 誰でも叩けるAPIにしない。Googleの公開鍵でJWTを検証し `aud` がこのプロジェクトIDか確認 |
-| 2 | レート制限 | Workers KV に uid ごとの日次カウンタ。既定 1日50回 ／ **⚠ 未実装（Phase 11D で判明）** |
+| 2 | レート制限 | Workers KV に uid ごとの日次カウンタ。既定 1日50回 ✅ Phase 11E |
 | 3 | AI APIキーの秘匿 | Worker Secret に格納。**アプリのバンドルには一切入らない** |
 | 4 | プロバイダー抽象 | Gemini / OpenAI / Claude を環境変数で切替 |
 | 5 | 出力の検証と後処理 | zod検証 + ハルシネーション検査（§9.5） |
@@ -1302,10 +1302,15 @@ export function sumNutrients(list: readonly Nutrients[]): Nutrients {
 | **6** | 食事・食品・PFC計算 | **PFCエンジン + 全テスト**、食品マスタ、食事CRUD、レシピ、お気に入り、コピペ出力 ✅ |
 | **7** | 運動・メモ | 運動記録、メモ、体重、1日確定 ✅ |
 | — | **ここまでで MVP 完成 / 契約者に URL を配れる状態** | ✅ |
-| **8** | AI基盤 + 画像解析 | **Cloudflare Worker**（IDトークン検証・Gemini実装）、同意フロー、写真保存、画像圧縮、確認画面 ✅ ／ レート制限は未実装 |
+| **8** | AI基盤 + 画像解析 | **Cloudflare Worker**（IDトークン検証・Gemini実装）、同意フロー、写真保存、画像圧縮、確認画面 ✅ ／ レート制限は Phase 11E で実装 |
 | **9** | AI自然言語編集 | 編集指示の解釈、evidence検証、操作適用、**栄養値の一本化（共通マスタのみ）**、登録依頼、表記ゆれの吸収 ✅ |
 | **10** | AI評価 | 評価モード、日次評価生成、トレーナーのコメント、**決定論的な安全検査** ✅ |
 | **11** | テスト強化 | E2E、Rules網羅、Worker のテスト |
+| 11A | ├ 画面のテスト | `apps/web` 0件 → 172件 ✅ |
+| 11B | ├ Rules 網羅 | 161件 → 265件。取りこぼしを機械で見張る仕組み（25件）✅ |
+| 11C | ├ E2E | Playwright で通し確認 — **未着手** |
+| 11D | ├ Worker のテスト | 15件 → 43件。**APIキーがログに残る問題を発見・修正** ✅ |
+| 11E | └ レート制限 | 3か所で約束しながら実装されていなかった箇所を実装（Workers KV）。43件 → 69件 ✅ |
 | **12** | 実機での運用開始 | iPhone実機で全機能を確認、契約者へ配布、オフライン挙動の確認 |
 
 #### 追加仕様（番号を持たないもの）
@@ -1497,7 +1502,7 @@ Rules 上の扱い:
 | Rules | Firebase Emulator + `@firebase/rules-unit-testing` | Firestore Rules | **全ルール分岐** |
 | 結合 | Vitest + Emulator | Repository層 | 主要パス |
 | UI | Vitest + React Testing Library | 確認画面・編集フロー | 重要画面 |
-| Worker | Vitest + Miniflare | IDトークン検証・レート制限・AI出力の後処理 | 主要パス |
+| Worker | Vitest（偽のfetch・偽のKV） | IDトークン検証・レート制限・APIキーの非漏洩・入口の作法 | 69件 |
 | E2E | Maestro（Phase 11） | ログイン→記録→確定→コピー | 主要シナリオ |
 
 ### 16.2 計算テスト（§43）

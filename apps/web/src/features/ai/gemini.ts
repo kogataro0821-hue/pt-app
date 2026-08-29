@@ -24,6 +24,8 @@ export type AiErrorKind =
   | 'not_configured'
   | 'unauthenticated'
   | 'rate_limited'
+  /** その人の、その日の利用回数の上限に達した（設計書 §7.6） */
+  | 'daily_limit'
   | 'unavailable'
   | 'invalid_output'
   | 'network';
@@ -52,6 +54,11 @@ function baseMessage(kind: AiErrorKind): string {
       return 'ログインし直してから、もう一度お試しください。';
     case 'rate_limited':
       return 'AIの利用が混み合っています。しばらく待ってからお試しください。手で入力することもできます。';
+    case 'daily_limit':
+      // ★ 「混み合っています」と同じ言い方にしてはいけません。
+      //   数分待てば戻ると思われると、一日じゅう押し続けることになります。
+      //   いつ戻るのかを、はっきり書きます。
+      return '今日のAIの利用回数が上限に達しました。日付が変わると、また使えます。手で入力することもできます。';
     case 'unavailable':
       return 'AIに接続できませんでした。手で入力してください。';
     case 'invalid_output':
@@ -154,6 +161,50 @@ interface GeminiResponse {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
 }
 
+/**
+ * 中継役が断ってきたときに、画面へ出す理由を決める。
+ *
+ * ★ 429 には意味が2つあります。
+ *
+ *     daily_limit_reached … こちらで決めた1日の上限（翌日まで戻りません）
+ *     それ以外            … Gemini 側が混み合っている（数分で戻ります）
+ *
+ *   同じ「しばらくお待ちください」で済ませると、
+ *   上限に達した人が、戻らないものを一日じゅう待つことになります。
+ *   中継役が返す名前を見て、言い方を変えます。
+ *
+ * ★ 4か所（文章・写真・成分表示・AI評価）で同じ判断をします。
+ *   別々に書くと、片方だけ直して食い違います。ここ1か所にまとめて、
+ *   テストもここに対して書きます。
+ */
+export async function relayFailure(response: Response, tooLarge?: string): Promise<AiError> {
+  if (response.status === 401) return new AiError('unauthenticated');
+
+  if (response.status === 429) {
+    let kind: AiErrorKind = 'rate_limited';
+    let detail: string | undefined;
+    try {
+      const body = (await response.json()) as { error?: unknown; limit?: unknown };
+      if (body.error === 'daily_limit_reached') {
+        kind = 'daily_limit';
+        if (typeof body.limit === 'number') detail = `1日${body.limit}回まで`;
+      }
+    } catch {
+      // 本文が読めなければ、混み合いとして扱います（待てば戻る、という穏当なほう）
+    }
+    return new AiError(kind, detail);
+  }
+
+  if (response.status === 413 && tooLarge !== undefined) {
+    return new AiError('unavailable', tooLarge);
+  }
+
+  // ★ 状態番号を画面に出します。
+  //   「接続できませんでした」だけだと、
+  //   キーの問題なのか、要求の形の問題なのかが切り分けられません。
+  return new AiError('unavailable', `中継役の応答: ${response.status}`);
+}
+
 /** 文章から食材候補を作る。 */
 export async function parseMealText(text: string): Promise<MealRecognition> {
   if (AI_RELAY_URL === null) throw new AiError('not_configured');
@@ -190,15 +241,7 @@ export async function parseMealText(text: string): Promise<MealRecognition> {
     throw new AiError('network');
   }
 
-  if (!response.ok) {
-    if (response.status === 401) throw new AiError('unauthenticated');
-    if (response.status === 429) throw new AiError('rate_limited');
-
-    // ★ 状態番号を画面に出します。
-    //   「接続できませんでした」だけだと、
-    //   キーの問題なのか、要求の形の問題なのかが切り分けられません。
-    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
-  }
+  if (!response.ok) throw await relayFailure(response);
 
   let raw: GeminiResponse;
   try {
@@ -369,12 +412,7 @@ export async function analyzeMealPhoto(
     throw new AiError('network');
   }
 
-  if (!response.ok) {
-    if (response.status === 401) throw new AiError('unauthenticated');
-    if (response.status === 429) throw new AiError('rate_limited');
-    if (response.status === 413) throw new AiError('unavailable', '写真が大きすぎます');
-    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
-  }
+  if (!response.ok) throw await relayFailure(response, '写真が大きすぎます');
 
   let raw: GeminiResponse;
   try {
@@ -537,12 +575,7 @@ export async function readNutritionLabel(dataUrl: string): Promise<AiLabelResult
     throw new AiError('network');
   }
 
-  if (!response.ok) {
-    if (response.status === 401) throw new AiError('unauthenticated');
-    if (response.status === 429) throw new AiError('rate_limited');
-    if (response.status === 413) throw new AiError('unavailable', '写真が大きすぎます');
-    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
-  }
+  if (!response.ok) throw await relayFailure(response, '写真が大きすぎます');
 
   let raw: GeminiResponse;
   try {
@@ -743,11 +776,7 @@ export async function requestDayReview(input: ReviewInput): Promise<string> {
     throw new AiError('network');
   }
 
-  if (!response.ok) {
-    if (response.status === 401) throw new AiError('unauthenticated');
-    if (response.status === 429) throw new AiError('rate_limited');
-    throw new AiError('unavailable', `中継役の応答: ${response.status}`);
-  }
+  if (!response.ok) throw await relayFailure(response);
 
   let raw: GeminiResponse;
   try {

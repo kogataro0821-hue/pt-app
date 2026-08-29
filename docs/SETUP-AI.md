@@ -75,7 +75,7 @@ APIキーをアプリに入れると、GitHubが公開なので誰でも読め�
    `pt-app\worker\worker.js` の中身を全部貼り付けてください
 
    > ファイルはこの場所にあります
-   > `C:\Users\たろざっぷ\dev\pt-app\worker\worker.js`
+   > `C:\Users\user\Desktop\pt-app\worker\worker.js`
    > メモ帳で開いて `Ctrl + A` → `Ctrl + C` です
 
 6. 右上の「**Deploy**」を押す
@@ -100,6 +100,46 @@ Worker の画面で「**Settings**」タブ →「**Variables and Secrets**」�
 > Secret にすると、登録後は画面にも表示されなくなります。
 
 追加したら「**Deploy**」を押します。
+
+---
+
+# 手順4.5 — 使いすぎを止める場所を作る（KV）
+
+**所要 5分・無料・カード登録なし**
+
+1人が1日にAIを使える回数を数えておく場所です。
+アプリの不具合や連打で無料枠が尽きて、**翌日まで全員のAIが止まる**のを防ぎます。
+
+> ★ この手順を飛ばしても、アプリは普通に動きます。
+> ただし**回数を数えません**。あとからでも足せます。
+
+1. Cloudflare の管理画面で、左のメニューから
+   「**Storage & Databases**」→「**KV**」を開く
+   （見当たらなければ「Workers & Pages」→「KV」）
+
+2. 「**Create a namespace**」（または「作成」）を押す
+
+3. 名前を **`pt-ai-rate`** にして作成
+
+4. 左のメニューから「**Compute (Workers)**」→ **`pt-ai`** を開く
+
+5. 「**Settings**」タブ →「**Bindings**」（または「KV Namespace Bindings」）
+
+6. 「**Add**」→「**KV namespace**」を選び、次のように入れる
+
+   | 欄 | 入れる値 |
+   |---|---|
+   | Variable name（変数名） | **`RATE_LIMIT`** |
+   | KV namespace | `pt-ai-rate` |
+
+   > ⚠️ 変数名は **`RATE_LIMIT`** ちょうどにしてください。
+   > 大文字・下線までこのとおりでないと、Worker が見つけられません。
+
+7. 「**Deploy**」を押す
+
+**回数を変えたいとき**は、「Variables and Secrets」に
+`DAILY_LIMIT`（Text）を足して数字を入れてください。省略時は **1日50回** です。
+コードを貼り直す必要はありません。
 
 ---
 
@@ -135,6 +175,30 @@ https://pt-ai.〇〇〇.workers.dev
 
 ---
 
+# 手順6.5 — 設定が揃ったか確かめる
+
+ブラウザで、手順5のWorkerのURLを**そのまま開いて**ください。
+（アプリではなく、`https://pt-ai.〇〇〇.workers.dev` のほうです）
+
+こういう文字が出れば、設定は揃っています。
+
+```
+"ok": true
+"configuredModel": "gemini-2.5-flash"
+"firebaseProject": "pt-app-54f32"
+"dailyLimit": "有効（1人あたり1日 50 回まで）"
+```
+
+| 出たもの | 意味 |
+|---|---|
+| `"dailyLimit": "有効（…）"` | 手順4.5 ができています |
+| `"dailyLimit": "⚠ 数えていません…"` | 手順4.5 の**変数名が違う**か、Deploy を押していません |
+| `"ok": false` | `GEMINI_API_KEY` が未登録か、間違っています |
+
+> ★ ここはAPIキーを一切表示しません。画面を撮って送っても大丈夫です。
+
+---
+
 # 手順7 — 動くか確かめる
 
 1. アプリを開いて `Ctrl + Shift + R`
@@ -159,7 +223,8 @@ https://pt-ai.〇〇〇.workers.dev
 | 「文章から入力」が出ない（同意済み） | 同意していない契約者で見ている | 設定画面で同意する |
 | 「ログインし直してください」 | ログイン証明の検証に失敗 | `FIREBASE_PROJECT` が `pt-app-54f32` か確認 |
 | 「AIに接続できませんでした」 | キーが違うか未登録 | `GEMINI_API_KEY` を確認。Secret になっているか |
-| 「混み合っています」 | 1日1,500回の上限に到達 | 翌日まで待つ（通常は届きません） |
+| 「混み合っています」 | Gemini 側が混雑（1日1,500回の上限など） | 数分待ってからやり直す |
+| 「今日のAIの利用回数が上限に達しました」 | **その人が**1日50回を使い切った | 日付が変われば戻ります。足りなければ `DAILY_LIMIT` を上げる（手順4.5） |
 
 Cloudflare の Worker 画面の「**Logs**」を開くと、
 実際に呼ばれているかどうかが見られます。原因の切り分けに使えます。
@@ -175,3 +240,29 @@ Cloudflare の Worker 画面の「**Logs**」を開くと、
 
 **どちらも桁が2つ違います。** カード登録をしていないので、
 万一上限を超えても課金されることはなく、その日は使えなくなるだけです。
+
+
+---
+
+# worker.js を新しくするとき
+
+`worker/worker.js` を直したときは、**Cloudflare に貼り直す必要があります。**
+GitHub に push しただけでは、Cloudflare の中身は変わりません。
+
+> なぜ自動にならないのか：自動で配るには Cloudflare の接続情報を
+> GitHub に預ける必要があり、キーを外に置かない方針と合いません。
+> 貼り直しは年に数回あるかどうかなので、手作業のままにしています。
+
+1. `C:\Users\user\Desktop\pt-app\worker\worker.js` をメモ帳で開く
+2. `Ctrl + A` →`Ctrl + C`（全部選んでコピー）
+3. Cloudflare →「Compute (Workers)」→ **`pt-ai`** →「**Edit code**」
+4. エディタの中で `Ctrl + A` → `Delete`
+   > ⚠️ **継ぎ足さないでください。** 古い中身が残ると動きません
+5. `Ctrl + V` で貼り付け
+6. 右上の「**Deploy**」
+
+**設定した値（`GEMINI_API_KEY` など）は消えません。**
+それらは「Settings」に別で保存されていて、コードとは別の場所にあります。
+
+貼り直したら、**手順6.5** で確認してください。
+「Deployments」タブに今日の日付が出ていれば、入れ替わっています。

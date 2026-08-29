@@ -209,7 +209,7 @@ describe('★ ログイン証明の検証（ここが甘いとAI枠を他人に�
 //   無料枠が尽きて契約者全員のAIが止まります。
 // =============================================================================
 
-import worker from './worker.js';
+import worker, { countUse, dailyLimit, todayInJst, byteLength } from './worker.js';
 
 const GOOGLE_KEYS =
   'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
@@ -569,5 +569,257 @@ describe('★ AI中継役の入口（このURLは公開情報）', () => {
       // 文章を作れないモデルは省く（選んでも動かないため）
       expect(data.usableModels).toEqual(['models/gemini-2.5-flash']);
     });
+  });
+});
+
+// =============================================================================
+// Phase 11E — 使いすぎを止める（設計書 §7.6）
+//
+// ★ ここは「攻撃を防ぐ壁」ではありません。門番はトークンの検証のほうです。
+//   受け止めるのは、通ってよい人が使いすぎることです。
+//   不具合による繰り返し、連打、盗まれた端末からの1時間。
+//   結果はどれも「無料枠が尽きて、翌日まで全員のAIが止まる」です。
+//
+// ★ 設計書は3か所で「1日50回まで」と書いていましたが、
+//   Phase 11D の点検で、**数える処理がどこにも無い**ことが分かりました。
+//   ここがそのやり直しです。
+// =============================================================================
+
+/** Workers KV の代わり。中身はただの Map です。 */
+function fakeKv(initial: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initial));
+  const puts: { key: string; value: string; ttl: number | undefined }[] = [];
+  return {
+    store,
+    puts,
+    get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+    put: async (key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> => {
+      puts.push({ key, value, ttl: opts?.expirationTtl });
+      store.set(key, value);
+    },
+  };
+}
+
+/** 応答しなくなった KV。 */
+function brokenKv() {
+  return {
+    get: async (): Promise<string> => {
+      throw new Error('kv down');
+    },
+    put: async (): Promise<void> => {
+      throw new Error('kv down');
+    },
+  };
+}
+
+describe('日付の変わり目（日本時間）', () => {
+  // ★ 世界標準時のままだと、日本の朝9時に回数が戻ります。
+  //   利用者から見れば「昼前に急に使えるようになる」ので、日本時間に合わせます。
+  it('日本の午前0時で、翌日になる', () => {
+    expect(todayInJst(Date.parse('2026-08-28T14:59:59Z'))).toBe('2026-08-28');
+    expect(todayInJst(Date.parse('2026-08-28T15:00:00Z'))).toBe('2026-08-29');
+  });
+
+  it('日本の朝9時（世界標準時の午前0時）では、日付は変わらない', () => {
+    expect(todayInJst(Date.parse('2026-08-29T00:00:00Z'))).toBe('2026-08-29');
+  });
+});
+
+describe('1日に使える回数の設定', () => {
+  it('設定が無ければ 50 回', () => {
+    expect(dailyLimit({})).toBe(50);
+  });
+
+  it('設定した回数を使う（コードを貼り直さずに変えられる）', () => {
+    expect(dailyLimit({ DAILY_LIMIT: '200' })).toBe(200);
+  });
+
+  it('おかしな値は既定に戻す（0や空文字で全員止まらないように）', () => {
+    for (const bad of ['0', '-5', 'たくさん', '', undefined]) {
+      expect(dailyLimit({ DAILY_LIMIT: bad })).toBe(50);
+    }
+  });
+});
+
+describe('本文の大きさは、文字数ではなくバイト数で見る', () => {
+  // ★ ここは間違えていました。`body.length` は文字の数です。
+  //   日本語は1文字3バイトなので、上限2,000,000は
+  //   実際には約6MBまで通っていました。
+  it('日本語1文字は3バイトと数える', () => {
+    expect(byteLength('あ')).toBe(3);
+    expect(byteLength('abc')).toBe(3);
+  });
+
+  it('文字数では収まるが、バイト数では超える本文は 413 で止まる', async () => {
+    stubNetwork();
+    // 700,000文字 = 2,100,000バイト。文字数で見ていた頃は通っていました
+    const res = await worker.fetch(post(makeToken(), 'あ'.repeat(700_000)), env());
+    expect(res.status).toBe(413);
+    expect(calls.filter((c) => c.url.includes('generativelanguage'))).toHaveLength(0);
+  });
+});
+
+describe('回数を数える', () => {
+  it('使うたびに1つ増える', async () => {
+    const kv = fakeKv();
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: true, used: 1 });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: true, used: 2 });
+  });
+
+  it('上限に達したら止める', async () => {
+    const kv = fakeKv({ [`use:u1:${todayInJst()}`]: '50' });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: false, used: 50 });
+  });
+
+  it('ちょうど上限の1つ手前までは通る', async () => {
+    const kv = fakeKv({ [`use:u1:${todayInJst()}`]: '49' });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: true, used: 50 });
+  });
+
+  it('人ごとに別々に数える（誰かが使い切っても、他の人は使える）', async () => {
+    const kv = fakeKv({ [`use:u1:${todayInJst()}`]: '50' });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: false });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u2')).toMatchObject({ allowed: true, used: 1 });
+  });
+
+  it('日付ごとに別々に数える（昨日ぶんは持ち越さない）', async () => {
+    const kv = fakeKv({ 'use:u1:2020-01-01': '50' });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: true, used: 1 });
+  });
+
+  it('数え札には期限を付ける（放っておいても溜まらない）', async () => {
+    const kv = fakeKv();
+    await countUse({ RATE_LIMIT: kv }, 'u1');
+    expect(kv.puts[0]?.ttl).toBeGreaterThan(60 * 60 * 24);
+  });
+
+  it('壊れた値が入っていても、0から数え直す', async () => {
+    const kv = fakeKv({ [`use:u1:${todayInJst()}`]: 'こわれた' });
+    expect(await countUse({ RATE_LIMIT: kv }, 'u1')).toMatchObject({ allowed: true, used: 1 });
+  });
+
+  // --- ここから「数えられないとき」------------------------------------------
+  //
+  // ★ 数えられないときは通します。止めません。
+  //   ここで守っているのは無料枠であって、利用者のデータではありません。
+  //   KVの結び付け忘れでAIが全員使えなくなるのは、行き過ぎです。
+
+  it('KV が結び付けられていなければ、数えないが、止めもしない', async () => {
+    expect(await countUse({}, 'u1')).toMatchObject({ allowed: true, counted: false });
+  });
+
+  it('KV が応答しなくても、止めない', async () => {
+    expect(await countUse({ RATE_LIMIT: brokenKv() }, 'u1')).toMatchObject({
+      allowed: true,
+      counted: false,
+    });
+  });
+});
+
+describe('★ 入口で、使いすぎを止める', () => {
+  it('上限内なら通り、回数が増える', async () => {
+    stubNetwork();
+    const kv = fakeKv();
+    const res = await worker.fetch(post(makeToken()), env({ RATE_LIMIT: kv }));
+    expect(res.status).toBe(200);
+    expect(kv.store.get(`use:user-123:${todayInJst()}`)).toBe('1');
+  });
+
+  it('上限に達したら 429 で断る', async () => {
+    stubNetwork();
+    const kv = fakeKv({ [`use:user-123:${todayInJst()}`]: '50' });
+    const res = await worker.fetch(post(makeToken()), env({ RATE_LIMIT: kv }));
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: 'daily_limit_reached', limit: 50 });
+  });
+
+  it('上限に達したら、Gemini まで届かない', async () => {
+    // ★ ここが要です。429を返していても、その前に上流を叩いていたら
+    //   無料枠は減り続けます。呼び出しの記録が0回であることを直接見ます。
+    stubNetwork();
+    const kv = fakeKv({ [`use:user-123:${todayInJst()}`]: '50' });
+    await worker.fetch(post(makeToken()), env({ RATE_LIMIT: kv }));
+    expect(calls.filter((c) => c.url.includes('generativelanguage'))).toHaveLength(0);
+  });
+
+  it('Gemini の混み合い（429）とは、別の名前で伝える', async () => {
+    // ★ 同じ429でも、意味が違います。
+    //   混み合いは数分で戻り、上限は翌日まで戻りません。
+    //   区別が付かないと、使い切った人が一日じゅう押し続けます。
+    stubNetwork({ ok: false, status: 429, body: '{"error":"quota"}' });
+    const busy = await worker.fetch(post(makeToken()), env({ RATE_LIMIT: fakeKv() }));
+    expect(await busy.json()).toMatchObject({ error: 'rate_limited' });
+
+    stubNetwork();
+    const over = await worker.fetch(
+      post(makeToken()),
+      env({ RATE_LIMIT: fakeKv({ [`use:user-123:${todayInJst()}`]: '50' }) }),
+    );
+    expect(await over.json()).toMatchObject({ error: 'daily_limit_reached' });
+  });
+
+  it('上限で断ったことは、記録に残る（壊れたのか使い切ったのかが分かるように）', async () => {
+    stubNetwork();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await worker.fetch(
+      post(makeToken()),
+      env({ RATE_LIMIT: fakeKv({ [`use:user-123:${todayInJst()}`]: '50' }) }),
+    );
+
+    const written = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(written).toContain('daily_limit');
+    expect(written).toContain('user-123');
+    log.mockRestore();
+  });
+
+  it('設定で上限を変えられる（コードを貼り直さずに）', async () => {
+    stubNetwork();
+    const kv = fakeKv({ [`use:user-123:${todayInJst()}`]: '50' });
+    const res = await worker.fetch(post(makeToken()), env({ RATE_LIMIT: kv, DAILY_LIMIT: '200' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('門で止められた人は、回数を消費しない', async () => {
+    // ★ トークンが無い依頼で回数が減ると、
+    //   外から叩かれるだけで契約者が使えなくなります
+    stubNetwork();
+    const kv = fakeKv();
+    await worker.fetch(post(null), env({ RATE_LIMIT: kv }));
+    await worker.fetch(post('garbage'), env({ RATE_LIMIT: kv }));
+    expect(kv.puts).toHaveLength(0);
+  });
+
+  it('鍵が設定されていないときは、回数を消費しない', async () => {
+    // 設定が済んでいないせいで失敗した回数を、上限に数えたくない
+    stubNetwork();
+    const kv = fakeKv();
+    await worker.fetch(post(makeToken()), env({ RATE_LIMIT: kv, GEMINI_API_KEY: undefined }));
+    expect(kv.puts).toHaveLength(0);
+  });
+
+  it('KV を結び付け忘れていても、アプリは今までどおり動く', async () => {
+    stubNetwork();
+    const res = await worker.fetch(post(makeToken()), env());
+    expect(res.status).toBe(200);
+  });
+
+  it('動作確認の画面に、数えているかどうかが出る', async () => {
+    // ★ 結び付け忘れに気づける場所は、ここしかありません
+    const models = JSON.stringify({ models: [] });
+
+    stubNetwork({ body: models });
+    const off = await worker.fetch(
+      new Request('https://relay.example.workers.dev/', { method: 'GET' }),
+      env(),
+    );
+    expect(JSON.stringify(await off.json())).toContain('数えていません');
+
+    stubNetwork({ body: models });
+    const on = await worker.fetch(
+      new Request('https://relay.example.workers.dev/', { method: 'GET' }),
+      env({ RATE_LIMIT: fakeKv(), DAILY_LIMIT: '120' }),
+    );
+    expect(JSON.stringify(await on.json())).toContain('120');
   });
 });

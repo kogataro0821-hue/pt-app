@@ -21,16 +21,21 @@
  *                              キーはここだけ
  *
  *  ---------------------------------------------------------------------
- *  このWorkerがすること（3つだけ）
+ *  このWorkerがすること（4つだけ）
  *  ---------------------------------------------------------------------
  *
  *  1. 本当にこのアプリのログイン利用者からの依頼かを確かめる
- *  2. APIキーを付ける
- *  3. Gemini に転送して、返事をそのまま返す
+ *  2. その人が今日すでに何回使ったかを数え、使いすぎを止める
+ *  3. APIキーを付ける
+ *  4. Gemini に転送して、返事をそのまま返す
  *
  *  1が要です。これが無いと、このURLを知った人は誰でも
  *  あなたのAI枠を使えてしまいます。Firebase が発行した
  *  ログイン証明（IDトークン）の署名を、Google の公開鍵で検証します。
+ *
+ *  2は、身内の事故を防ぐためのものです。不具合で呼び出しが
+ *  繰り返されたり、面白がって連打されたりすると、無料枠が尽きて
+ *  翌日まで全員のAIが止まります。1人あたりの回数で受け止めます。
  *
  *  ---------------------------------------------------------------------
  *  設定する値（Cloudflare の管理画面で登録します）
@@ -40,6 +45,16 @@
  *    FIREBASE_PROJECT … pt-app-54f32
  *    ALLOWED_ORIGIN   … https://kogataro0821-hue.github.io
  *    GEMINI_MODEL     … 使うモデル名（省略可。既定 gemini-2.5-flash）
+ *    DAILY_LIMIT      … 1人が1日に使える回数（省略可。既定 50）
+ *
+ *  ---------------------------------------------------------------------
+ *  結び付けるもの（KV 名前空間のバインド）
+ *  ---------------------------------------------------------------------
+ *
+ *    RATE_LIMIT       … 使った回数を数えておく場所（Workers KV）
+ *
+ *  ★ これが結び付けられていないと、回数を数えません（利用は止めません）。
+ *    結び付いているかどうかは、下の動作確認の画面で確かめられます。
  *
  *  ---------------------------------------------------------------------
  *  動作確認
@@ -66,6 +81,22 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 /** 受け取る本文の上限。写真を送る Phase 8B でも収まる大きさにしてあります。 */
 const MAX_BODY_BYTES = 2_000_000;
+
+/**
+ * 1人が1日に使える回数の既定値（設計書 §7.6）。
+ *
+ * ★ 設定値（DAILY_LIMIT）で変えられます。
+ *   足りなくなったときに、コードを貼り直さずに済むようにするためです。
+ */
+const DEFAULT_DAILY_LIMIT = 50;
+
+/**
+ * 数え札を残しておく時間（秒）。
+ *
+ * 札は日付ごとに別の名前なので、日が変われば自然に使われなくなります。
+ * 2日残せば十分で、あとは Cloudflare が勝手に片付けてくれます。
+ */
+const COUNTER_TTL_SECONDS = 60 * 60 * 48;
 
 /** Google の公開鍵。取得のたびに通信すると遅いので、しばらく覚えておきます。 */
 let keyCache = { keys: null, expiresAt: 0 };
@@ -103,6 +134,11 @@ export default {
             ok: true,
             configuredModel: env.GEMINI_MODEL ?? DEFAULT_MODEL,
             firebaseProject: env.FIREBASE_PROJECT ?? '(未設定)',
+            // ★ KV を結び付け忘れても、アプリは普通に動いてしまいます。
+            //   気づける場所がここしかないので、はっきり書きます。
+            dailyLimit: hasCounter(env)
+              ? `有効（1人あたり1日 ${dailyLimit(env)} 回まで）`
+              : '⚠ 数えていません（KV名前空間 RATE_LIMIT が結び付けられていません）',
             usableModels: (data.models ?? [])
               .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
               .map((m) => m.name),
@@ -135,15 +171,39 @@ export default {
 
     // --- 2. 本文の大きさを確かめる ---------------------------------------
     const body = await request.text();
-    if (body.length > MAX_BODY_BYTES) {
+    // ★ 文字数ではなくバイト数で見ます。
+    //   `body.length` は文字の数なので、日本語（1文字3バイト）だと
+    //   上限2,000,000は実際には約6MBまで通ってしまいます。
+    if (byteLength(body) > MAX_BODY_BYTES) {
       return json({ error: 'payload_too_large' }, 413, origin);
     }
 
-    // --- 3. Gemini へ転送 -------------------------------------------------
+    // --- 3. 使いすぎを止める（設計書 §7.6） -------------------------------
     if (!env.GEMINI_API_KEY) {
       return json({ error: 'server_not_configured' }, 500, origin);
     }
 
+    // ★ 鍵の確認を先にしています。
+    //   設定が済んでいないせいで失敗する回数を、上限に数えたくないためです。
+    const quota = await countUse(env, uid);
+    if (!quota.allowed) {
+      // ★ 上限に達したことは、必ず記録に残します。
+      //   契約者から「AIが動かない」と言われたとき、
+      //   ここを見れば「壊れた」のか「使い切った」のかがすぐ分かります。
+      console.log(
+        JSON.stringify({ uid, result: 'daily_limit', used: quota.used, limit: quota.limit }),
+      );
+
+      // ★ Gemini 側の混み合い（同じ429）と区別できるようにします。
+      //   区別が付かないと、上限に達した人が一日じゅう押し続けます。
+      return json(
+        { error: 'daily_limit_reached', limit: quota.limit, used: quota.used },
+        429,
+        origin,
+      );
+    }
+
+    // --- 4. Gemini へ転送 -------------------------------------------------
     const model = env.GEMINI_MODEL ?? DEFAULT_MODEL;
 
     let upstream;
@@ -196,7 +256,9 @@ export default {
     }
 
     // 誰が使ったかを Cloudflare のログに残す（本文は残しません）
-    console.log(JSON.stringify({ uid, result: 'ok', bytes: body.length }));
+    console.log(
+      JSON.stringify({ uid, result: 'ok', bytes: byteLength(body), used: quota.used }),
+    );
 
     return new Response(text, {
       status: 200,
@@ -204,6 +266,83 @@ export default {
     });
   },
 };
+
+// ---------------------------------------------------------------------------
+// 使いすぎを止める（設計書 §7.6）
+//
+// ★ これは「攻撃を防ぐ壁」ではありません。門番はトークンの検証のほうです。
+//   ここが受け止めるのは、通ってよい人が使いすぎることです。
+//
+//     ・アプリの不具合で、AIを呼ぶ処理が繰り返される
+//     ・面白がって連打される
+//     ・端末を盗られて、トークンが1時間だけ使われる
+//
+//   どれも結果は同じで、Gemini の無料枠が尽きて、翌日まで全員のAIが止まります。
+//
+// ★ 数え方は厳密ではありません。
+//   Workers KV は「少し前の値が返ることがある」作りなので、
+//   同時に何本も飛んでくると、数え落として上限を数回超えることがあります。
+//   繰り返しを止める用途では、それで十分です。
+//   1回たりとも超えさせない仕組みが要るなら、KV では足りません。
+// ---------------------------------------------------------------------------
+
+/** 回数を数える場所が結び付けられているか */
+function hasCounter(env) {
+  return typeof env.RATE_LIMIT?.get === 'function';
+}
+
+/** 1人が1日に使える回数。設定が無い・おかしいときは既定値。 */
+function dailyLimit(env) {
+  const n = Number(env.DAILY_LIMIT);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_LIMIT;
+}
+
+/**
+ * 日本時間での「今日」（YYYY-MM-DD）。
+ *
+ * ★ 世界標準時のままだと、日本の朝9時に回数が戻ります。
+ *   利用者から見れば「昼前に急に使えるようになる」ので、
+ *   日付の変わり目は日本時間に合わせます。
+ */
+function todayInJst(now = Date.now()) {
+  return new Date(now + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * 使った回数を1つ増やし、まだ使ってよいかを返す。
+ *
+ * ★ 数えられないときは、通します（止めません）。
+ *
+ *   KV を結び付け忘れていたり、KV が一時的に応答しなかったりしたときに
+ *   AIが全員使えなくなるのは、行き過ぎです。ここで守っているのは
+ *   「無料枠が尽きること」であって、利用者のデータではありません。
+ *   結び付け忘れに気づけるよう、動作確認の画面に状態を出しています。
+ */
+async function countUse(env, uid) {
+  const limit = dailyLimit(env);
+  if (!hasCounter(env)) return { allowed: true, counted: false, used: 0, limit };
+
+  const key = `use:${uid}:${todayInJst()}`;
+
+  let used;
+  try {
+    used = Number(await env.RATE_LIMIT.get(key));
+  } catch {
+    return { allowed: true, counted: false, used: 0, limit };
+  }
+  if (!Number.isFinite(used) || used < 0) used = 0;
+
+  if (used >= limit) return { allowed: false, counted: true, used, limit };
+
+  try {
+    await env.RATE_LIMIT.put(key, String(used + 1), { expirationTtl: COUNTER_TTL_SECONDS });
+  } catch {
+    // 数え札を置けなくても、利用は止めません（理由は上のとおり）
+    return { allowed: true, counted: false, used: used + 1, limit };
+  }
+
+  return { allowed: true, counted: true, used: used + 1, limit };
+}
 
 // ---------------------------------------------------------------------------
 // Firebase のログイン証明（IDトークン）の検証
@@ -285,6 +424,11 @@ async function getPublicKey(kid) {
 function redact(text, apiKey) {
   if (!apiKey) return text;
   return text.split(apiKey).join('[APIキーは伏せました]');
+}
+
+/** 文字列を送ったときの、実際のバイト数。 */
+function byteLength(text) {
+  return new TextEncoder().encode(text).length;
 }
 
 function corsHeaders(origin) {
@@ -431,4 +575,12 @@ function readLength(bytes, offset) {
 // ここに足しても動作には影響しません。
 // 署名検証は自分で書いた部分なので、CIで毎回検証しています。
 // ---------------------------------------------------------------------------
-export { verifyFirebaseToken, extractSpkiFromCertificate, pemToArrayBuffer };
+export {
+  verifyFirebaseToken,
+  extractSpkiFromCertificate,
+  pemToArrayBuffer,
+  countUse,
+  todayInJst,
+  dailyLimit,
+  byteLength,
+};
