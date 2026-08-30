@@ -157,3 +157,60 @@ describe('★ 失敗の理由を画面に出す', () => {
     expect(err.kind).toBe('daily_limit');
   });
 });
+
+/**
+ * ★ 429 が「1分あたり」か「1日あたり」かを言い分ける。
+ *
+ *   ここを捨てていたため、画面には「混み合っています」としか出ず、
+ *   **待てば戻るのか、その日はもう駄目なのかが分かりませんでした。**
+ *   10分待っても直らない、という形で表に出ました。
+ */
+describe('★ どちらの上限に当たったのかを言う', () => {
+  const res429 = (detail: string) =>
+    new Response(JSON.stringify({ error: 'rate_limited', detail }), { status: 429 });
+
+  it('1日あたりなら、待っても無駄だと伝える', async () => {
+    const err = await relayFailure(
+      res429('{"error":{"details":[{"quotaId":"GenerateRequestsPerDayPerProject"}]}}'),
+    );
+    expect(err.kind).toBe('rate_limited');
+    expect(err.detail).toContain('1日あたり');
+    expect(err.detail).toContain('日付が変わるまで');
+  });
+
+  it('1分あたりなら、待てば戻ると伝える', async () => {
+    const err = await relayFailure(
+      res429('{"error":{"details":[{"quotaId":"GenerateRequestsPerMinutePerProject"}]}}'),
+    );
+    expect(err.detail).toContain('1分あたり');
+    expect(err.detail).toContain('待つと戻ります');
+  });
+
+  it('両方書いてあるときは、待てば戻るほうを優先する', async () => {
+    // ★ 分からないなら、まず待ってもらうほうが穏当です
+    const err = await relayFailure(res429('perMinute and perDay quotas'));
+    expect(err.detail).toContain('1分あたり');
+  });
+
+  it('★ 見分けが付かないときは、元の文をそのまま出す', async () => {
+    // ★ 隠すより、分からない文でも出すほうがましです。こちらに送れます。
+    const err = await relayFailure(res429('Resource has been exhausted'));
+    expect(err.detail).toContain('Resource has been exhausted');
+  });
+
+  it('こちらで付けた1日の上限は、いままでどおりの言い方', async () => {
+    const res = new Response(JSON.stringify({ error: 'daily_limit_reached', limit: 50 }), {
+      status: 429,
+    });
+    const err = await relayFailure(res);
+    expect(err.kind).toBe('daily_limit');
+    expect(err.detail).toBe('1日50回まで');
+  });
+
+  it('理由が無ければ、いままでどおり', async () => {
+    const res = new Response(JSON.stringify({ error: 'rate_limited' }), { status: 429 });
+    const err = await relayFailure(res);
+    expect(err.kind).toBe('rate_limited');
+    expect(err.detail).toBeUndefined();
+  });
+});

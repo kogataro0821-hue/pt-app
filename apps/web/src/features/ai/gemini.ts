@@ -186,10 +186,21 @@ export async function relayFailure(response: Response, tooLarge?: string): Promi
     let kind: AiErrorKind = 'rate_limited';
     let detail: string | undefined;
     try {
-      const body = (await response.json()) as { error?: unknown; limit?: unknown };
+      const body = (await response.json()) as {
+        error?: unknown;
+        limit?: unknown;
+        detail?: unknown;
+      };
       if (body.error === 'daily_limit_reached') {
         kind = 'daily_limit';
         if (typeof body.limit === 'number') detail = `1日${body.limit}回まで`;
+      } else if (typeof body.detail === 'string' && body.detail.length > 0) {
+        // ★ Google の 429 には「1分あたり」か「1日あたり」かが書いてあります。
+        //
+        //   ここを捨てていたため、画面には「混み合っています」としか出ず、
+        //   **待てば戻るのか、その日はもう駄目なのかが分かりませんでした。**
+        //   10分待っても直らない、という形で表に出ました。
+        detail = quotaHint(body.detail);
       }
     } catch {
       // 本文が読めなければ、混み合いとして扱います（待てば戻る、という穏当なほう）
@@ -214,6 +225,27 @@ export async function relayFailure(response: Response, tooLarge?: string): Promi
     'unavailable',
     detail === null ? `中継役の応答: ${response.status}` : `中継役の応答: ${response.status} / ${detail}`,
   );
+}
+
+/**
+ * 「1分あたり」なのか「1日あたり」なのかを、短い日本語にする。
+ *
+ * ★ 見分けが付けば、待つべきか諦めるべきかが決まります。
+ *   見分けが付かないときは、元の文をそのまま出します（隠すよりまし）。
+ */
+function quotaHint(detail: string): string {
+  const lower = detail.toLowerCase();
+  const perDay = lower.includes('perday') || lower.includes('per_day') || /\bday\b/.test(lower);
+  const perMinute =
+    lower.includes('perminute') || lower.includes('per_minute') || /\bminute\b/.test(lower);
+
+  if (perDay && !perMinute) {
+    return 'Google側の「1日あたり」の上限です。日付が変わるまで戻りません';
+  }
+  if (perMinute) {
+    return 'Google側の「1分あたり」の上限です。1〜2分待つと戻ります';
+  }
+  return detail.slice(0, 200);
 }
 
 /** 中継役が返した理由。無ければ null */
