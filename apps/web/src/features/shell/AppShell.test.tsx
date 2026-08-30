@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './AppShell';
 
@@ -17,6 +18,7 @@ import { AppShell } from './AppShell';
  */
 
 let role: 'admin' | 'client' = 'admin';
+const signOutNow = vi.fn();
 
 vi.mock('@/features/auth/AuthProvider', () => ({
   useAuth: () => ({
@@ -24,7 +26,7 @@ vi.mock('@/features/auth/AuthProvider', () => ({
       status: 'signedIn',
       user: { uid: 'uid-1', role, clientId: role === 'client' ? 'c1' : null },
     },
-    signOutNow: vi.fn(),
+    signOutNow: (): unknown => signOutNow(),
   }),
 }));
 
@@ -61,6 +63,7 @@ beforeEach(() => {
   count = null;
   ensureRequestCount.mockReset();
   clearRequestCount.mockReset();
+  signOutNow.mockReset();
 });
 
 describe('未処理の登録依頼の数', () => {
@@ -177,5 +180,111 @@ describe('お知らせのベル', () => {
     role = 'client';
     showWithBell({ to: '/c/c1/notices', unread: 120 });
     expect(screen.getByRole('link', { name: /お知らせ/ })).toHaveTextContent('99+');
+  });
+});
+
+/**
+ * 右上のメニュー（追加仕様: メニュー）。
+ *
+ * ★ 固定したいのは、ログアウトが「開いてから押す」形になっていることです。
+ *
+ *   以前は上部にログアウトのボタンが常時出ていました。
+ *   スマホで戻るつもりの指がかすると、それだけで落ちます。
+ *   落ちること自体は壊れませんが、記録の途中なら書きかけが消えます。
+ *
+ * ★ そして、管理者・契約者のどちらにも同じ形で出ること。
+ */
+describe('右上のメニュー', () => {
+  function showMenu(settings?: { to: string; label: string }) {
+    return render(
+      <AppShell onChangePassword={onChangePassword} settings={settings}>
+        <p>中身</p>
+      </AppShell>,
+    );
+  }
+
+  const onChangePassword = vi.fn();
+
+  beforeEach(() => {
+    onChangePassword.mockReset();
+  });
+
+  it('★ 閉じているうちは、ログアウトが画面に出ていない', async () => {
+    showMenu();
+    expect(screen.queryByRole('button', { name: 'ログアウト' })).not.toBeInTheDocument();
+  });
+
+  it('押すと開き、3つの行き先が出る', async () => {
+    showMenu({ to: '/c/c1/settings', label: '設定' });
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+
+    expect(screen.getByRole('menuitem', { name: '設定' })).toHaveAttribute(
+      'href',
+      '/c/c1/settings',
+    );
+    expect(screen.getByRole('menuitem', { name: 'パスワードの変更' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'ログアウト' })).toBeInTheDocument();
+  });
+
+  it('契約者にも、同じ形で出る', async () => {
+    role = 'client';
+    showMenu({ to: '/c/c1/settings', label: '設定' });
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+
+    expect(screen.getByRole('menuitem', { name: '設定' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'ログアウト' })).toBeInTheDocument();
+  });
+
+  it('★ 行き先の無い画面では、設定を出さない', async () => {
+    // ★ 押しても行くところが無い項目は、出さないほうが親切です
+    showMenu(undefined);
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+
+    expect(screen.queryByRole('menuitem', { name: /設定/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'ログアウト' })).toBeInTheDocument();
+  });
+
+  it('パスワードの変更を押すと、呼ばれて閉じる', async () => {
+    showMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'パスワードの変更' }));
+
+    expect(onChangePassword).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('ログアウトを押すと、ログアウトする', async () => {
+    showMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'ログアウト' }));
+
+    expect(signOutNow).toHaveBeenCalledTimes(1);
+  });
+
+  it('★ 外側を触ると閉じる', async () => {
+    // ★ 開いたまま別の場所を押して「押したのに何も起きない」を防ぎます
+    showMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('中身'));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('Esc でも閉じる', async () => {
+    showMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('読み上げに、開いているかどうかが伝わる', async () => {
+    showMenu();
+    const button = screen.getByRole('button', { name: 'メニュー' });
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(button);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
   });
 });

@@ -1,0 +1,21 @@
+{
+  "name": "@pt/firebase",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Firestore Security Rules と、その自動テスト（設計書 §7 / §16.7）",
+  "scripts": {
+    "test": "vitest run tests/coverage.test.ts",
+    "rules:test": "firebase emulators:exec --only firestore --project pt-app-rules-test \"vitest run\"",
+    "rules:watch": "firebase emulators:exec --only firestore --project pt-app-rules-test \"vitest\"",
+    "emulator": "firebase emulators:start --only firestore --project pt-app-rules-test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "^12.4.0",
+    "firebase-tools": "^14.24.0",
+    "vitest": "^3.2.4",
+    "@types/node": "^24.10.1"
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { APP_NAME } from '@/config/firebase';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -20,6 +20,7 @@ export function AppShell({
   children,
   viewing,
   bell,
+  settings,
   onChangePassword,
 }: {
   children: ReactNode;
@@ -34,6 +35,18 @@ export function AppShell({
    *   同じものをもう一度読むことになります（読み取りが2倍）。
    */
   bell?: { to: string; unread: number } | undefined;
+  /**
+   * メニューに入れる「設定」の行き先（追加仕様: メニュー）。
+   *
+   * ★ 行き先は画面ごとに違うので、ここでは決めません。
+   *   契約者本人は自分の設定（AIの同意・パスワード）、
+   *   管理者は「いま見ている契約者」の設定です。
+   *   どちらの設定なのかを取り違えると、他人の設定を開くことになります。
+   *
+   * ★ 行き先が無い画面（契約者一覧・食品マスタなど）では渡しません。
+   *   押しても行くところが無い項目を並べるくらいなら、出さないほうが親切です。
+   */
+  settings?: { to: string; label: string } | undefined;
   onChangePassword: () => void;
 }) {
   const { state, signOutNow } = useAuth();
@@ -68,12 +81,11 @@ export function AppShell({
               )}
             </Link>
           )}
-          <button className="appbar-action" type="button" onClick={onChangePassword}>
-            パスワード
-          </button>
-          <button className="appbar-action" type="button" onClick={() => void signOutNow()}>
-            ログアウト
-          </button>
+          <AppMenu
+            settings={settings}
+            onChangePassword={onChangePassword}
+            onSignOut={() => void signOutNow()}
+          />
         </div>
       </header>
 
@@ -100,6 +112,142 @@ export function AppShell({
 
       <main className="main">{children}</main>
     </div>
+  );
+}
+
+/**
+ * 右上のメニュー（追加仕様: メニュー）。
+ *
+ * ★ 「設定」「パスワードの変更」「ログアウト」をここにまとめます。
+ *
+ *   以前は「パスワード」と「ログアウト」を上部に並べていました。
+ *   置き場所としては最悪です。**画面のいちばん押しやすい所に、
+ *   いちばん押してほしくない操作（ログアウト）が常時出ている**からです。
+ *   スマホで戻るつもりが指がかすって落ちる、が起こります。
+ *
+ *   一段しまうと、うっかりは起きません。
+ *   探す手間は1回だけ増えますが、それは覚えれば終わる手間です。
+ *
+ * ★ 管理者・契約者のどちらにも同じ形で出します。
+ *   中身（設定の行き先）だけが変わります。
+ */
+function AppMenu({
+  settings,
+  onChangePassword,
+  onSignOut,
+}: {
+  settings: { to: string; label: string } | undefined;
+  onChangePassword: () => void;
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    // ★ 外側を触ったら閉じます。
+    //   開いたまま別の場所を押して「押したのに何も起きない」を防ぎます。
+    const onPointerDown = (event: Event) => {
+      const box = boxRef.current;
+      if (box !== null && !box.contains(event.target as Node)) setOpen(false);
+    };
+
+    // ★ Esc でも閉じ、押し元へ戻します。
+    //   キーボードだけで使う人が、閉じたあと行き場を失わないようにです。
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="appmenu" ref={boxRef}>
+      <button
+        ref={buttonRef}
+        className="appmenu-button"
+        type="button"
+        aria-label="メニュー"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <MenuIcon />
+      </button>
+
+      {open && (
+        <div className="appmenu-panel" role="menu">
+          {settings !== undefined && (
+            <Link
+              className="appmenu-item"
+              role="menuitem"
+              to={settings.to}
+              onClick={() => setOpen(false)}
+            >
+              {settings.label}
+            </Link>
+          )}
+
+          <button
+            className="appmenu-item"
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onChangePassword();
+            }}
+          >
+            パスワードの変更
+          </button>
+
+          {/* ★ ログアウトだけ線で区切り、色も変えます。
+                 他の項目は「戻れる」操作、これだけは「出る」操作です。
+                 同じ見た目で並べると、流れで押してしまいます。 */}
+          <span className="appmenu-sep" aria-hidden="true" />
+
+          <button
+            className="appmenu-item appmenu-signout"
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+          >
+            ログアウト
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * メニューの絵（三本線）。
+ *
+ * ★ ベルと同じ理由で、絵文字ではなく図形で描いています。
+ *   絵文字は端末ごとに形も色も変わります。
+ */
+function MenuIcon() {
+  return (
+    <svg className="appmenu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M4 7h16M4 12h16M4 17h16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

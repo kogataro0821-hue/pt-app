@@ -2649,3 +2649,79 @@ select.input {
   margin-top: 6px;
 }
 
+
+/* ---- 右上のメニュー（追加仕様: メニュー）--------------------------------- */
+
+/* ★ class名は appmenu- で始めます。
+   .menu / .panel のような一般的な名前は、他の画面と当たります。
+   実際に .app と .notice-kind app がぶつかって、画面が縦に伸びた事故がありました。 */
+.appmenu {
+  position: relative;
+}
+
+/* 指で押す場所なので、ベルと同じ 36px 角を確保します */
+.appmenu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.appmenu-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.appmenu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-xs);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+}
+
+.appmenu-item {
+  display: block;
+  width: 100%;
+  padding: 10px var(--space-md);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.appmenu-item:hover {
+  background: var(--surface-2);
+}
+
+.appmenu-sep {
+  display: block;
+  height: 1px;
+  margin: var(--space-xs) 0;
+  background: var(--rule);
+}
+
+/* ★ ログアウトだけ色を変えます。押したら今の作業から出る操作だからです */
+.appmenu-signout {
+  color: var(--danger);
+}

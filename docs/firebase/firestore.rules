@@ -1,0 +1,466 @@
+rules_version = '2';
+
+// =============================================================================
+//  Firestore Security Rules
+//
+//  ★ このアプリには Cloud Functions がありません（設計書 §4.2）。
+//    つまり、このファイルが「唯一の防衛線」です。
+//    画面で隠すのは対策になりません。ここで拒否されないものは全て通ります。
+//
+//  中心の原則（設計書 §5.1）:
+//    契約者に紐づくデータは、例外なく clients/{clientId}/ 配下に置く。
+//    これにより「契約者Aが契約者Bを見られない」がパス比較1行で表現できます。
+//
+//  ここを変更したら、必ずテストを実行してください。
+//      npm run test:rules
+//  （GitHub に push すると CI が自動で実行し、失敗したら公開を止めます）
+//
+//  実装上の注意:
+//    1回のリクエストで呼べる get()/exists() は10回までです。
+//    そのため判定関数は呼び出し回数を最小にしてあります。
+//    条件の並び順（安いものを先に置く）にも意味があります。
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // 権限の判定
+    //
+    // Custom Claims は Admin SDK（＝サーバー）が必要なため使えません。
+    // 代わりに users/{uid} ドキュメントを読んで判定します（設計書 §6.4）。
+    //
+    // 安全性の要は1点だけ:
+    //   users/{uid} は管理者しか書けない。
+    //   → 契約者が自分を管理者に昇格させる経路が存在しない。
+    //
+    // users ドキュメントが存在しないユーザーは get() が失敗し、
+    // その時点でリクエストが拒否されます（＝既定で拒否）。
+    // -------------------------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return signedIn() && me().role == 'admin' && me().active == true;
+    }
+
+    function isClient(cid) {
+      return signedIn()
+          && me().role == 'client'
+          && me().active == true
+          && me().clientId == cid;
+    }
+
+    // 読み取り権限。管理者は全員分、契約者は自分の分だけ。
+    function canRead(cid) {
+      return isClient(cid) || isAdmin();
+    }
+
+    // このアプリに登録済みで、かつ有効なユーザーか。
+    //
+    // ★ Firebase Auth のメール/パスワード登録は、誰でも呼び出せてしまいます
+    //   （apiKey は公開情報のため）。しかし users ドキュメントは管理者しか
+    //   作れないので、勝手に登録した人は「ログインできるが何も見えない」状態になります。
+    //   共通マスタの読み取りにもこの判定を使い、そこも塞いでおきます。
+    function isKnownUser() {
+      return signedIn() && me().active == true
+          && (me().role == 'admin' || me().role == 'client');
+    }
+
+    // -------------------------------------------------------------------------
+    // 過去編集ウィンドウ（設計書 §7.3）
+    //
+    // 契約者は「直近N日以内」だけ自分で修正できます（既定 7日）。
+    // 日付は 'yyyy-MM-dd' のゼロ埋め形式なので、文字列の大小比較が
+    // そのまま日付の前後比較になります。
+    //
+    // 基準は request.time（サーバー時刻）に9時間足した JST の今日。
+    // 端末の時計をずらしても迂回できません。
+    // -------------------------------------------------------------------------
+
+    function pad(n) {
+      return n < 10 ? '0' + string(n) : string(n);
+    }
+
+    function windowDays(cid) {
+      return int(get(/databases/$(database)/documents/clients/$(cid))
+                   .data.permissions.pastEditWindowDays);
+    }
+
+    function floorTs(cid) {
+      return request.time
+           + duration.value(9, 'h')
+           - duration.value(windowDays(cid), 'd');
+    }
+
+    function inWindow(cid, date) {
+      return date >= string(floorTs(cid).year())
+                   + '-' + pad(floorTs(cid).month())
+                   + '-' + pad(floorTs(cid).day());
+    }
+
+    // 契約者ごとの「できること」（設計書 §6.5 permissions）。
+    // 既定は true。設定が無い古いデータでも動くようにしておく。
+    function mayCreateRecipe(cid) {
+      return get(/databases/$(database)/documents/clients/$(cid))
+               .data.permissions.get('allowRecipeCreate', true) == true;
+    }
+
+    function dayIsOpen(cid, date) {
+      return !exists(/databases/$(database)/documents/clients/$(cid)/days/$(date))
+          || get(/databases/$(database)/documents/clients/$(cid)/days/$(date))
+               .data.get('status', 'open') != 'finalized';
+    }
+
+    // 契約者が、その日のデータを書き換えてよいか
+    function clientMayEdit(cid, date) {
+      return isClient(cid) && inWindow(cid, date) && dayIsOpen(cid, date);
+    }
+
+    // 管理者は日付も確定状態も無視して編集できる（設計書 §2）
+    function mayEdit(cid, date) {
+      return clientMayEdit(cid, date) || isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 既定：全拒否
+    // 明示的に許可を書いたパスだけが通ります。
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{uid} — 権限の台帳
+    // ★ 契約者は自分の分を読めるが、絶対に書けない
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      // 自分自身の読み取りは get() を使わずに判定できるので先に置く
+      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // clients/{cid} — 契約者のプロフィールと目標
+    // -------------------------------------------------------------------------
+    match /clients/{cid} {
+      allow get: if canRead(cid);
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+
+      // 契約者が自分で変えてよいのは、表示名・メモ・拡張欄・AI同意だけ。
+      // 目標値(targets)・権限(permissions)・評価モード・有効フラグは触れない。
+      allow update: if isAdmin()
+        || (isClient(cid)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['displayName', 'memo', 'extra', 'aiConsent', 'passwordChangedAt', 'updatedAt']));
+
+      // ---- 日次データ -------------------------------------------------------
+
+      match /days/{date} {
+        allow get, list: if canRead(cid);
+
+        // ★ トレーナーの「確認しました」（checkedAt / checkedBy）は管理者だけ（追加仕様: 写真の保存期間）。
+        //
+        //   契約者が自分で確認済みにできてしまうと、
+        //   トレーナーが見たかどうかの記録になりません。
+        //
+        //   create と update を分けているのは、diff() のためです。
+        //   新規作成のときは比較相手（resource）が存在しないので、
+        //   1つの write にまとめると、その日の最初の書き込みで必ず失敗します。
+        allow create: if isAdmin()
+                      || (clientMayEdit(cid, date)
+                          && !request.resource.data.keys()
+                                .hasAny(['checkedAt', 'checkedBy']));
+
+        allow update: if isAdmin()
+                      || (clientMayEdit(cid, date)
+                          && !request.resource.data.diff(resource.data)
+                                .affectedKeys().hasAny(['checkedAt', 'checkedBy']));
+
+        allow delete: if mayEdit(cid, date);
+
+        // ★ 写真の掃除に伴う印の更新（追加仕様: 写真の保存期間）。
+        //
+        //   契約者は期限切れの写真を消せます（下の photos を参照）。
+        //   消したあとに photoOldestAt を直せないと、
+        //   「もうすぐ消える写真があります」が消えたあとも出続けます。
+        //   直せるのはその1項目だけで、日付も確定状態も動かせません。
+        allow update: if isClient(cid)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['photoOldestAt', 'date', 'updatedAt']);
+
+        // ★ 1日確定の「解除」だけは、確定済みの日でも本人が行えます（Q14の決定）。
+        //
+        //   確定は「トレーナーへの提出」ではなく「今日はもう食べません」という
+        //   意思表示です。書き直したくなったら、本人がカギを外してよい。
+        //
+        //   ただし通せるのは status を open に戻す更新だけです。
+        //   確定したまま中身を書き換える経路は作りません。
+        //   編集ウィンドウの外（既定で8日以上前）は、これも通しません。
+        allow update: if isClient(cid)
+                      && inWindow(cid, date)
+                      && request.resource.data.status == 'open'
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['status', 'finalizedAt', 'updatedAt']);
+      }
+
+      match /days/{date}/meals/{mealId} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      match /days/{date}/exercises/{exerciseId} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      // AI評価（設計書 §26 / Phase 10）。
+      //
+      // ★ 1日につき1件だけです（ドキュメントIDは 'latest' 固定）。
+      //   評価は「いまの記録に対する言葉」なので、履歴に意味がありません。
+      //   溜めると無料枠も食います。
+      //
+      // ★ 契約者も作れます。
+      //   その場で反応が返るほうが続くためです（Q: Phase 10）。
+      //   ただし文章は必ずAIから来たものに限りたいので、
+      //   長さの上限だけはここで守ります。
+      //   中身の検査（病名・危険なやり方）は画面側の決定論的な処理で行い、
+      //   通らなかったものはそもそも保存しません。
+      //
+      // ★ 日付の条件を付けていません。
+      //   過去の日を振り返って評価をもらうのは自然な使い方です。
+      match /days/{date}/review/{docId} {
+        allow get, list: if canRead(cid);
+        allow delete: if canRead(cid);
+        allow create, update: if canRead(cid)
+                              && docId == 'latest'
+                              && request.resource.data.keys()
+                                   .hasOnly(['text', 'mode', 'by', 'createdAt'])
+                              && request.resource.data.text is string
+                              && request.resource.data.text.size() > 0
+                              && request.resource.data.text.size() <= 1200;
+      }
+
+      // トレーナーのコメント（設計書 §11.3 A-8 / Phase 10）。
+      //
+      // ★ 書けるのは管理者だけです。
+      //
+      //   以前はここが mayEdit でした。つまり契約者も書けて、消せました。
+      //   トレーナーが言ったことを契約者が書き換えられる状態では、
+      //   これは指導の記録になりません。読むだけに限定します。
+      //
+      // ★ 日付の条件を付けていません。
+      //   1日の確定は「今日はもう食べません」という契約者の意思表示であって、
+      //   トレーナーが黙る合図ではありません。確定後に書くほうがむしろ自然です。
+      match /days/{date}/notes/{noteId} {
+        allow get, list: if canRead(cid);
+        allow delete: if isAdmin();
+        allow create, update: if isAdmin()
+                              && request.resource.data.keys()
+                                   .hasOnly(['text', 'by', 'createdAt', 'updatedAt'])
+                              && request.resource.data.text is string
+                              && request.resource.data.text.size() > 0
+                              && request.resource.data.text.size() <= 2000;
+      }
+
+      // 写真は base64 で Firestore に格納します（設計書 §4.3）。
+      // Storage Rules が使えないぶん、サイズ上限をここで守ります。
+      //
+      // ★ 削除だけ条件が3つあります（設計書 §8.2 / 追加仕様: 写真の保存期間）。
+      //
+      //   1. 管理者          … 「確認しました」でその日のぶんをまとめて消す
+      //   2. 契約者（期間内）… 自分が撮ったものを撮り直す
+      //   3. 契約者（期限切れ）… 保存期間を過ぎた写真の掃除
+      //
+      //   3 が要るのは、掃除を「画面を開いた人」がやるためです。
+      //   Cloud Functions にはカード登録が要るので、この構成では使えません。
+      //   7週間前の写真は編集ウィンドウ（既定7日）の外なので、
+      //   2 の条件だけでは契約者が自分の期限切れ写真を消せません。
+      //
+      //   撮影時刻は写真自身が持っているので、ここで判定できます。
+      //   「古いから何でも消せる」ではなく「期限を過ぎたものだけ」に限定します。
+      match /days/{date}/photos/{photoId} {
+        allow get, list: if canRead(cid);
+        allow create: if mayEdit(cid, date)
+                      && request.resource.data.dataUrl is string
+                      && request.resource.data.dataUrl.size() < 400000;
+        allow delete: if isAdmin()
+                      || (isClient(cid) && inWindow(cid, date))
+                      || (isClient(cid)
+                          && resource.data.createdAt is number
+                          && request.time.toMillis()
+                             >= resource.data.createdAt + 49 * 24 * 60 * 60 * 1000);
+        allow update: if false;   // 差し替えず、消して撮り直す
+      }
+
+      // ---- 個人スコープのマスタ類 -------------------------------------------
+      // 日付に紐づかないため編集ウィンドウの対象外
+
+      // 個人の食品マスタ（廃止済み。Phase 9）。
+      //
+      // ★ 契約者ごとに栄養値を持てる状態をやめました。
+      //   同じ「白米」が人によって 156kcal と 168kcal になり、
+      //   トレーナーが数字を根拠に指導できなくなるためです。
+      //   いまは共通マスタ /foods 一本で、決めるのは管理者だけです。
+      //
+      //   読み取りだけ残してあるのは、移行前に作られたデータを
+      //   管理者が確認・整理できるようにするためです。新規の書き込みは通しません。
+      match /foods/{foodId} {
+        allow read: if canRead(cid);
+        allow write: if isAdmin();
+      }
+
+      match /recipes/{recipeId} {
+        allow read: if canRead(cid);
+        allow write: if isAdmin() || (isClient(cid) && mayCreateRecipe(cid));
+      }
+
+      match /favorites/{favoriteId} { allow read, write: if canRead(cid); }
+
+      // 体重などの実測値。ドキュメントIDが日付なので、
+      // days と同じ「過去編集ウィンドウ」を適用します。
+      // ★ ここを canRead のままにすると、何年前の体重でも書き換えられてしまいます。
+      match /measurements/{date} {
+        allow get, list: if canRead(cid);
+        allow write: if mayEdit(cid, date);
+      }
+
+      // AIとの会話履歴。消しても確定済みの食事データは残ります（設計書 §40）
+      match /aiSessions/{sessionId} {
+        allow read, write: if canRead(cid);
+        match /messages/{messageId} { allow read, write: if canRead(cid); }
+      }
+
+      // 変更履歴。追記のみで、**書き換えはできません**（設計書 §19）。
+      //
+      // ★ update と delete を、あえて分けています。
+      //
+      //   update（書き換え）は誰にも許しません。これを開けると、
+      //   トレーナーが「別の数字だったことにする」ことができてしまいます。
+      //   履歴が守っているのは、まさにそこです。
+      //
+      //   delete（削除）は管理者だけ許します。契約者を完全に削除するとき、
+      //   ここだけ消せずに残ると、消したはずの人の食材名と日付が残り続けます。
+      //   「完全に消した」と言えなくなります。
+      //
+      //   消えていれば「無い」ことは分かります。書き換えのように
+      //   別のものに見せかけることはできません。性質が違います。
+      match /audits/{auditId} {
+        allow get, list: if isAdmin();
+        allow create: if canRead(cid);
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 共通マスタ — 登録済みユーザーが読めて、管理者だけが書ける（設計書 §21）
+    // -------------------------------------------------------------------------
+    match /foods/{foodId} {
+      allow read: if isKnownUser();
+      allow write: if isAdmin();
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if isKnownUser();
+      allow write: if isAdmin();
+    }
+
+    match /config/{docId} {
+      allow read: if isKnownUser();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // foodRequests/{key} — 食品の登録依頼（設計書 §21 / Phase 9）
+    //
+    // ★ 契約者は「書けるが読めない」。ここが設計の要です。
+    //
+    //   依頼を1つのドキュメントにまとめ、その中に clientIds の配列を持たせると、
+    //   配列に自分を足すために契約者がそのドキュメントを読む必要が出ます。
+    //   読めるということは、他の契約者が何を食べたかを推測できるということです。
+    //   契約者Aが契約者Bの情報を見られない、という前提が崩れます（設計書 §2）。
+    //
+    //   そこで「誰が使ったか」は下位の from/{clientId} に分け、
+    //   契約者は自分の1件だけを書く形にしました。
+    //   増分は increment / arrayUnion を使うので、書く前に読む必要もありません。
+    //
+    // ★ 名前の長さを制限しています。
+    //   ここは契約者が自由に文字を入れられる数少ない場所です。
+    //   管理者の画面が長大な文字列で埋まらないようにしておきます。
+    // -------------------------------------------------------------------------
+    match /foodRequests/{key} {
+      allow get, list: if isAdmin();
+      allow delete: if isAdmin();
+
+      // ★ name は「あってもよい」項目です。必須にしてはいけません。
+      //
+      //   ここは一度壊しました。
+      //   代表の表記を「読むときに選ぶ」形に変えたとき、
+      //   依頼を積むコードから name を書かないようにしたのに、
+      //   このルールだけ「name が必ず入っていること」を要求したままでした。
+      //   結果、依頼がひとつも積まれなくなり、
+      //   しかも積めなかったことは画面に出ないので、
+      //   「依頼を出したのに管理者側に出てこない」という
+      //   原因の分からない状態になりました。
+      //
+      //   代表の表記は from/{契約者ID} の variant から選びます。
+      //   親に name が残っているのは移行前のデータだけです。
+      allow create, update: if isAdmin()
+        || (isKnownUser()
+            && request.resource.data.keys().hasOnly(['name', 'key', 'updatedAt'])
+            && (!('name' in request.resource.data)
+                || (request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 60))
+            && request.resource.data.key == key);
+
+      match /from/{clientId} {
+        // 自分の1件だけは読めます。他人のぶんは管理者しか読めません。
+        allow get: if isAdmin() || isClient(clientId);
+        allow list, delete: if isAdmin();
+
+        // ★ candidatePer100g は「値の候補」です（追加仕様: 成分表示の読み取り / 仮の栄養値）。
+        //   契約者が書けますが、これはあくまで候補で、確定値ではありません。
+        //   マスタへ入れるかどうかを決めるのは管理者のままです（foods は管理者のみ書込可）。
+        //   ここが直接マスタに反映される経路は作っていません。
+        //
+        // ★ candidateSource は、その値が成分表示の読み取り（'label'）か
+        //   手入力（'manual'）かの区別です。管理者の判断材料が違うので分けます。
+        allow create, update: if isAdmin()
+          || (isClient(clientId)
+              && request.resource.data.keys().hasOnly(
+                   ['variant', 'count', 'dates', 'updatedAt',
+                    'candidatePer100g', 'candidateNote', 'candidatePhoto',
+                    'candidateSource'])
+              && request.resource.data.variant is string
+              && request.resource.data.variant.size() > 0
+              && request.resource.data.variant.size() <= 60
+              && request.resource.data.count is int
+              && request.resource.data.dates is list
+              && request.resource.data.dates.size() <= 400
+              && (!('candidatePer100g' in request.resource.data)
+                  || request.resource.data.candidatePer100g is map)
+              && (!('candidateNote' in request.resource.data)
+                  || (request.resource.data.candidateNote is string
+                      && request.resource.data.candidateNote.size() <= 200))
+              // ★ 成分表示の写真。管理者が数字を確かめるためのものです。
+              //   Storage Rules が使えないので、大きさの上限はここで守ります。
+              //   写真と同じ 400,000 バイト未満に揃えてあります。
+              && (!('candidatePhoto' in request.resource.data)
+                  || (request.resource.data.candidatePhoto is string
+                      && request.resource.data.candidatePhoto.size() < 400000))
+              && (!('candidateSource' in request.resource.data)
+                  || request.resource.data.candidateSource in ['label', 'manual']));
+      }
+    }
+  }
+}

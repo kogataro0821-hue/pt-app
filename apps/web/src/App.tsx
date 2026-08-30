@@ -260,17 +260,41 @@ function Shell({
   onChangePassword,
   viewing,
   bell,
+  settings,
 }: {
   children: React.ReactNode;
   onChangePassword: () => void;
   viewing?: { clientId: string; displayName: string };
   bell?: { to: string; unread: number };
+  settings?: { to: string; label: string };
 }) {
   return (
-    <AppShell onChangePassword={onChangePassword} viewing={viewing} bell={bell}>
+    <AppShell
+      onChangePassword={onChangePassword}
+      viewing={viewing}
+      bell={bell}
+      settings={settings}
+    >
       {children}
     </AppShell>
   );
+}
+
+/**
+ * メニューの「設定」の行き先（追加仕様: メニュー）。
+ *
+ * ★ 同じ「設定」でも、開く先が違います。
+ *
+ *   契約者本人 … /c/{id}/settings（AIの同意・自分のパスワード）
+ *   管理者     … /clients/{id}/settings（目標値・権限・ランクなど）
+ *
+ *   管理者に前者を出すと、代われない同意の画面へ連れて行くことになります。
+ *   文言も変えて、「誰の設定を開くのか」が押す前に分かるようにします。
+ */
+function settingsFor(client: Client, isAdmin: boolean) {
+  return isAdmin
+    ? { to: `/clients/${client.clientId}/settings`, label: '契約者の設定' }
+    : { to: `/c/${client.clientId}/settings`, label: '設定' };
 }
 
 /**
@@ -357,17 +381,14 @@ function CalendarRoute({ onChangePassword }: { onChangePassword: () => void }) {
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
           bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
         >
           {/* ★ 会員証はカレンダーの上に置きます（追加仕様: 会員ランク）。
                  画面を開いた瞬間に目に入る場所です。
-                 名前は会員証に入っているので、見出しは出しません。 */}
-          {isAdmin && (
-            <div className="section-head">
-              <Link className="button-quiet compact" to={`/clients/${client.clientId}/settings`}>
-                設定
-              </Link>
-            </div>
-          )}
+                 名前は会員証に入っているので、見出しは出しません。
+
+                 ここにあった管理者向けの「設定」は、右上のメニューへ移しました。
+                 同じ行き先が2か所にあると、片方を直し忘れます。 */}
           <MemberCard client={client} isAdmin={isAdmin} />
           <CalendarScreen clientId={client.clientId} month={month} />
         </Shell>
@@ -395,6 +416,7 @@ function DayRoute({ onChangePassword }: { onChangePassword: () => void }) {
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
           bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
         >
           <DayScreen client={client} date={date} isAdmin={isAdmin} />
         </Shell>
@@ -419,6 +441,7 @@ function WeightRoute({ onChangePassword }: { onChangePassword: () => void }) {
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
           bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
         >
           <WeightScreen client={client} />
         </Shell>
@@ -444,6 +467,7 @@ function NoticesRoute({ onChangePassword }: { onChangePassword: () => void }) {
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
           bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
         >
           <NoticesScreen client={client} isAdmin={isAdmin} />
         </Shell>
@@ -469,6 +493,7 @@ function ClientSettingsRoute({ onChangePassword }: { onChangePassword: () => voi
             isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
           }
           bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
         >
           <ClientSettings client={client} isAdmin={isAdmin} onChangePassword={onChangePassword} />
         </Shell>

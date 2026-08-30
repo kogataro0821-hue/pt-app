@@ -158,19 +158,21 @@ export function WeightScreen({ client }: { client: Client }) {
             accent="fat"
           />
 
-          {/* ★ 記録が1件も無いときは、グラフを出しません。
-                 空のグラフが3つ並ぶより、2つのほうが読みやすいためです。 */}
-          {musclePoints.length > 0 && (
-            <Chart
-              title="筋肉量"
-              unit="kg"
-              points={musclePoints}
-              target={client.targets.muscleKg}
-              from={from}
-              to={to}
-              accent="muscle"
-            />
-          )}
+          {/* ★ 記録がまだ1件も無くても、必ず出します。
+                 最初は「空のグラフを並べたくない」と考えて隠していましたが、
+                 隠したせいで「筋肉量の機能が入っていない」と受け取られました。
+                 欄が無いのと機能が無いのは、使う側からは区別が付きません。
+                 中身が空のときは「記録がありません」と書いてあるので、
+                 見えているほうが、次に何をすればいいか分かります。 */}
+          <Chart
+            title="筋肉量"
+            unit="kg"
+            points={musclePoints}
+            target={client.targets.muscleKg}
+            from={from}
+            to={to}
+            accent="muscle"
+          />
         </>
       )}
     </>
