@@ -10,7 +10,12 @@ import {
   type LabelReading,
 } from '@pt/core';
 import { AiError, aiErrorMessage, readNutritionLabel } from '@/features/ai/gemini';
-import { PhotoResizeError, photoErrorMessage, resizePhoto } from '@/features/photos/resize';
+import {
+  LABEL_MAX_EDGE,
+  PhotoResizeError,
+  photoErrorMessage,
+  resizePhoto,
+} from '@/features/photos/resize';
 
 /**
  * 栄養成分表示の読み取り（設計書 §47 / 追加仕様: 成分表示の読み取り）。
@@ -73,7 +78,9 @@ export function LabelScanner({
     setBusy(true);
     setError(null);
     try {
-      const resized = await resizePhoto(files[0]!);
+      // ★ 成分表示は数字が読めれば十分なので、食事の写真より小さくします。
+      //   送る量とAIが見る量が減り、待ち時間が短くなります。
+      const resized = await resizePhoto(files[0]!, LABEL_MAX_EDGE);
       const result = await readNutritionLabel(resized.dataUrl);
 
       setPhoto(resized.dataUrl);

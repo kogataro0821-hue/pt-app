@@ -35,6 +35,20 @@ const QUALITY_STEPS = [0.82, 0.7, 0.6, 0.5, 0.4] as const;
 /** さらに小さくする必要があるときの、長辺の縮め方。 */
 const EDGE_STEPS = [MAX_EDGE, 1024, 800, 640] as const;
 
+/**
+ * 成分表示を読み取るときの長辺（追加仕様: 読み取りの待ち時間）。
+ *
+ * ★ 食事の写真より小さくしています。
+ *
+ *   成分表示は「数字が読めればよい」だけで、盛り付けの様子は要りません。
+ *   1000px あれば、パッケージ裏の表を撮った写真の数字は読めます。
+ *
+ *   小さくすると、送る量も AI が見る量も減り、**待ち時間が短くなります。**
+ *   管理者があとで見比べる写真も少し粗くなりますが、
+ *   数字が読める粗さは保ちます。
+ */
+export const LABEL_MAX_EDGE = 1000;
+
 export interface ResizedPhoto {
   /** `data:image/jpeg;base64,...` 形式 */
   dataUrl: string;
@@ -77,15 +91,23 @@ export function photoErrorMessage(kind: PhotoError): string {
  * ★ 透過は失われます（JPEG のため）。食事の写真なので問題になりません。
  *   PNG のまま保存すると、写真では JPEG の 3〜5 倍の大きさになります。
  */
-export async function resizePhoto(file: File): Promise<ResizedPhoto> {
+export async function resizePhoto(
+  file: File,
+  /** 長辺の上限。省略すると食事の写真と同じ（1280px） */
+  maxEdge: number = MAX_EDGE,
+): Promise<ResizedPhoto> {
   if (!file.type.startsWith('image/')) {
     throw new PhotoResizeError('notImage');
   }
 
   const bitmap = await loadImage(file);
 
+  // 指定された長辺より大きい段階は飛ばします
+  const steps = EDGE_STEPS.filter((e) => e <= maxEdge);
+  const edges = steps.length > 0 ? steps : [maxEdge];
+
   try {
-    for (const edge of EDGE_STEPS) {
+    for (const edge of edges) {
       const { canvas, width, height } = draw(bitmap, edge);
 
       for (const quality of QUALITY_STEPS) {

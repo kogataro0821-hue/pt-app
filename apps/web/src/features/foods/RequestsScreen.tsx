@@ -337,16 +337,37 @@ function RequestCard({
                 name={request.name}
                 foods={foods}
                 busy={busy}
+                hasLabelPhoto={label !== null && label.photo.length > 0}
+                // ★ 取り込んでも、ここでは登録の画面へ進みません。
+                //
+                //   以前は押した瞬間に進んでいました。すると下書きの画面が閉じ、
+                //   **値と別名のどちらか片方しか取り込めません**でした。
+                //   進むのは「新しく登録する」を押したときだけにします。
                 onUsePer100g={(per100g, note) => {
                   setAiSeed((prev) => ({ ...prev, per100g, note }));
-                  setStep({ kind: 'create' });
                 }}
                 onUseAliases={(aliases) => {
                   setAiSeed((prev) => ({ ...prev, aliases }));
-                  setStep({ kind: 'create' });
                 }}
                 onAbsorbInto={(food) => void absorbInto(food)}
               />
+
+              {/* ★ 取り込んだものを見せます。
+                     押しても画面が変わらないと、効いたのかどうか分かりません。 */}
+              {(aiSeed.per100g !== undefined || aiSeed.aliases.length > 0) && (
+                <p className="notice">
+                  <b>登録の画面に持っていくもの</b>
+                  <br />
+                  {aiSeed.per100g !== undefined && (
+                    <>
+                      栄養値: {aiSeed.per100g.kcal}kcal · P{aiSeed.per100g.p} F{aiSeed.per100g.f} C
+                      {aiSeed.per100g.c}
+                      <br />
+                    </>
+                  )}
+                  {aiSeed.aliases.length > 0 && <>別名: {aiSeed.aliases.join(' / ')}</>}
+                </p>
+              )}
 
               <div className="item-form-actions">
                 <button

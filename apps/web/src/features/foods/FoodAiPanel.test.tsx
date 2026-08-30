@@ -271,3 +271,152 @@ describe('うまくいかないとき', () => {
     await waitFor(() => expect(screen.queryByText('AIの下書き')).not.toBeInTheDocument());
   });
 });
+
+/**
+ * ★ 成分表示の写真があるときは、AI より写真が上（追加仕様: 登録依頼のAI）。
+ *
+ *   写真には実物の裏付けがあります。AI の推定にはありません。
+ *   ところが最初は、写真の有無にかかわらず同じ顔でボタンを出していました。
+ *   押すと、写真から読み取った値が推定で上書きされます。
+ *   **押した人には、押したあとまで分かりません。**
+ *
+ *   以前「契約者が手で入れた仮の値」と「写真つき」を区別したのと、
+ *   同じ性質の話です。同じ顔で並べると、確かめずに採用されます。
+ */
+describe('★ 成分表示の写真があるとき', () => {
+  function showWithPhoto() {
+    render(
+      <FoodAiPanel
+        name="蒸し鶏"
+        foods={MASTER}
+        busy={false}
+        hasLabelPhoto
+        onUsePer100g={onUsePer100g}
+        onUseAliases={onUseAliases}
+        onAbsorbInto={onAbsorbInto}
+      />,
+    );
+  }
+
+  it('★ 写真のほうが確かだと、聞く前に書いてある', () => {
+    showWithPhoto();
+    expect(screen.getByText(/そちらのほうが確かです/)).toBeInTheDocument();
+  });
+
+  it('★ 上書きになることを、押す前に伝える', async () => {
+    showWithPhoto();
+    await ask();
+    expect(screen.getByText(/読み取った値が、この推定で置き換わります/)).toBeInTheDocument();
+  });
+
+  it('★ ボタンの文言も「置き換える」にする', async () => {
+    // ★ 「入力欄に入れる」だと、空の欄に入るように読めます。
+    //   実際には、読み取った値を消して上書きします。
+    showWithPhoto();
+    await ask();
+    expect(
+      screen.getByRole('button', { name: '読み取った値を、この推定で置き換える' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'この値を入力欄に入れる' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('止めはしない（人が決められる）', async () => {
+    // ★ 写真がぼやけて読めていないこともあります。禁止はしません。
+    showWithPhoto();
+    await ask();
+    await userEvent.click(
+      screen.getByRole('button', { name: '読み取った値を、この推定で置き換える' }),
+    );
+    expect(onUsePer100g).toHaveBeenCalled();
+  });
+
+  it('別名とまとめ先は、写真があっても普通に使える', async () => {
+    suggestFoodDraft.mockResolvedValue(aDraft({ aliases: ['むしどり'] }));
+    showWithPhoto();
+    await ask();
+    expect(screen.getByRole('button', { name: 'この別名も入れる' })).toBeInTheDocument();
+  });
+});
+
+describe('写真が無いとき', () => {
+  it('上書きの注意は出さない（上書きするものが無い）', async () => {
+    show();
+    await ask();
+    expect(screen.queryByText(/置き換わります/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'この値を入力欄に入れる' })).toBeInTheDocument();
+  });
+
+  it('写真がある前提の案内も出さない', () => {
+    show();
+    expect(screen.queryByText(/そちらのほうが確かです/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ★ 値と別名は、両方とも取り込める（追加仕様: 登録依頼のAI）。
+ *
+ *   最初は、片方を押した瞬間に登録の画面へ進んでいました。
+ *   すると下書きの画面が閉じ、**もう片方を押せません**でした。
+ *   「栄養値か別名か、どちらか一方しか確定できない」という形で表に出ました。
+ *
+ *   進むのは「新しく登録する」を押したときだけにします。
+ */
+describe('★ 値と別名を、両方とも取り込める', () => {
+  beforeEach(() => {
+    suggestFoodDraft.mockResolvedValue(aDraft({ aliases: ['むしどり'] }));
+  });
+
+  it('★ 値を取り込んでも、下書きは開いたまま', async () => {
+    show();
+    await ask();
+    await userEvent.click(screen.getByRole('button', { name: 'この値を入力欄に入れる' }));
+
+    // 別名のボタンがまだ押せる＝画面が閉じていない
+    expect(screen.getByRole('button', { name: 'この別名も入れる' })).toBeInTheDocument();
+  });
+
+  it('★ 続けて別名も取り込める', async () => {
+    show();
+    await ask();
+    await userEvent.click(screen.getByRole('button', { name: 'この値を入力欄に入れる' }));
+    await userEvent.click(screen.getByRole('button', { name: 'この別名も入れる' }));
+
+    expect(onUsePer100g).toHaveBeenCalledTimes(1);
+    expect(onUseAliases).toHaveBeenCalledTimes(1);
+  });
+
+  it('別名を先に取り込んでも、値を取り込める', async () => {
+    show();
+    await ask();
+    await userEvent.click(screen.getByRole('button', { name: 'この別名も入れる' }));
+    await userEvent.click(screen.getByRole('button', { name: 'この値を入力欄に入れる' }));
+
+    expect(onUseAliases).toHaveBeenCalledTimes(1);
+    expect(onUsePer100g).toHaveBeenCalledTimes(1);
+  });
+
+  it('★ 取り込んだことが、ボタンに出る', async () => {
+    // ★ 押しても画面が変わらないと、効いたのかどうか分かりません
+    show();
+    await ask();
+    await userEvent.click(screen.getByRole('button', { name: 'この値を入力欄に入れる' }));
+
+    expect(screen.getByRole('button', { name: '取り込みました' })).toBeInTheDocument();
+  });
+
+  it('別名を取り込んだことも、ボタンに出る', async () => {
+    show();
+    await ask();
+    await userEvent.click(screen.getByRole('button', { name: 'この別名も入れる' }));
+
+    expect(screen.getByRole('button', { name: '取り込みました' })).toBeInTheDocument();
+  });
+
+  it('★ 別名も取り込めることを、その場に書いてある', async () => {
+    show();
+    await ask();
+    expect(screen.getByText(/別名も取り込めます/)).toBeInTheDocument();
+  });
+});

@@ -207,6 +207,88 @@ export async function relayFailure(response: Response, tooLarge?: string): Promi
   return new AiError('unavailable', `中継役の応答: ${response.status}`);
 }
 
+/**
+ * 「考える時間」を使わせない設定（追加仕様: 読み取りの待ち時間）。
+ *
+ * ★ gemini-2.5-flash は、既定で答える前に内部で考えます。
+ *   それは筋道を立てる問いには効きますが、
+ *   **成分表示の数字を書き写すような仕事には要りません。**
+ *   考えるぶんだけ、待ち時間が伸びます。
+ *
+ * ★ 評価文（requestDayReview）には付けません。
+ *   あちらは人に読ませる文章を組み立てる仕事で、考える価値があります。
+ */
+const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } } as const;
+
+/**
+ * 中継役に投げる。
+ *
+ * ★ 「考えない」設定が通らない相手だったときのために、1回だけやり直します。
+ *
+ *   この設定はモデルによっては受け付けられず、400 で返ってきます。
+ *   そのとき読み取りごと失敗させると、**速くしようとして壊した**ことになります。
+ *   速さより、動くことが先です。
+ *
+ *   やり直すのは「考えない設定が原因だ」と分かるときだけです。
+ *   どんな 400 でもやり直すと、鍵の設定ミスのようなときに
+ *   1日の回数を2つ食べてしまいます。
+ */
+async function postToRelay(
+  idToken: string,
+  body: Record<string, unknown>,
+  tooLarge?: string,
+): Promise<Response> {
+  if (AI_RELAY_URL === null) throw new AiError('not_configured');
+  const url = AI_RELAY_URL;
+
+  const send = async (payload: Record<string, unknown>): Promise<Response> => {
+    try {
+      return await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      throw new AiError('network');
+    }
+  };
+
+  let response = await send(body);
+
+  if (response.status === 400 && hasThinkingConfig(body)) {
+    const detail = await peekDetail(response);
+    if (detail.includes('thinking')) {
+      response = await send(withoutThinkingConfig(body));
+    } else {
+      // 本文をもう読んでしまったので、同じ内容の応答を作り直します
+      response = new Response(detail, { status: 400 });
+    }
+  }
+
+  if (!response.ok) throw await relayFailure(response, tooLarge);
+  return response;
+}
+
+function hasThinkingConfig(body: Record<string, unknown>): boolean {
+  const config = body.generationConfig;
+  return typeof config === 'object' && config !== null && 'thinkingConfig' in config;
+}
+
+function withoutThinkingConfig(body: Record<string, unknown>): Record<string, unknown> {
+  const config = { ...(body.generationConfig as Record<string, unknown>) };
+  delete config.thinkingConfig;
+  return { ...body, generationConfig: config };
+}
+
+/** 応答の本文を、あとでもう一度使えるように読み出す */
+async function peekDetail(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return '';
+  }
+}
+
 /** 文章から食材候補を作る。 */
 export async function parseMealText(text: string): Promise<MealRecognition> {
   if (AI_RELAY_URL === null) throw new AiError('not_configured');
@@ -229,21 +311,11 @@ export async function parseMealText(text: string): Promise<MealRecognition> {
       responseSchema: RESPONSE_SCHEMA,
       // ★ 温度を0にします。同じ文章からは同じ結果が出てほしいためです。
       temperature: 0,
+      ...NO_THINKING,
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(AI_RELAY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new AiError('network');
-  }
-
-  if (!response.ok) throw await relayFailure(response);
+  const response = await postToRelay(idToken, body);
 
   let raw: GeminiResponse;
   try {
@@ -400,21 +472,11 @@ export async function analyzeMealPhoto(
       responseMimeType: 'application/json',
       responseSchema: PHOTO_RESPONSE_SCHEMA,
       temperature: 0,
+      ...NO_THINKING,
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(AI_RELAY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new AiError('network');
-  }
-
-  if (!response.ok) throw await relayFailure(response, '写真が大きすぎます');
+  const response = await postToRelay(idToken, body, '写真が大きすぎます');
 
   let raw: GeminiResponse;
   try {
@@ -563,21 +625,11 @@ export async function readNutritionLabel(dataUrl: string): Promise<AiLabelResult
       responseMimeType: 'application/json',
       responseSchema: LABEL_RESPONSE_SCHEMA,
       temperature: 0,
+      ...NO_THINKING,
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(AI_RELAY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new AiError('network');
-  }
-
-  if (!response.ok) throw await relayFailure(response, '写真が大きすぎます');
+  const response = await postToRelay(idToken, body, '写真が大きすぎます');
 
   let raw: GeminiResponse;
   try {
@@ -781,18 +833,7 @@ export async function requestDayReview(input: ReviewInput): Promise<string> {
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(AI_RELAY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new AiError('network');
-  }
-
-  if (!response.ok) throw await relayFailure(response);
+  const response = await postToRelay(idToken, body);
 
   let raw: GeminiResponse;
   try {
@@ -952,21 +993,11 @@ export async function suggestFoodDraft(
       responseMimeType: 'application/json',
       responseSchema: FOOD_DRAFT_RESPONSE_SCHEMA,
       temperature: 0,
+      ...NO_THINKING,
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(AI_RELAY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new AiError('network');
-  }
-
-  if (!response.ok) throw await relayFailure(response);
+  const response = await postToRelay(idToken, body);
 
   let raw: GeminiResponse;
   try {

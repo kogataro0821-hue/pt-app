@@ -24,6 +24,7 @@ export function FoodAiPanel({
   name,
   foods,
   busy,
+  hasLabelPhoto = false,
   onUsePer100g,
   onUseAliases,
   onAbsorbInto,
@@ -33,6 +34,14 @@ export function FoodAiPanel({
   /** いまマスタにある食材 */
   foods: Food[];
   busy: boolean;
+  /**
+   * 契約者が撮った成分表示の写真があるか。
+   *
+   * ★ 写真には**実物の裏付け**があります。AI の推定にはありません。
+   *   同じ顔で並べると、押した人は上書きだと気づけません。
+   *   写真があるときは、そちらが上だと画面に書きます。
+   */
+  hasLabelPhoto?: boolean;
   /** 「この値を使う」。登録の画面に持っていくだけで、保存はしません */
   onUsePer100g: (per100g: Per100g, note: string) => void;
   /** 「この別名も入れる」 */
@@ -43,6 +52,16 @@ export function FoodAiPanel({
   const [draft, setDraft] = useState<FoodDraft | null>(null);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * すでに取り込んだもの。
+   *
+   * ★ 押しても画面が変わらないと、効いたのかどうか分かりません。
+   *   値と別名は**両方とも**取り込めるので、片方ずつ印を付けます。
+   */
+  const [taken, setTaken] = useState<{ value: boolean; aliases: boolean }>({
+    value: false,
+    aliases: false,
+  });
 
   async function ask() {
     if (asking) return;
@@ -79,6 +98,13 @@ export function FoodAiPanel({
           食材名だけを送ります（誰の記録かは送りません）。
           <b>出てくるのは下書きです。</b>あなたが確かめて決めます。
         </p>
+        {hasLabelPhoto && (
+          <p className="field-hint">
+            <b>この依頼には成分表示の写真があります。そちらのほうが確かです。</b>
+            <br />
+            AI の下書きは、写真が読めなかったときや、別名・まとめ先を見たいときにお使いください。
+          </p>
+        )}
         {error !== null && (
           <p className="form-error" role="alert">
             {error}
@@ -157,19 +183,32 @@ export function FoodAiPanel({
               </p>
             )}
 
+            {/* ★ 写真があるときは、押すと「読み取った値」が推定で上書きされます。
+                   押す前に言わないと、押したあとには分かりません。 */}
+            {hasLabelPhoto && (
+              <p className="field-hint warn-text">
+                <b>⚠ 押すと、成分表示から読み取った値が、この推定で置き換わります。</b>
+              </p>
+            )}
             <button
               className="button-secondary compact"
               type="button"
               disabled={busy}
-              onClick={() =>
-                draft.per100g !== null &&
-                onUsePer100g(draft.per100g, `AIの推定（${draft.assumed}）。要確認。`)
-              }
+              onClick={() => {
+                if (draft.per100g === null) return;
+                onUsePer100g(draft.per100g, `AIの推定（${draft.assumed}）。要確認。`);
+                setTaken((prev) => ({ ...prev, value: true }));
+              }}
             >
-              この値を入力欄に入れる
+              {taken.value
+                ? '取り込みました'
+                : hasLabelPhoto
+                  ? '読み取った値を、この推定で置き換える'
+                  : 'この値を入力欄に入れる'}
             </button>
             <p className="field-hint">
-              入れるだけで、保存はされません。登録の画面で直せます。
+              入れるだけで、保存はされません。<b>別名も取り込めます。</b>
+              終わったら下の「新しく登録する」を押してください。
             </p>
           </>
         )}
@@ -184,9 +223,12 @@ export function FoodAiPanel({
             className="button-secondary compact"
             type="button"
             disabled={busy}
-            onClick={() => onUseAliases(draft.aliases)}
+            onClick={() => {
+              onUseAliases(draft.aliases);
+              setTaken((prev) => ({ ...prev, aliases: true }));
+            }}
           >
-            この別名も入れる
+            {taken.aliases ? '取り込みました' : 'この別名も入れる'}
           </button>
         </div>
       )}
