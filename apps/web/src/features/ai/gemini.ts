@@ -871,27 +871,30 @@ function signed(v: number): string {
 // 登録依頼のAI（追加仕様: 登録依頼のAI）
 // -----------------------------------------------------------------------------
 
+/**
+ * ★ 動いていた成分表示の読み取り（LABEL_RESPONSE_SCHEMA）と、同じ形にそろえています。
+ *
+ *   最初は per100g という入れ子の object を nullable にしていました。
+ *   それだと Gemini が要求ごと 400 で断ります。
+ *
+ *   守っているのは2つです。
+ *     ・数値は平らに並べる（入れ子の object を nullable にしない）
+ *     ・nullable な項目は required に入れない
+ */
 const FOOD_DRAFT_RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
-    per100g: {
-      type: 'object',
-      nullable: true,
-      properties: {
-        kcal: { type: 'number' },
-        p: { type: 'number' },
-        f: { type: 'number' },
-        c: { type: 'number' },
-      },
-      required: ['kcal', 'p', 'f', 'c'],
-    },
+    kcal: { type: 'number', nullable: true },
+    p: { type: 'number', nullable: true },
+    f: { type: 'number', nullable: true },
+    c: { type: 'number', nullable: true },
     confidence: { type: 'number' },
     assumed: { type: 'string' },
     aliases: { type: 'array', items: { type: 'string' } },
     sameAs: { type: 'string', nullable: true },
     sameAsReason: { type: 'string' },
   },
-  required: ['per100g', 'confidence', 'assumed', 'aliases', 'sameAs', 'sameAsReason'],
+  required: ['confidence', 'assumed', 'aliases', 'sameAsReason'],
 } as const;
 
 const FOOD_DRAFT_PROMPT = `あなたは、日本の食品成分表にくわしい管理栄養士です。
@@ -900,11 +903,14 @@ const FOOD_DRAFT_PROMPT = `あなたは、日本の食品成分表にくわし�
 これは下書きです。人が必ず見てから確定します。
 ですから「それらしく埋める」ことに価値はありません。**分からないことは分からないと言ってください。**
 
-■ per100g（100gあたりの値）
+■ kcal / p / f / c（100gあたりの値）
 
 日本食品標準成分表にあるような、一般的な値を入れてください。
-**分からない場合、思い当たらない場合、商品名で中身が特定できない場合は null にしてください。**
-それらしい数字を作らないでください。null は失敗ではなく、正しい答えです。
+p はたんぱく質、f は脂質、c は炭水化物です。単位はグラムです。
+
+**分からない場合、思い当たらない場合、商品名で中身が特定できない場合は、4つとも省いてください。**
+それらしい数字を作らないでください。省くのは失敗ではなく、正しい答えです。
+一部だけ入れるのもやめてください。4つそろわなければ、こちらでは使えません。
 
 調理法が書かれていなければ「生」の値にしてください。
 「ゆで」「焼き」などが名前に含まれていれば、その状態の値にしてください。
@@ -913,7 +919,7 @@ const FOOD_DRAFT_PROMPT = `あなたは、日本の食品成分表にくわし�
 
 どういう食品として答えたかを、一文で書いてください。
 例:「皮なしの鶏むね肉（生）」「小麦粉のうどん（ゆで）」
-人が「その食品ではない」と気づくための欄です。per100g が null でも書いてください。
+人が「その食品ではない」と気づくための欄です。数値が分からなくても書いてください。
 
 ■ confidence
 

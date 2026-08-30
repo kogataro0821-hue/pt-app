@@ -35,8 +35,12 @@ function ok(payload: unknown): Response {
   );
 }
 
+// ★ AI が返してくる形は「平ら」です（入れ子の object を nullable にすると 400 になります）
 const DRAFT = {
-  per100g: { kcal: 105, p: 23.3, f: 1.9, c: 0.1 },
+  kcal: 105,
+  p: 23.3,
+  f: 1.9,
+  c: 0.1,
   confidence: 0.8,
   assumed: '鶏むね肉',
   aliases: [],
