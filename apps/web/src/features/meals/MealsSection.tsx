@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   countNoValue,
   countProvisional,
@@ -18,7 +19,11 @@ import {
 } from '@pt/core';
 import { AI_RELAY_URL } from '@/config/firebase';
 import { AiTextPanel } from '@/features/ai/AiTextPanel';
-import { hasValidAiConsent, type AiConsent } from '@/features/clients/clientTypes';
+import {
+  AI_CONSENT_VERSION,
+  hasValidAiConsent,
+  type AiConsent,
+} from '@/features/clients/clientTypes';
 import { requestFood, type LabelCandidate } from '@/features/foods/requestsRepo';
 import { ItemForm } from './ItemForm';
 import { LabelItemPanel } from './LabelItemPanel';
@@ -291,6 +296,21 @@ export function MealsSection({
   // 中継役が未設定なら、そもそもAIは動かないのでボタンも出さない
   const aiAvailable = AI_RELAY_URL !== null && hasValidAiConsent(aiConsent);
 
+  /**
+   * 「文章から」「写真から」「成分表示から」が出ない理由を伝えるか（設計書 §35）。
+   *
+   * ★ 出さないだけでは、機能が無いのと区別が付きません。
+   *
+   *   実際に、作った本人が「入口が消えた」と思いました。
+   *   契約者ならなおさらです。ボタンが無い理由と、どうすれば出るのかを
+   *   その場に書きます。
+   *
+   * ★ 中継役が未設定のときは、何も言いません。
+   *   同意しても出ないので、案内したところで行き止まりになります。
+   */
+  const consentOutdated = aiConsent.granted && aiConsent.version < AI_CONSENT_VERSION;
+  const showConsentHint = AI_RELAY_URL !== null && !aiAvailable;
+
   return (
     <>
       {error !== null && (
@@ -440,6 +460,37 @@ export function MealsSection({
                 + 食材を追加
               </button>
             ))}
+
+          {/* ★ 入口が3つ減っている理由を、その場に書きます（設計書 §35）。
+                 食事ごとに出すと同じ文が何度も並ぶので、最初の食事にだけ出します。 */}
+          {canEdit &&
+            showConsentHint &&
+            addingTo !== meal.id &&
+            meal.id === meals[0]?.id && (
+              <p className="note consent-hint">
+                <b>文章・写真・成分表示から入れるには、AIの利用に同意が必要です。</b>
+                <br />
+                {isAdmin ? (
+                  <>
+                    この契約者は
+                    {consentOutdated
+                      ? '以前に同意していますが、説明文が新しくなったため取り直しが必要です。'
+                      : 'まだ同意していません。'}
+                    <b>同意はご本人だけが行えます。</b>
+                  </>
+                ) : (
+                  <>
+                    {consentOutdated
+                      ? '説明文が新しくなりました。お手数ですが、設定で同意し直してください。'
+                      : '設定の画面で、内容を読んだうえで選べます。'}
+                    <br />
+                    <Link className="button-quiet compact" to={`/c/${clientId}/settings`}>
+                      設定を開く
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
 
           {canEdit && addingTo === meal.id && (
             <ItemForm

@@ -2625,3 +2625,19 @@ select.input {
 .notice-item .button-quiet {
   margin-top: 8px;
 }
+
+/* ★ 「文章から」などが出ない理由を伝える一言（設計書 §35）。
+   目立たせすぎると毎日の邪魔になり、地味すぎると読まれません。
+   枠と薄い地色を付けて、本文とは別のものだと分かる程度にしてあります。 */
+.consent-hint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  line-height: 1.7;
+}
+
+.consent-hint .button-quiet {
+  margin-top: 6px;
+}
