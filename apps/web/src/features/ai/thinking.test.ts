@@ -23,7 +23,7 @@ vi.mock('@/lib/firebase', () => ({
   getAuthClient: () => ({ currentUser: { getIdToken: async () => 'token-1' } }),
 }));
 
-const { suggestFoodDraft, requestDayReview } = await import('./gemini');
+const { parseMealText, requestDayReview } = await import('./gemini');
 
 /** Gemini の形をした、最低限の成功応答 */
 function ok(payload: unknown): Response {
@@ -35,18 +35,8 @@ function ok(payload: unknown): Response {
   );
 }
 
-// ★ AI が返してくる形は「平ら」です（入れ子の object を nullable にすると 400 になります）
-const DRAFT = {
-  kcal: 105,
-  p: 23.3,
-  f: 1.9,
-  c: 0.1,
-  confidence: 0.8,
-  assumed: '鶏むね肉',
-  aliases: [],
-  sameAs: null,
-  sameAsReason: '',
-};
+/** 文章の読み取りが返してくる、最低限の形 */
+const PARSED = { items: [], unidentified: [], notes: [] };
 
 /** 送られた本文を読む */
 function sentBody(call: number): Record<string, unknown> {
@@ -63,9 +53,9 @@ beforeEach(() => {
 });
 
 describe('★ 考えさせない', () => {
-  it('下書きを作らせるときは、考える時間を0にする', async () => {
-    fetchMock.mockResolvedValue(ok(DRAFT));
-    await suggestFoodDraft('蒸し鶏', []);
+  it('文章の読み取りでは、考える時間を0にする', async () => {
+    fetchMock.mockResolvedValue(ok(PARSED));
+    await parseMealText('白米200g');
 
     expect(generationConfig(0).thinkingConfig).toEqual({ thinkingBudget: 0 });
   });
@@ -101,13 +91,14 @@ describe('★ 通らなかったときの保険', () => {
           { status: 400 },
         ),
       )
-      .mockResolvedValueOnce(ok(DRAFT));
+      .mockResolvedValueOnce(ok(PARSED));
 
-    const result = await suggestFoodDraft('蒸し鶏', []);
+    const result = await parseMealText('白米200g');
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(generationConfig(1).thinkingConfig).toBeUndefined();
-    expect(result.per100g).toEqual({ kcal: 105, p: 23.3, f: 1.9, c: 0.1 });
+    // やり直したほうの結果が、ちゃんと返る（速さより、動くことが先）
+    expect(result.items).toEqual([]);
   });
 
   it('★ 相手が理由を言わなくても、やり直す', async () => {
@@ -120,18 +111,18 @@ describe('★ 通らなかったときの保険', () => {
     //   相手が理由を言わない以上、こちらで見分けようとするのが間違いでした。
     fetchMock
       .mockResolvedValueOnce(new Response('', { status: 400 }))
-      .mockResolvedValueOnce(ok(DRAFT));
+      .mockResolvedValueOnce(ok(PARSED));
 
-    await suggestFoodDraft('蒸し鶏', []);
+    await parseMealText('白米200g');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('やり直すときも、中身は変えない', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('', { status: 400 }))
-      .mockResolvedValueOnce(ok(DRAFT));
+      .mockResolvedValueOnce(ok(PARSED));
 
-    await suggestFoodDraft('蒸し鶏', []);
+    await parseMealText('白米200g');
 
     expect(sentBody(1).contents).toEqual(sentBody(0).contents);
     expect(generationConfig(1).responseSchema).toEqual(generationConfig(0).responseSchema);
@@ -140,7 +131,7 @@ describe('★ 通らなかったときの保険', () => {
   it('★ やり直しは1回だけ（無限に投げない）', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 400 }));
 
-    await expect(suggestFoodDraft('蒸し鶏', [])).rejects.toThrow();
+    await expect(parseMealText('白米200g')).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -165,13 +156,13 @@ describe('★ 通らなかったときの保険', () => {
 
   it('400 以外では、やり直さない', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 500 }));
-    await expect(suggestFoodDraft('蒸し鶏', [])).rejects.toThrow();
+    await expect(parseMealText('白米200g')).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('通信そのものが駄目なときは、やり直さない', async () => {
     fetchMock.mockRejectedValue(new Error('offline'));
-    await expect(suggestFoodDraft('蒸し鶏', [])).rejects.toThrow();
+    await expect(parseMealText('白米200g')).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

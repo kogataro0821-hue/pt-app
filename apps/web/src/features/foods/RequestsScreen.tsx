@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { findSimilarFoods, foodKey, type Per100g } from '@pt/core';
+import { findSimilarFoods, foodKey } from '@pt/core';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { addAlias, clearFoodCache, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { firstCandidate, listRequests, resolveRequest, type FoodRequest } from './requestsRepo';
 import { replacePastRecords, type ReplaceResult } from './bulkReplace';
 import { FoodEditor } from './FoodEditor';
-import { FoodAiPanel } from './FoodAiPanel';
 
 /**
  * 登録依頼の一覧（設計書 §21 / Phase 9）。
@@ -128,17 +127,6 @@ function RequestCard({
   const [error, setError] = useState<string | null>(null);
   /** 拡大表示している成分表示の写真 */
   const [zoom, setZoom] = useState<string | null>(null);
-  /**
-   * AI の下書きから持ってきた値（追加仕様: 登録依頼のAI）。
-   *
-   * ★ ここに入れるだけでは、まだ何も保存されていません。
-   *   登録の画面の初期値になるだけで、確定するのは人が保存したときです。
-   */
-  const [aiSeed, setAiSeed] = useState<{
-    per100g?: Per100g;
-    note?: string;
-    aliases: string[];
-  }>({ aliases: [] });
 
   const candidates = findSimilarFoods(foods, request.name, 5);
   /** 契約者が成分表示を撮っていれば、その値を初期値に使う（追加仕様: 成分表示の読み取り） */
@@ -331,44 +319,6 @@ function RequestCard({
                 </>
               )}
 
-              {/* ★ AI は下書きを作るだけです。マスタには書きません（設計書 §47）。
-                     押したときだけ聞きます（開いただけでは聞きません）。 */}
-              <FoodAiPanel
-                name={request.name}
-                foods={foods}
-                busy={busy}
-                hasLabelPhoto={label !== null && label.photo.length > 0}
-                // ★ 取り込んでも、ここでは登録の画面へ進みません。
-                //
-                //   以前は押した瞬間に進んでいました。すると下書きの画面が閉じ、
-                //   **値と別名のどちらか片方しか取り込めません**でした。
-                //   進むのは「新しく登録する」を押したときだけにします。
-                onUsePer100g={(per100g, note) => {
-                  setAiSeed((prev) => ({ ...prev, per100g, note }));
-                }}
-                onUseAliases={(aliases) => {
-                  setAiSeed((prev) => ({ ...prev, aliases }));
-                }}
-                onAbsorbInto={(food) => void absorbInto(food)}
-              />
-
-              {/* ★ 取り込んだものを見せます。
-                     押しても画面が変わらないと、効いたのかどうか分かりません。 */}
-              {(aiSeed.per100g !== undefined || aiSeed.aliases.length > 0) && (
-                <p className="notice">
-                  <b>登録の画面に持っていくもの</b>
-                  <br />
-                  {aiSeed.per100g !== undefined && (
-                    <>
-                      栄養値: {aiSeed.per100g.kcal}kcal · P{aiSeed.per100g.p} F{aiSeed.per100g.f} C
-                      {aiSeed.per100g.c}
-                      <br />
-                    </>
-                  )}
-                  {aiSeed.aliases.length > 0 && <>別名: {aiSeed.aliases.join(' / ')}</>}
-                </p>
-              )}
-
               <div className="item-form-actions">
                 <button
                   className="button-primary compact"
@@ -396,21 +346,14 @@ function RequestCard({
                 ...emptyFood(request.name),
                 // 契約者が撮った成分表示の値を初期値に。決めるのは管理者のまま。
                 ...(label === null ? {} : { per100g: label.per100g, note: label.note }),
-                // ★ AI の下書きは、契約者が撮った成分表示より後に置きます。
-                //   写真は実物の裏付けがあり、AIの推定は無いためです。
-                //   ただし人が「この値を入れる」を押したときだけここに入ります。
-                ...(aiSeed.per100g === undefined
-                  ? {}
-                  : { per100g: aiSeed.per100g, note: aiSeed.note ?? '' }),
                 // ★ 照合キーが同じ表記は、別名に入れません。
                 //   「サラダチキン」と全角スペース入りは、別名が無くても
                 //   すでに同じものとして当たります。入れても増えるものがなく、
                 //   一覧が読みにくくなるだけです。
                 //   キーが違う表記（あれば）だけを別名の候補にします。
-                aliases: [
-                  ...request.variants.filter((v) => foodKey(v) !== foodKey(request.name)),
-                  ...aiSeed.aliases,
-                ],
+                aliases: request.variants.filter(
+                  (v) => foodKey(v) !== foodKey(request.name),
+                ),
               }}
               all={foods}
               nameOptions={request.variants}

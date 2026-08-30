@@ -7,12 +7,12 @@ import { describe, expect, it } from 'vitest';
  *
  * ★ これは、実際に 400 で断られてから書いたテストです。
  *
- *   登録依頼の下書きだけが、中継役から 400 で返ってきました。
- *   同じ中継役・同じ鍵・同じモデルで、成分表示の読み取りは動いています。
+ *   新しく足した問い合わせだけが、中継役から 400 で返ってきました。
+ *   同じ中継役・同じ鍵・同じモデルで、ほかの問い合わせは動いています。
  *   違ったのは**要求の形**でした。
  *
  *       per100g: { type: 'object', nullable: true, ... }
- *       required: [..., 'per100g', 'sameAs']
+ *       required: [..., 'per100g']
  *
  *   Gemini は、入れ子の object を nullable にした形や、
  *   nullable な項目を required に入れた形を受け付けません。
@@ -22,9 +22,9 @@ import { describe, expect, it } from 'vitest';
  *       kcal: { type: 'number', nullable: true }   ← 平ら
  *       required: ['basis', 'productName', ...]     ← nullable は入っていない
  *
- *   **動いているものに合わせる**のがいちばん確実です。
- *   このテストは、次に誰かが新しい問い合わせを足したときに、
- *   同じ間違いを繰り返さないための見張りです。
+ *   その問い合わせ自体はやめましたが、**この見張りは残します。**
+ *   次に誰かが新しい問い合わせを足したときに、同じ穴に落ちないためです。
+ *   （半日つぶした失敗なので、教訓のほうを残します）
  *
  * ★ ファイルを読んで確かめます。動かさないので、通信も鍵も要りません。
  */
@@ -75,7 +75,7 @@ describe('返してほしい形の作法', () => {
     // ★ 数が急に減ったら、上の正規表現が壊れています
     expect(all.length).toBeGreaterThanOrEqual(4);
     expect(all.map((s) => s.name)).toContain('LABEL_RESPONSE_SCHEMA');
-    expect(all.map((s) => s.name)).toContain('FOOD_DRAFT_RESPONSE_SCHEMA');
+    expect(all.map((s) => s.name)).toContain('PHOTO_RESPONSE_SCHEMA');
   });
 
   for (const { name, body } of all) {
@@ -103,23 +103,4 @@ describe('返してほしい形の作法', () => {
       ).toBe(false);
     });
   }
-});
-
-describe('★ 下書きの形は、動いている読み取りと同じ作法', () => {
-  const draft = schemas().find((s) => s.name === 'FOOD_DRAFT_RESPONSE_SCHEMA');
-
-  it('数値は平らに並べてある', () => {
-    expect(draft?.body).toContain("kcal: { type: 'number', nullable: true }");
-    expect(draft?.body).toContain("p: { type: 'number', nullable: true }");
-    expect(draft?.body).not.toContain('per100g');
-  });
-
-  it('required は、必ず返るものだけ', () => {
-    expect(requiredOf(draft?.body ?? '')).toEqual([
-      'confidence',
-      'assumed',
-      'aliases',
-      'sameAsReason',
-    ]);
-  });
 });

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   PHOTO_MIN_CONFIDENCE,
-  aiFoodDraftSchema,
   aiPhotoResultSchema,
   aiTextResultSchema,
   formatRange,
@@ -312,67 +311,5 @@ describe('★ 写真からの認識（設計書 §10 / §39）', () => {
         notes: [],
       }).success,
     ).toBe(false);
-  });
-});
-
-/**
- * 登録依頼の下書き（追加仕様: 登録依頼のAI）。
- *
- * ★ 数値は平らに並べて受け取り、こちらで組み立てます。
- *   入れ子の object を nullable にした形は、Gemini が 400 で断ります。
- */
-describe('aiFoodDraftSchema', () => {
-  const base = {
-    confidence: 0.8,
-    assumed: '皮なしの鶏むね肉（生）',
-    aliases: ['とりむね'],
-    sameAsReason: '',
-  };
-
-  it('4つそろっていれば、100gあたりの値になる', () => {
-    const r = aiFoodDraftSchema.parse({ ...base, kcal: 105, p: 23.3, f: 1.9, c: 0.1 });
-    expect(r.per100g).toEqual({ kcal: 105, p: 23.3, f: 1.9, c: 0.1 });
-  });
-
-  it('★ 1つでも欠けたら、まるごと「分からない」にする', () => {
-    // ★ kcal だけ返ってきて PFC が空、というのは半端な値です。
-    //   半端な値をマスタに入れるくらいなら、手で入れたほうがましです。
-    expect(aiFoodDraftSchema.parse({ ...base, kcal: 105 }).per100g).toBeNull();
-    expect(aiFoodDraftSchema.parse({ ...base, kcal: 105, p: 23.3, f: 1.9 }).per100g).toBeNull();
-  });
-
-  it('4つとも無ければ、分からない', () => {
-    expect(aiFoodDraftSchema.parse(base).per100g).toBeNull();
-  });
-
-  it('null で返ってきても、分からない扱い', () => {
-    const r = aiFoodDraftSchema.parse({ ...base, kcal: null, p: null, f: null, c: null });
-    expect(r.per100g).toBeNull();
-  });
-
-  it('0 は「分からない」ではない（水などがある）', () => {
-    const r = aiFoodDraftSchema.parse({ ...base, kcal: 0, p: 0, f: 0, c: 0 });
-    expect(r.per100g).toEqual({ kcal: 0, p: 0, f: 0, c: 0 });
-  });
-
-  it('まとめ先は、無ければ null にそろえる', () => {
-    expect(aiFoodDraftSchema.parse(base).sameAs).toBeNull();
-    expect(aiFoodDraftSchema.parse({ ...base, sameAs: '鶏むね肉' }).sameAs).toBe('鶏むね肉');
-  });
-
-  it('別名や理由が返ってこなくても、落ちない', () => {
-    const r = aiFoodDraftSchema.parse({ confidence: 0.5, assumed: 'なにか' });
-    expect(r.aliases).toEqual([]);
-    expect(r.sameAsReason).toBe('');
-  });
-
-  it('★ 別名が多すぎるときは、受け取らない', () => {
-    // ★ 別名はマスタの引き当てを変えるものです。確かめられる数に絞ります
-    const many = Array.from({ length: 20 }, (_, i) => `別名${i}`);
-    expect(() => aiFoodDraftSchema.parse({ ...base, aliases: many })).toThrow();
-  });
-
-  it('自信の度合いが範囲外なら、受け取らない', () => {
-    expect(() => aiFoodDraftSchema.parse({ ...base, confidence: 1.5 })).toThrow();
   });
 });
