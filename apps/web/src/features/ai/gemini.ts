@@ -201,10 +201,31 @@ export async function relayFailure(response: Response, tooLarge?: string): Promi
     return new AiError('unavailable', tooLarge);
   }
 
-  // ★ 状態番号を画面に出します。
-  //   「接続できませんでした」だけだと、
+  // ★ 状態番号と、中継役が返した理由を画面に出します。
+  //
+  //   番号だけだと「中継役の応答: 400」としか出ず、
   //   キーの問題なのか、要求の形の問題なのかが切り分けられません。
-  return new AiError('unavailable', `中継役の応答: ${response.status}`);
+  //   実際、そのせいで原因が分からないまま何往復もしました。
+  //
+  //   理由は中継役の側で伏せ字にしてから返ってきます
+  //   （APIキーの形をしたものは、こちらが知らないものも消えます）。
+  const detail = await relayDetail(response);
+  return new AiError(
+    'unavailable',
+    detail === null ? `中継役の応答: ${response.status}` : `中継役の応答: ${response.status} / ${detail}`,
+  );
+}
+
+/** 中継役が返した理由。無ければ null */
+async function relayDetail(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail !== 'string' || body.detail.length === 0) return null;
+    // ★ 画面に出すので、長すぎるものは切ります
+    return body.detail.slice(0, 300);
+  } catch {
+    return null;
+  }
 }
 
 /**

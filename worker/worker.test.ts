@@ -823,3 +823,92 @@ describe('★ 入口で、使いすぎを止める', () => {
     expect(JSON.stringify(await on.json())).toContain('120');
   });
 });
+
+/**
+ * ★ 失敗の理由を、伏せ字にして返す（追加仕様: 登録依頼のAI）。
+ *
+ *   以前は返していませんでした。キーが漏れるのを避けるためです。
+ *   ところが画面には「中継役の応答: 400」としか出ず、
+ *   **原因が分からないまま何往復もする**ことになりました。実際になりました。
+ *
+ *   伏せ方を「形で消す」ようにしたので、返しても安全になりました。
+ *   こちらが知らないキーでも、Google のキーの形をしていれば消えます。
+ */
+describe('★ 失敗の理由を返す（ただし伏せ字にして）', () => {
+  it('理由が本文に入る', async () => {
+    stubNetwork({
+      ok: false,
+      status: 400,
+      body: '{"error":{"message":"Invalid JSON payload received. Unknown name \\"nullable\\""}}',
+    });
+
+    const res = await worker.fetch(post(makeToken()), env());
+    const body = (await res.json()) as { detail?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.detail).toContain('Unknown name');
+  });
+
+  it('★ 設定してあるキーは、伏せられる', async () => {
+    stubNetwork({
+      ok: false,
+      status: 400,
+      body: `{"error":{"message":"API key not valid: ${API_KEY}"}}`,
+    });
+
+    const res = await worker.fetch(post(makeToken()), env());
+    const body = (await res.json()) as { detail?: string };
+
+    expect(body.detail).not.toContain(API_KEY);
+    expect(body.detail).toContain('伏せました');
+  });
+
+  it('★ こちらが知らないキーでも、形で伏せられる', async () => {
+    // ★ ここが今回いちばん大事な1件です。
+    //   「知っているキーだけ消す」では、URL に載って戻ってきた別のキーが素通りします。
+    //   形で消せば、こちらが知らなくても消えます。
+    stubNetwork({
+      ok: false,
+      status: 400,
+      body: '{"error":{"message":"API key not valid: AIzaSyD-EXAMPLE-not-the-configured-one"}}',
+    });
+
+    const res = await worker.fetch(post(makeToken()), env());
+    const body = (await res.json()) as { detail?: string };
+
+    expect(body.detail).not.toContain('AIzaSyD');
+    expect(body.detail).toContain('伏せました');
+  });
+
+  it('★ URL の key= に続く値も伏せられる', async () => {
+    stubNetwork({
+      ok: false,
+      status: 400,
+      body: '{"error":{"message":"failed on https://x/models/m:generateContent?key=zzzTOPSECRETzzz"}}',
+    });
+
+    const res = await worker.fetch(post(makeToken()), env());
+    const body = (await res.json()) as { detail?: string };
+
+    expect(body.detail).not.toContain('zzzTOPSECRETzzz');
+  });
+
+  it('長すぎる理由は、切って返す', async () => {
+    stubNetwork({ ok: false, status: 400, body: `{"m":"${'あ'.repeat(2000)}"}` });
+
+    const res = await worker.fetch(post(makeToken()), env());
+    const body = (await res.json()) as { detail?: string };
+
+    expect((body.detail ?? '').length).toBeLessThanOrEqual(300);
+  });
+
+  it('状態番号とモデル名も、いままでどおり返る', async () => {
+    stubNetwork({ ok: false, status: 400, body: '{"error":{"message":"nope"}}' });
+
+    const res = await worker.fetch(post(makeToken()), env({ GEMINI_MODEL: 'gemini-2.5-flash' }));
+    const body = (await res.json()) as { status?: number; model?: string };
+
+    expect(body.status).toBe(400);
+    expect(body.model).toBe('gemini-2.5-flash');
+  });
+});

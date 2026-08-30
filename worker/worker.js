@@ -252,7 +252,19 @@ export default {
         }),
       );
 
-      return json({ error: kind, status: upstream.status, model }, upstream.status, origin);
+      // ★ 理由を、伏せ字にしたうえで返します。
+      //
+      //   以前は返していませんでした。キーが漏れるのを避けるためです。
+      //   ただ、それだと画面には「中継役の応答: 400」としか出ず、
+      //   **原因が分からないまま何往復もする**ことになりました。実際になりました。
+      //
+      //   いまは redact が「形で」消すので、こちらが知らないキーも消えます。
+      //   長さも切ります。返すのはログイン済みの相手だけです。
+      return json(
+        { error: kind, status: upstream.status, model, detail: redact(text, env.GEMINI_API_KEY).slice(0, 300) },
+        upstream.status,
+        origin,
+      );
     }
 
     // 誰が使ったかを Cloudflare のログに残す（本文は残しません）
@@ -422,9 +434,27 @@ async function getPublicKey(kid) {
  *   前半だけがログに残ります。伏せてから切ります。
  */
 function redact(text, apiKey) {
-  if (!apiKey) return text;
-  return text.split(apiKey).join('[APIキーは伏せました]');
+  let out = String(text);
+
+  // 1. 設定されているキーそのもの
+  if (apiKey) out = out.split(apiKey).join(MASK);
+
+  // ★ 2. Google のAPIキーの形をしたもの全部。
+  //
+  //   設定されているキーと一字一句同じとは限りません。
+  //   URL に載って戻ってきたり、別のキーが混ざったりします。
+  //   「知っているキーだけ消す」では、知らないキーが素通りします。
+  //   形で消せば、こちらが知らなくても消えます。
+  out = out.replace(/AIza[0-9A-Za-z_-]{10,}/g, MASK);
+
+  // ★ 3. key= のクエリに続く値。
+  //   キーの形が変わっても、置き場所は変わりません。
+  out = out.replace(/([?&]key=)[^&"'\s]+/g, `$1${MASK}`);
+
+  return out;
 }
+
+const MASK = '[伏せました]';
 
 /** 文字列を送ったときの、実際のバイト数。 */
 function byteLength(text) {

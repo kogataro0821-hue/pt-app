@@ -111,3 +111,49 @@ describe('中継役の断り方を読み分ける', () => {
     expect(e.detail).toContain('500');
   });
 });
+
+/**
+ * ★ 中継役が返した理由を、画面に出す（追加仕様: 登録依頼のAI）。
+ *
+ *   番号だけだと「中継役の応答: 400」としか出ず、
+ *   キーの問題なのか、要求の形の問題なのかが切り分けられません。
+ *   実際、そのせいで原因が分からないまま何往復もしました。
+ */
+describe('★ 失敗の理由を画面に出す', () => {
+  it('中継役が理由を返したら、番号と一緒に出す', async () => {
+    const res = new Response(
+      JSON.stringify({ error: 'rejected', status: 400, detail: 'Unknown name "nullable"' }),
+      { status: 400 },
+    );
+
+    const err = await relayFailure(res);
+    expect(err.detail).toContain('400');
+    expect(err.detail).toContain('Unknown name');
+  });
+
+  it('理由が無ければ、いままでどおり番号だけ', async () => {
+    const res = new Response(JSON.stringify({ error: 'rejected', status: 500 }), { status: 500 });
+    const err = await relayFailure(res);
+    expect(err.detail).toBe('中継役の応答: 500');
+  });
+
+  it('本文が読めなくても、落ちない', async () => {
+    const res = new Response('これはJSONではありません', { status: 502 });
+    const err = await relayFailure(res);
+    expect(err.detail).toBe('中継役の応答: 502');
+  });
+
+  it('長すぎる理由は、切って出す', async () => {
+    const res = new Response(JSON.stringify({ detail: 'あ'.repeat(2000) }), { status: 400 });
+    const err = await relayFailure(res);
+    expect((err.detail ?? '').length).toBeLessThan(400);
+  });
+
+  it('1日の上限のときは、いままでどおりの言い方（理由で上書きしない）', async () => {
+    const res = new Response(JSON.stringify({ error: 'daily_limit_reached', limit: 50 }), {
+      status: 429,
+    });
+    const err = await relayFailure(res);
+    expect(err.kind).toBe('daily_limit');
+  });
+});
