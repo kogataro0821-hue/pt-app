@@ -1,9 +1,11 @@
 import {
+  aiFoodDraftSchema,
   aiLabelResultSchema,
   aiPhotoResultSchema,
   aiTextResultSchema,
   toMealRecognition,
   toPhotoRecognition,
+  type AiFoodDraft,
   type AiLabelResult,
   type MealRecognition,
 } from '@pt/ai-contract';
@@ -822,4 +824,169 @@ function round(v: number): number {
 function signed(v: number): string {
   const r = round(v);
   return r > 0 ? `+${r}` : String(r);
+}
+
+// -----------------------------------------------------------------------------
+// 登録依頼のAI（追加仕様: 登録依頼のAI）
+// -----------------------------------------------------------------------------
+
+const FOOD_DRAFT_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    per100g: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        kcal: { type: 'number' },
+        p: { type: 'number' },
+        f: { type: 'number' },
+        c: { type: 'number' },
+      },
+      required: ['kcal', 'p', 'f', 'c'],
+    },
+    confidence: { type: 'number' },
+    assumed: { type: 'string' },
+    aliases: { type: 'array', items: { type: 'string' } },
+    sameAs: { type: 'string', nullable: true },
+    sameAsReason: { type: 'string' },
+  },
+  required: ['per100g', 'confidence', 'assumed', 'aliases', 'sameAs', 'sameAsReason'],
+} as const;
+
+const FOOD_DRAFT_PROMPT = `あなたは、日本の食品成分表にくわしい管理栄養士です。
+食材の名前を1つ渡すので、マスタ登録の**下書き**を作ってください。
+
+これは下書きです。人が必ず見てから確定します。
+ですから「それらしく埋める」ことに価値はありません。**分からないことは分からないと言ってください。**
+
+■ per100g（100gあたりの値）
+
+日本食品標準成分表にあるような、一般的な値を入れてください。
+**分からない場合、思い当たらない場合、商品名で中身が特定できない場合は null にしてください。**
+それらしい数字を作らないでください。null は失敗ではなく、正しい答えです。
+
+調理法が書かれていなければ「生」の値にしてください。
+「ゆで」「焼き」などが名前に含まれていれば、その状態の値にしてください。
+
+■ assumed
+
+どういう食品として答えたかを、一文で書いてください。
+例:「皮なしの鶏むね肉（生）」「小麦粉のうどん（ゆで）」
+人が「その食品ではない」と気づくための欄です。per100g が null でも書いてください。
+
+■ confidence
+
+0〜1。一般的な食材で成分表に載っているものは高く、
+商品名・店名・あいまいな名前は低くしてください。
+
+■ aliases（表記ゆれ）
+
+**同じ食材を指す、日本語の書き方の違いだけ**を挙げてください。
+例:「鶏むね肉」→「鶏ムネ肉」「とりむね」
+
+次のものは入れないでください。
+  ・商品名、メーカー名、店名
+  ・調理法や状態が違うもの（「ゆで卵」は「卵」の別名ではありません）
+  ・説明文（「高たんぱくな肉」など）
+  ・部分が違うもの（「鶏もも肉」は「鶏むね肉」の別名ではありません）
+
+思い当たらなければ空の配列にしてください。無理に挙げないでください。
+
+■ sameAs（すでにある食材と同じか）
+
+「登録済みの食材」の一覧を渡します。
+渡した食材が、その一覧のどれかと**同じ食材**なら、その名前を**一覧に書かれたとおりそのまま**返してください。
+
+一覧に無い名前は、絶対に返さないでください。
+少しでも違う食材（部位が違う、調理法が違う、味付きと素材）なら null にしてください。
+迷ったら null にしてください。まとめる判断は人がします。
+
+sameAsReason には、そう判断した理由を一文で書いてください。null のときは空文字で構いません。`;
+
+/** AI に見せるマスタの件数の上限。全部渡すと依頼が大きくなりすぎます */
+const MASTER_LIMIT = 300;
+
+/**
+ * 食材名から、マスタ登録の下書きを作らせる（追加仕様: 登録依頼のAI）。
+ *
+ * ★ 送るのは**食材名と、マスタにある食材の名前だけ**です。
+ *
+ *   誰が依頼したか、いつ食べたか、何回食べたか、
+ *   契約者が入れた仮の値は、一切送りません（設計書 §35）。
+ *   送らなければ、AI 側で誰の記録かを結び付けられません。
+ *
+ * ★ マスタの名前を送るのは、「すでにある食材と同じか」を見るためです。
+ *   これは全員で使う辞書であって、誰か個人の情報ではありません。
+ *   数値も送りません（名前だけで足ります）。
+ *
+ * ★ 返ってきたものは、そのまま使ってはいけません。
+ *   @pt/core の refineFoodDraft を必ず通してください。
+ */
+export async function suggestFoodDraft(
+  name: string,
+  masterNames: readonly string[],
+): Promise<AiFoodDraft> {
+  if (AI_RELAY_URL === null) throw new AiError('not_configured');
+
+  const user = getAuthClient().currentUser;
+  if (user === null) throw new AiError('unauthenticated');
+
+  let idToken: string;
+  try {
+    idToken = await user.getIdToken();
+  } catch {
+    throw new AiError('unauthenticated');
+  }
+
+  const listed = masterNames.slice(0, MASTER_LIMIT);
+  const prompt =
+    `食材名: ${name}\n\n` +
+    (listed.length > 0
+      ? `登録済みの食材:\n${listed.map((n) => `- ${n}`).join('\n')}`
+      : '登録済みの食材: （まだありません。sameAs は必ず null にしてください）');
+
+  const body = {
+    systemInstruction: { parts: [{ text: FOOD_DRAFT_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: FOOD_DRAFT_RESPONSE_SCHEMA,
+      temperature: 0,
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(AI_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new AiError('network');
+  }
+
+  if (!response.ok) throw await relayFailure(response);
+
+  let raw: GeminiResponse;
+  try {
+    raw = (await response.json()) as GeminiResponse;
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const jsonText = raw.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof jsonText !== 'string') throw new AiError('invalid_output');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new AiError('invalid_output');
+  }
+
+  const result = aiFoodDraftSchema.safeParse(parsed);
+  if (!result.success) throw new AiError('invalid_output');
+
+  return result.data;
 }

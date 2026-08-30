@@ -21,6 +21,8 @@ export * from './meal/meal';
 export * from './chart/series';
 export * from './food/matching';
 export * from './food/label';
+export * from './food/plausible';
+export * from './food/draft';
 export * from './photo/retention';
 export * from './review/safety';
 export * from './rank/rank';
