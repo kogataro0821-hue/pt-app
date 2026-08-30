@@ -89,29 +89,46 @@ describe('★ 考えさせない', () => {
 });
 
 describe('★ 通らなかったときの保険', () => {
-  it('★ 考えない設定が原因の400なら、外してやり直す', async () => {
+  it('★ 400 が返ったら、考えない設定を外してやり直す', async () => {
     fetchMock
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: 'bad_request', detail: 'unknown field thinkingConfig' }), {
-          status: 400,
-        }),
+        new Response(
+          JSON.stringify({
+            error: 'rejected',
+            status: 400,
+            detail: '{"error":{"code":400,"message":"Request contains an invalid argument."}}',
+          }),
+          { status: 400 },
+        ),
       )
       .mockResolvedValueOnce(ok(DRAFT));
 
     const result = await suggestFoodDraft('蒸し鶏', []);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // 2回目には、考えない設定が入っていない
     expect(generationConfig(1).thinkingConfig).toBeUndefined();
-    // ちゃんと結果が返る（速さより、動くことが先）
     expect(result.per100g).toEqual({ kcal: 105, p: 23.3, f: 1.9, c: 0.1 });
+  });
+
+  it('★ 相手が理由を言わなくても、やり直す', async () => {
+    // ★ ここが今回の急所です。
+    //
+    //   最初は「応答に thinking と書いてあるときだけ」やり直していました。
+    //   ところが Gemini は「Request contains an invalid argument.」としか返しません。
+    //   どの項目が悪いかを言わないので、**保険が一度も効きませんでした。**
+    //
+    //   相手が理由を言わない以上、こちらで見分けようとするのが間違いでした。
+    fetchMock
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(ok(DRAFT));
+
+    await suggestFoodDraft('蒸し鶏', []);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('やり直すときも、中身は変えない', async () => {
     fetchMock
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ detail: 'thinkingConfig is not supported' }), { status: 400 }),
-      )
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(ok(DRAFT));
 
     await suggestFoodDraft('蒸し鶏', []);
@@ -120,24 +137,36 @@ describe('★ 通らなかったときの保険', () => {
     expect(generationConfig(1).responseSchema).toEqual(generationConfig(0).responseSchema);
   });
 
-  it('★ 関係ない400では、やり直さない', async () => {
-    // ★ どんな400でもやり直すと、鍵の設定ミスのようなときに
-    //   1日の回数を2つ食べてしまいます。
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ detail: 'API key not valid' }), { status: 400 }),
-    );
-
-    await expect(suggestFoodDraft('蒸し鶏', [])).rejects.toThrow();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('やり直しても駄目なら、ちゃんと失敗する', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ detail: 'thinkingConfig' }), { status: 400 }),
-    );
+  it('★ やり直しは1回だけ（無限に投げない）', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 400 }));
 
     await expect(suggestFoodDraft('蒸し鶏', [])).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('★ 考えない設定を付けていない問い合わせでは、やり直さない', async () => {
+    // ★ 評価文には付けていません。外すものが無いので、やり直す意味もありません。
+    fetchMock.mockResolvedValue(new Response('', { status: 400 }));
+
+    await expect(
+      requestDayReview({
+        actual: { kcal: 1800, p: 130, f: 50, c: 200 },
+        target: { kcal: 1800, p: 130, f: 50, c: 200 },
+        exerciseMinutes: 0,
+        mealCount: 3,
+        noValueCount: 0,
+        provisionalCount: 0,
+        reviewMode: 'standard',
+      }),
+    ).rejects.toThrow();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('400 以外では、やり直さない', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 500 }));
+    await expect(suggestFoodDraft('蒸し鶏', [])).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('通信そのものが駄目なときは、やり直さない', async () => {

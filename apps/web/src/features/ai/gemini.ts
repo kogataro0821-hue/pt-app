@@ -276,14 +276,22 @@ async function postToRelay(
 
   let response = await send(body);
 
+  // ★ 400 が返ってきて、こちらが「考えない」設定を付けていたら、外してやり直します。
+  //
+  //   最初は「応答に thinking と書いてあるときだけ」やり直していました。
+  //   ところが Gemini は
+  //       {"error":{"code":400,"message":"Request contains an invalid argument."}}
+  //   としか返しません。**どの項目が悪いかを言いません。**
+  //   その結果、保険が一度も効かないまま「400です」とだけ出ていました。
+  //
+  //   相手が理由を言わない以上、こちらで見分けようとするのが間違いでした。
+  //   付けたのは速くするためだけの、無くても困らない設定です。
+  //   400 なら黙って外してやり直すほうが、確実に動きます。
+  //
+  //   代償は「本当に別の理由で400のとき、1日の回数を1つ余分に使う」ことだけです。
+  //   動かないまま悩むより、はるかに安い代償です。
   if (response.status === 400 && hasThinkingConfig(body)) {
-    const detail = await peekDetail(response);
-    if (detail.includes('thinking')) {
-      response = await send(withoutThinkingConfig(body));
-    } else {
-      // 本文をもう読んでしまったので、同じ内容の応答を作り直します
-      response = new Response(detail, { status: 400 });
-    }
+    response = await send(withoutThinkingConfig(body));
   }
 
   if (!response.ok) throw await relayFailure(response, tooLarge);
@@ -299,15 +307,6 @@ function withoutThinkingConfig(body: Record<string, unknown>): Record<string, un
   const config = { ...(body.generationConfig as Record<string, unknown>) };
   delete config.thinkingConfig;
   return { ...body, generationConfig: config };
-}
-
-/** 応答の本文を、あとでもう一度使えるように読み出す */
-async function peekDetail(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return '';
-  }
 }
 
 /** 文章から食材候補を作る。 */
