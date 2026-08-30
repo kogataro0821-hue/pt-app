@@ -1494,12 +1494,19 @@ select.input {
 .chart-line.fat {
   stroke: var(--p);
 }
+/* 筋肉量（追加仕様: 筋肉量）。体重・体脂肪率と見分けが付く色にします */
+.chart-line.muscle {
+  stroke: var(--c);
+}
 
 .chart-dot.weight {
   fill: var(--f);
 }
 .chart-dot.fat {
   fill: var(--p);
+}
+.chart-dot.muscle {
+  fill: var(--c);
 }
 
 .chart-tick,

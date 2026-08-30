@@ -23,6 +23,14 @@ export interface Day {
   weightKg: number | null;
   /** 体脂肪率（%）。未入力は null */
   bodyFatPct: number | null;
+  /**
+   * 筋肉量（kg）。未入力は null（追加仕様: 筋肉量）。
+   *
+   * ★ 体重と体脂肪率からは出せません。
+   *   体脂肪率から分かるのは「除脂肪量」で、骨も水分も含みます。
+   *   体組成計が別に出す数字なので、別の欄として持ちます。
+   */
+  muscleKg: number | null;
 
   /**
    * カレンダーに印を出すための要約。
@@ -74,6 +82,7 @@ export function emptyDay(date: DateKey): Day {
     status: 'open',
     weightKg: null,
     bodyFatPct: null,
+    muscleKg: null,
     hasMeals: false,
     hasExercise: false,
     reviewedAt: null,

@@ -21,6 +21,14 @@ export interface Targets {
   weightKg: number | null;
   /** 目標体脂肪率（%）。設定しない場合は null */
   bodyFatPct: number | null;
+  /**
+   * 目標筋肉量（kg）。設定しない場合は null（追加仕様: 筋肉量）。
+   *
+   * ★ 体重・体脂肪率から計算では出せません。
+   *   体脂肪率から分かるのは「除脂肪量」で、そこには骨も水分も含まれます。
+   *   筋肉量は体組成計が別に出す数字なので、別の欄として持ちます。
+   */
+  muscleKg: number | null;
   /** 運動目標。「週3回 / 1回45分」など自由記述（設計書 §4） */
   exercise: string;
 }
@@ -32,6 +40,7 @@ export const DEFAULT_TARGETS: Targets = {
   c: 200,
   weightKg: null,
   bodyFatPct: null,
+  muscleKg: null,
   exercise: '',
 };
 
@@ -44,7 +53,7 @@ export function targetsToNutrients(targets: Targets): Nutrients {
 // 入力の検証
 // -----------------------------------------------------------------------------
 
-export type TargetField = 'kcal' | 'p' | 'f' | 'c' | 'weightKg' | 'bodyFatPct';
+export type TargetField = 'kcal' | 'p' | 'f' | 'c' | 'weightKg' | 'bodyFatPct' | 'muscleKg';
 
 export interface TargetIssue {
   field: TargetField;
@@ -59,6 +68,7 @@ const RANGES: Record<TargetField, { min: number; max: number; label: string; uni
   c: { min: 0, max: 800, label: '炭水化物', unit: 'g' },
   weightKg: { min: 20, max: 300, label: '目標体重', unit: 'kg' },
   bodyFatPct: { min: 1, max: 60, label: '目標体脂肪率', unit: '%' },
+  muscleKg: { min: 5, max: 150, label: '目標筋肉量', unit: 'kg' },
 };
 
 /**
@@ -76,6 +86,7 @@ export function validateTargets(targets: Targets): TargetIssue[] {
   }
   if (targets.weightKg !== null) issues.push(...checkRange('weightKg', targets.weightKg));
   if (targets.bodyFatPct !== null) issues.push(...checkRange('bodyFatPct', targets.bodyFatPct));
+  if (targets.muscleKg !== null) issues.push(...checkRange('muscleKg', targets.muscleKg));
 
   return issues;
 }

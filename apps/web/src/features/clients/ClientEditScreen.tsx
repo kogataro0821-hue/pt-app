@@ -363,6 +363,18 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
             </Field>
           </div>
 
+          {/* ★ 筋肉量は、体重・体脂肪率から計算では出せません（追加仕様: 筋肉量）。
+                 体組成計が別に出す数字なので、目標も別に持ちます。 */}
+          <Field label="目標筋肉量（kg）">
+            <input
+              className="input"
+              type="number"
+              inputMode="decimal"
+              value={draft.targets.muscleKg ?? ''}
+              onChange={(e) => patchTargets({ muscleKg: numberOrNull(e.target.value) })}
+            />
+          </Field>
+
           <Field label="運動目標">
             <input
               className="input"

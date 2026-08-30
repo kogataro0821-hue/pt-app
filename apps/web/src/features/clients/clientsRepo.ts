@@ -367,6 +367,7 @@ function toClient(id: string, data: Record<string, unknown>): Client {
       c: num(targets.c) ?? DEFAULT_TARGETS.c,
       weightKg: num(targets.weightKg),
       bodyFatPct: num(targets.bodyFatPct),
+      muscleKg: num(targets.muscleKg),
       exercise: str(targets.exercise) ?? '',
     },
     reviewMode: (str(data.reviewMode) as ReviewMode | undefined) ?? 'standard',

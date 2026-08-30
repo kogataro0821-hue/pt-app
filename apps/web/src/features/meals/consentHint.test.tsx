@@ -68,7 +68,7 @@ async function show(aiConsent: AiConsent, isAdmin = false, canEdit = true) {
       <MealsSection
         clientId="taro"
         date="2026-08-29"
-        targets={{ kcal: 1800, p: 130, f: 50, c: 200, weightKg: null, bodyFatPct: null, exercise: '' }}
+        targets={{ kcal: 1800, p: 130, f: 50, c: 200, weightKg: null, bodyFatPct: null, muscleKg: null, exercise: '' }}
         canEdit={canEdit}
         isAdmin={isAdmin}
         aiConsent={aiConsent}

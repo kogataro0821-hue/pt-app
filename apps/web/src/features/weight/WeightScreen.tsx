@@ -36,7 +36,10 @@ const PAD = { top: 8, right: 8, bottom: 20, left: 34 };
 
 export function WeightScreen({ client }: { client: Client }) {
   const [rangeKey, setRangeKey] = useState<RangeKey>('3m');
-  const [rows, setRows] = useState<{ date: DateKey; weightKg: number | null; bodyFatPct: number | null }[] | null>(null);
+  const [rows, setRows] = useState<
+    | { date: DateKey; weightKg: number | null; bodyFatPct: number | null; muscleKg: number | null }[]
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[1];
@@ -53,7 +56,12 @@ export function WeightScreen({ client }: { client: Client }) {
         const days = await listRange(client.clientId, from, to);
         if (!cancelled) {
           setRows(
-            days.map((d) => ({ date: d.date, weightKg: d.weightKg, bodyFatPct: d.bodyFatPct })),
+            days.map((d) => ({
+              date: d.date,
+              weightKg: d.weightKg,
+              bodyFatPct: d.bodyFatPct,
+              muscleKg: d.muscleKg,
+            })),
           );
         }
       } catch {
@@ -82,6 +90,16 @@ export function WeightScreen({ client }: { client: Client }) {
       (rows ?? [])
         .filter((r): r is typeof r & { bodyFatPct: number } => r.bodyFatPct !== null)
         .map((r) => ({ date: r.date, value: r.bodyFatPct })),
+    [rows],
+  );
+
+  // ★ 筋肉量（追加仕様: 筋肉量）。
+  //   「体重は減っていないが筋肉は増えている」が見えるのが、この欄の値打ちです。
+  const musclePoints: Point[] = useMemo(
+    () =>
+      (rows ?? [])
+        .filter((r): r is typeof r & { muscleKg: number } => r.muscleKg !== null)
+        .map((r) => ({ date: r.date, value: r.muscleKg })),
     [rows],
   );
 
@@ -139,6 +157,20 @@ export function WeightScreen({ client }: { client: Client }) {
             to={to}
             accent="fat"
           />
+
+          {/* ★ 記録が1件も無いときは、グラフを出しません。
+                 空のグラフが3つ並ぶより、2つのほうが読みやすいためです。 */}
+          {musclePoints.length > 0 && (
+            <Chart
+              title="筋肉量"
+              unit="kg"
+              points={musclePoints}
+              target={client.targets.muscleKg}
+              from={from}
+              to={to}
+              accent="muscle"
+            />
+          )}
         </>
       )}
     </>
@@ -160,7 +192,7 @@ function Chart({
   target: number | null;
   from: DateKey;
   to: DateKey;
-  accent: 'weight' | 'fat';
+  accent: 'weight' | 'fat' | 'muscle';
 }) {
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;

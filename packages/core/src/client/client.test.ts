@@ -116,3 +116,38 @@ describe('目標値を計算エンジンの表現に変換する', () => {
     expect(nutrients.p).toBe(130_000);
   });
 });
+
+/**
+ * 目標筋肉量（追加仕様: 筋肉量）。
+ *
+ * ★ 体重・体脂肪率と同じ扱いにしてあります。
+ *   増量期は、体重より筋肉量のほうが見たい数字になります。
+ */
+describe('★ 目標筋肉量', () => {
+  it('設定しなくてもよい', () => {
+    expect(validateTargets({ ...DEFAULT_TARGETS, muscleKg: null })).toEqual([]);
+  });
+
+  it('ふつうの値は通る', () => {
+    expect(validateTargets({ ...DEFAULT_TARGETS, muscleKg: 35 })).toEqual([]);
+  });
+
+  it('極端な値は、打ち間違いとして知らせる', () => {
+    const issues = validateTargets({ ...DEFAULT_TARGETS, muscleKg: 300 });
+    expect(issues.map((i) => i.field)).toContain('muscleKg');
+  });
+
+  it('小さすぎる値も知らせる', () => {
+    const issues = validateTargets({ ...DEFAULT_TARGETS, muscleKg: 1 });
+    expect(issues.map((i) => i.field)).toContain('muscleKg');
+  });
+
+  it('知らせるときは、どの欄かが分かる言い方にする', () => {
+    const issues = validateTargets({ ...DEFAULT_TARGETS, muscleKg: 300 });
+    expect(issues.find((i) => i.field === 'muscleKg')?.message).toContain('目標筋肉量');
+  });
+
+  it('既定では、設定されていない', () => {
+    expect(DEFAULT_TARGETS.muscleKg).toBeNull();
+  });
+});

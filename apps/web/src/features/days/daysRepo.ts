@@ -59,7 +59,7 @@ export async function listMonth(clientId: string, month: MonthKey): Promise<Map<
 export async function saveBodyMetrics(
   clientId: string,
   date: DateKey,
-  metrics: { weightKg: number | null; bodyFatPct: number | null },
+  metrics: { weightKg: number | null; bodyFatPct: number | null; muscleKg: number | null },
 ): Promise<void> {
   await setDoc(
     doc(daysCol(clientId), date),
@@ -67,6 +67,7 @@ export async function saveBodyMetrics(
       date, // 範囲検索に使うので必ず入れる
       weightKg: metrics.weightKg,
       bodyFatPct: metrics.bodyFatPct,
+      muscleKg: metrics.muscleKg,
       updatedAt: Date.now(),
     },
     { merge: true },
@@ -80,6 +81,7 @@ function toDay(id: string, data: Record<string, unknown>): Day {
     status: data.status === 'finalized' ? 'finalized' : 'open',
     weightKg: num(data.weightKg),
     bodyFatPct: num(data.bodyFatPct),
+    muscleKg: num(data.muscleKg),
     hasMeals: data.hasMeals === true,
     hasExercise: data.hasExercise === true,
     reviewedAt: num(data.reviewedAt),
@@ -102,13 +104,22 @@ function num(value: unknown): number | null {
 export function validateBodyMetrics(input: {
   weightKg: number | null;
   bodyFatPct: number | null;
+  muscleKg: number | null;
 }): string | null {
-  const { weightKg, bodyFatPct } = input;
+  const { weightKg, bodyFatPct, muscleKg } = input;
   if (weightKg !== null && (weightKg < 20 || weightKg > 300)) {
     return '体重は20〜300kgの範囲で入力してください。';
   }
   if (bodyFatPct !== null && (bodyFatPct < 1 || bodyFatPct > 70)) {
     return '体脂肪率は1〜70%の範囲で入力してください。';
+  }
+  if (muscleKg !== null && (muscleKg < 5 || muscleKg > 150)) {
+    return '筋肉量は5〜150kgの範囲で入力してください。';
+  }
+  // ★ 筋肉量が体重を超えていたら、まず打ち間違いです。
+  //   体重70kgの人の筋肉量が75kg、はありえません。
+  if (weightKg !== null && muscleKg !== null && muscleKg > weightKg) {
+    return '筋肉量が体重を超えています。入力を確認してください。';
   }
   return null;
 }

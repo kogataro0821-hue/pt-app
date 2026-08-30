@@ -65,6 +65,7 @@ export function DayScreen({
   const [exerciseMinutes, setExerciseMinutes] = useState(0);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
+  const [muscle, setMuscle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,6 +83,7 @@ export function DayScreen({
         setDay(loaded);
         setWeight(loaded.weightKg === null ? '' : String(loaded.weightKg));
         setBodyFat(loaded.bodyFatPct === null ? '' : String(loaded.bodyFatPct));
+        setMuscle(loaded.muscleKg === null ? '' : String(loaded.muscleKg));
       } catch {
         if (!cancelled) setError('この日の記録を読み込めませんでした。');
       }
@@ -101,7 +103,11 @@ export function DayScreen({
     event.preventDefault();
     if (busy || day === null) return;
 
-    const metrics = { weightKg: numberOrNull(weight), bodyFatPct: numberOrNull(bodyFat) };
+    const metrics = {
+      weightKg: numberOrNull(weight),
+      bodyFatPct: numberOrNull(bodyFat),
+      muscleKg: numberOrNull(muscle),
+    };
     const problem = validateBodyMetrics(metrics);
     if (problem !== null) {
       setError(problem);
@@ -253,10 +259,34 @@ export function DayScreen({
                   placeholder="未入力"
                 />
               </label>
+
+              {/* ★ 筋肉量は、体重と体脂肪率から計算では出せません（追加仕様: 筋肉量）。
+                     体脂肪率から分かるのは「除脂肪量」で、骨も水分も含みます。
+                     体組成計が別に出す数字なので、別の欄にしてあります。 */}
+              <label className="field">
+                <span className="field-label">筋肉量（kg）</span>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  value={muscle}
+                  onChange={(e) => {
+                    setMuscle(e.target.value);
+                    setSaved(false);
+                  }}
+                  disabled={!canEdit}
+                  placeholder="未入力"
+                />
+              </label>
             </div>
 
-            {client.targets.weightKg !== null && (
-              <p className="note">目標体重 {client.targets.weightKg}kg</p>
+            {(client.targets.weightKg !== null || client.targets.muscleKg !== null) && (
+              <p className="note">
+                {client.targets.weightKg !== null && <>目標体重 {client.targets.weightKg}kg</>}
+                {client.targets.weightKg !== null && client.targets.muscleKg !== null && ' / '}
+                {client.targets.muscleKg !== null && <>目標筋肉量 {client.targets.muscleKg}kg</>}
+              </p>
             )}
 
             {error !== null && (
