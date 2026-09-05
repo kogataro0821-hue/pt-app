@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { foodKey } from '@pt/core';
+import { findNameConflicts, foodKey } from '@pt/core';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { clearFoodCache, deleteFood, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { FoodEditor } from './FoodEditor';
@@ -34,6 +34,14 @@ export function FoodsScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * 名前がぶつかっている食材（追加仕様: 名前の重複に印）。
+   *
+   * ★ 検索で絞ったあとではなく、**全件**から出します。
+   *   相手が検索の外にいたら、ぶつかっていないように見えてしまいます。
+   */
+  const conflicts = useMemo(() => findNameConflicts(foods ?? []), [foods]);
 
   // 検索も照合キーで行います。「とりムネ」と打っても「鶏むね肉」に当たります。
   const shown = useMemo(() => {
@@ -86,6 +94,21 @@ export function FoodsScreen() {
         </p>
       )}
 
+      {/* ★ 一覧の上にも件数を出します（追加仕様: 名前の重複に印）。
+             印だけだと、下までたどらないと気づけません。 */}
+      {conflicts.size > 0 && (
+        <section className="card warn" role="status">
+          <h3 className="card-title">名前がぶつかっている食材が{conflicts.size}件あります</h3>
+          <p className="note">
+            同じ呼び名の食材が複数あると、契約者が入力したときに
+            <b>どちらの栄養値が使われるか決まりません</b>。
+            画面には何も出ないので、気づかないまま古い数字で記録され続けます。
+            <br />
+            片方を消すか、名前や別名を直してください。
+          </p>
+        </section>
+      )}
+
       {editing !== null && (
         <FoodEditor
           initial={editing}
@@ -126,7 +149,14 @@ export function FoodsScreen() {
       )}
 
       {shown.map((food) => (
-        <section className="card client-row-wrap" key={food.id}>
+        <section
+          className={
+            conflicts.get(food.id) === undefined
+              ? 'card client-row-wrap'
+              : 'card client-row-wrap conflicted'
+          }
+          key={food.id}
+        >
           <div className="client-row">
             <div className="client-main">
               <span className="client-name">{food.name}</span>
@@ -134,6 +164,15 @@ export function FoodsScreen() {
                 {food.per100g.kcal}kcal · P{food.per100g.p} F{food.per100g.f} C{food.per100g.c}
                 {' / 100g'}
               </span>
+              {/* ★ ぶつかっている相手を、その場に名指しします（追加仕様: 名前の重複に印）。
+                     「ぶつかっています」だけでは、どこを直せばいいか分かりません。 */}
+              {conflicts.get(food.id) !== undefined && (
+                <span className="food-conflict">
+                  「{(conflicts.get(food.id)?.names ?? []).join('」「')}」が
+                  {(conflicts.get(food.id)?.others ?? []).map((o) => o.name).join('・')}
+                  とぶつかっています
+                </span>
+              )}
               {/* ★ かぞえ方は一覧にも出します（追加仕様: 単位換算）。
                      どの食材に入れ終わったかが、開かずに分かるようにです。 */}
               {food.unitConversions.length > 0 && (

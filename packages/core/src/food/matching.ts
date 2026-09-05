@@ -270,3 +270,88 @@ export function orderedVariants(variants: readonly VariantCount[]): string[] {
   }
   return out;
 }
+
+// -----------------------------------------------------------------------------
+// 名前のぶつかり（追加仕様: 名前の重複に印）
+// -----------------------------------------------------------------------------
+
+/**
+ * 同じ呼び名を持つ食材どうしの、ぶつかり。
+ *
+ * ★ これは実際に起きて、原因を突き止めるのに何往復もかかりました。
+ *
+ *   「卵」が2件ありました。片方は F 10.2、もう片方は古い F 1.2 です。
+ *   管理者の画面では新しいほうを直していたのに、
+ *   契約者の画面には**古いほうの数字が出ていました。**
+ *
+ *   findExactFood は、当たった中の**先頭を黙って返します。**
+ *   どちらが選ばれるかは並び順しだいで、画面には何も出ません。
+ *   トレーナーが数字を根拠に指導するアプリで、
+ *   「どの数字が使われるか分からない」は、あってはならない状態です。
+ *
+ * ★ 名前だけでなく、別名も見ます。
+ *   「卵」に別名「たまご」を足したあとで、
+ *   別の食材が「たまご」という名前で登録されていれば、それもぶつかります。
+ *   むしろ本名どうしより気づきにくい形です。
+ */
+export interface NameConflict<T> {
+  /** ぶつかっている相手（自分は入りません） */
+  others: T[];
+  /** ぶつかっている呼び名。管理者に見せるので、キーではなく実際の表記です */
+  names: string[];
+}
+
+/**
+ * ぶつかっている食材を洗い出す。
+ *
+ * 返すのは「ぶつかっているものだけ」です。ぶつかっていない食材は入りません。
+ * キーは食材のIDなので、画面側は id で引けます。
+ *
+ * ★ 総当たりにはしません。
+ *   呼び名ごとにまとめてから、2件以上ある山だけを拾います。
+ *   食材が増えても、かかる時間は件数に比例したままです。
+ */
+export function findNameConflicts<T extends NameableFood>(
+  foods: readonly T[],
+): Map<string, NameConflict<T>> {
+  /** 照合キー → その呼び名を持つ食材たち（同じ食材は1回だけ） */
+  const byKey = new Map<string, { name: string; foods: T[] }>();
+
+  for (const food of foods) {
+    // ★ 1つの食材が「卵」と別名「たまご」を持ち、両方が同じキーになることがあります。
+    //   自分自身とぶつかった扱いにしないよう、食材ごとに一度だけ数えます。
+    const seen = new Set<string>();
+
+    for (const name of allNames(food)) {
+      const key = foodKey(name);
+      if (key.length === 0 || seen.has(key)) continue;
+      seen.add(key);
+
+      const bucket = byKey.get(key);
+      if (bucket === undefined) {
+        byKey.set(key, { name, foods: [food] });
+      } else {
+        bucket.foods.push(food);
+      }
+    }
+  }
+
+  const out = new Map<string, NameConflict<T>>();
+
+  for (const { name, foods: sharing } of byKey.values()) {
+    if (sharing.length < 2) continue;
+
+    for (const food of sharing) {
+      const found = out.get(food.id) ?? { others: [], names: [] };
+      for (const other of sharing) {
+        if (other.id !== food.id && !found.others.some((o) => o.id === other.id)) {
+          found.others.push(other);
+        }
+      }
+      if (!found.names.includes(name)) found.names.push(name);
+      out.set(food.id, found);
+    }
+  }
+
+  return out;
+}

@@ -2822,3 +2822,24 @@ select.input {
   font-weight: 500;
   color: var(--muted);
 }
+
+/* ---- 名前のぶつかり（追加仕様: 名前の重複に印）--------------------------- */
+
+/* ★ 「要確認」であってエラーではないので、赤ではなく注意の色を使います。
+   ここは配色の決めごとです（設計書 §11.4「過剰を赤で煽らない」）。 */
+.food-conflict {
+  display: block;
+  margin-top: 2px;
+  color: var(--attention);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* ★ 左に帯を出して、一覧を流し見しても目に留まるようにします。
+   文字だけだと、他の補足（別名・かぞえ方）に紛れます。 */
+.card.client-row-wrap.conflicted {
+  border-color: var(--attention);
+  border-left-width: 4px;
+  border-left-style: solid;
+}

@@ -4,6 +4,7 @@ import {
   allNames,
   bigrams,
   findExactFood,
+  findNameConflicts,
   findSimilarFoods,
   foodKey,
   isSameFoodName,
@@ -302,5 +303,74 @@ describe('★ 表記のゆれから代表を選ぶ', () => {
         { text: 'サラダチキン', count: 1 },
       ]),
     ).toEqual(['サラダチキン', 'サラダ　チキン']);
+  });
+});
+
+/**
+ * 名前のぶつかり（追加仕様: 名前の重複に印）。
+ *
+ * ★ これは実際に起きて、原因を突き止めるのに何往復もかかりました。
+ *
+ *   「卵」が2件ありました。片方は F 10.2、もう片方は古い F 1.2 です。
+ *   管理者は新しいほうを直していたのに、契約者の画面には
+ *   **古いほうの数字が出ていました。**
+ *
+ *   findExactFood は当たった中の先頭を黙って返します。
+ *   どちらが選ばれるかは並び順しだいで、画面には何も出ません。
+ */
+describe('★ 名前のぶつかりを見つける', () => {
+  const egg = { id: 'たまご', name: '卵', aliases: ['たまご'] };
+  const eggOld = { id: 'e2', name: 'たまご', aliases: [] };
+  const rice = { id: 'こめ', name: '白米', aliases: ['ごはん'] };
+
+  it('ぶつかっていなければ、何も返さない', () => {
+    expect(findNameConflicts([rice]).size).toBe(0);
+    expect(findNameConflicts([]).size).toBe(0);
+  });
+
+  it('★ 別名と本名がぶつかっているのを見つける', () => {
+    // ★ 本名どうしより気づきにくい形です。
+    //   「卵」に別名「たまご」を足したあとで、
+    //   別の食材が「たまご」という名前で残っていると、これになります。
+    const found = findNameConflicts([egg, eggOld]);
+
+    expect(found.size).toBe(2);
+    expect(found.get('たまご')?.others.map((f) => f.id)).toEqual(['e2']);
+    expect(found.get('e2')?.others.map((f) => f.id)).toEqual(['たまご']);
+  });
+
+  it('どの呼び名でぶつかっているかを、そのまま返す', () => {
+    // ★ 「ぶつかっています」だけでは、管理者はどこを直せばいいか分かりません
+    const found = findNameConflicts([egg, eggOld]);
+    expect(found.get('e2')?.names).toEqual(['たまご']);
+  });
+
+  it('表記がゆれていても見つける（照合キーで見るため）', () => {
+    const a = { id: 'a', name: 'サラダチキン', aliases: [] };
+    const b = { id: 'b', name: 'サラダ　チキン', aliases: [] };
+    expect(findNameConflicts([a, b]).size).toBe(2);
+  });
+
+  it('★ 自分の本名と別名が同じでも、ぶつかり扱いにしない', () => {
+    // ★ 「サラダチキン」と別名「サラダ チキン」は同じキーになります。
+    //   自分自身とぶつかったことにすると、無関係な警告が出続けます。
+    const self = { id: 's', name: 'サラダチキン', aliases: ['サラダ チキン'] };
+    expect(findNameConflicts([self]).size).toBe(0);
+  });
+
+  it('3件以上ぶつかっていても、全部の相手を返す', () => {
+    const a = { id: 'a', name: '卵', aliases: [] };
+    const b = { id: 'b', name: 'たまご', aliases: ['卵'] };
+    const c = { id: 'c', name: 'タマゴ', aliases: ['卵'] };
+
+    const found = findNameConflicts([a, b, c]);
+    expect(found.size).toBe(3);
+    expect(found.get('a')?.others.map((f) => f.id).sort()).toEqual(['b', 'c']);
+  });
+
+  it('空の名前は無視する（全部がぶつかることにならない）', () => {
+    const a = { id: 'a', name: '###', aliases: [] };
+    const b = { id: 'b', name: '///', aliases: [] };
+    expect(findNameConflicts([a, b]).size).toBe(0);
   });
 });
