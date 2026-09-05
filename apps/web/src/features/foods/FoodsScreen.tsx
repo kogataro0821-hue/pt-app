@@ -134,6 +134,13 @@ export function FoodsScreen() {
                 {food.per100g.kcal}kcal · P{food.per100g.p} F{food.per100g.f} C{food.per100g.c}
                 {' / 100g'}
               </span>
+              {/* ★ かぞえ方は一覧にも出します（追加仕様: 単位換算）。
+                     どの食材に入れ終わったかが、開かずに分かるようにです。 */}
+              {food.unitConversions.length > 0 && (
+                <span className="client-meta">
+                  かぞえ方: {food.unitConversions.map((c) => `1${c.unit}=${c.grams}g`).join('、')}
+                </span>
+              )}
               {food.aliases.length > 0 && (
                 <span className="client-meta">別名: {food.aliases.join('、')}</span>
               )}

@@ -1,11 +1,13 @@
 import { collection, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import {
   foodKey,
+  normalizeConversions,
   shouldAddAlias,
   toInternal,
   type NameableFood,
   type Nutrients,
   type Per100gInput,
+  type UnitConversion,
 } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 
@@ -32,6 +34,17 @@ export interface Food extends NameableFood {
   aliases: string[];
   /** 100gあたり（人間の単位で保存する。コンソールから読めるように） */
   per100g: Per100gInput;
+  /**
+   * 「1個 = 50g」の換算（追加仕様: 単位換算）。未設定なら空の配列。
+   *
+   * ★ ここが空でも、契約者はグラムで記録できます。
+   *   換算はあくまで「楽になる道」であって、必須ではありません。
+   *
+   * ★ 「6枚切り」と「8枚切り」は、同じ『枚』で重さが違います（60gと45g）。
+   *   1件では表せないので、その場合はマスタを2件に分けてください。
+   *   「皮なし」「ゆで」を分けているのと同じやり方です。
+   */
+  unitConversions: UnitConversion[];
   /** 補足。「皮なし」「ゆで」など、管理者が残すメモ */
   note: string;
   createdAt: number | null;
@@ -86,6 +99,8 @@ export async function saveFood(food: Food): Promise<Food> {
     ...food,
     name: food.name.trim(),
     aliases: food.aliases.map((a) => a.trim()).filter((a) => a.length > 0),
+    // 順を揃え、壊れた行と重複した単位を落としてから保存します
+    unitConversions: normalizeConversions(food.unitConversions),
     updatedAt: Date.now(),
     createdAt: food.createdAt ?? Date.now(),
   };
@@ -96,6 +111,7 @@ export async function saveFood(food: Food): Promise<Food> {
     // ★ 照合キーも保存します。将来サーバー側で検索する必要が出たときのためです。
     key: foodKey(saved.name),
     per100g: saved.per100g,
+    unitConversions: saved.unitConversions,
     note: saved.note,
     createdAt: saved.createdAt,
     updatedAt: saved.updatedAt,
@@ -124,6 +140,7 @@ export function emptyFood(name = ''): Food {
     name,
     aliases: [],
     per100g: { kcal: 0, p: 0, f: 0, c: 0 },
+    unitConversions: [],
     note: '',
     createdAt: null,
     updatedAt: null,
@@ -139,6 +156,11 @@ function toFood(id: string, data: Record<string, unknown>): Food {
       ? data.aliases.filter((a): a is string => typeof a === 'string')
       : [],
     per100g: { kcal: num(p.kcal), p: num(p.p), f: num(p.f), c: num(p.c) },
+    // ★ 換算はあとから足した項目です。無い記録も、壊れた記録も、空として読みます。
+    //   1件の変な行のせいで食品マスタ全体が開けなくなるほうが、実害が大きいためです。
+    unitConversions: normalizeConversions(
+      Array.isArray(data.unitConversions) ? (data.unitConversions as UnitConversion[]) : [],
+    ),
     note: typeof data.note === 'string' ? data.note : '',
     createdAt: numOrNull(data.createdAt),
     updatedAt: numOrNull(data.updatedAt),

@@ -2725,3 +2725,80 @@ select.input {
 .appmenu-signout {
   color: var(--danger);
 }
+
+/* ---- 量の入力と、かぞえ方（追加仕様: 単位換算）--------------------------- */
+
+/* ★ class名は amount- / conv- で始めます。
+   .unit や .row のような一般的な名前は、他の画面と当たります。 */
+.amount-row {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: stretch;
+}
+
+.amount-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ★ 単位は指で押す場所なので、幅を詰めすぎません。
+   ネイティブの <select> のままにしてあるのは、iPhone では
+   下からドラム式の選択画面が出て、自前のどんな作りよりも押しやすいためです。 */
+.amount-unit {
+  flex: 0 0 auto;
+  width: 6.5em;
+  /* iOS が既定の見た目を当てて角丸を潰すので、入力欄と揃えます */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
+
+.conv {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.conv-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.conv-label {
+  flex: 0 0 auto;
+  width: 4.5em;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.conv-eq,
+.conv-unit {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.conv-input {
+  flex: 0 1 6.5em;
+  min-width: 0;
+}
+
+/* 「1個 ≒ 71kcal」。桁の打ち間違いに気づくためだけの表示なので、控えめに */
+.conv-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}

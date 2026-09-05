@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react';
-import { findSimilarFoods, foodKey, kcalMismatchWarning, type Per100gInput } from '@pt/core';
+import {
+  COUNTABLE_UNITS,
+  conversionFor,
+  findSimilarFoods,
+  foodKey,
+  kcalMismatchWarning,
+  validateConversion,
+  type CountableUnit,
+  type Per100gInput,
+  type UnitConversion,
+} from '@pt/core';
 import { AI_RELAY_URL } from '@/config/firebase';
 import { writeErrorMessage } from '@/lib/firestoreError';
 import { LabelScanner } from './LabelScanner';
@@ -50,6 +60,21 @@ export function FoodEditor({
     f: isNew && base.per100g.f === 0 ? '' : String(base.per100g.f),
     c: isNew && base.per100g.c === 0 ? '' : String(base.per100g.c),
   });
+  /**
+   * 「1個 = ○g」の入力（追加仕様: 単位換算）。
+   *
+   * ★ 4つの単位ぶんの欄を、最初から全部出しておきます。
+   *   「行を足す」形にすると、押さないと存在に気づけません。
+   *   空欄のままなら、その単位は登録されません。
+   */
+  const [conversions, setConversions] = useState<Record<CountableUnit, string>>(() => {
+    const out = {} as Record<CountableUnit, string>;
+    for (const unit of COUNTABLE_UNITS) {
+      const found = conversionFor(base.unitConversions, unit);
+      out[unit] = found === undefined ? '' : String(found.grams);
+    }
+    return out;
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -78,6 +103,30 @@ export function FoodEditor({
   //   ただし止めはしません。野菜のように、計算値とずれるのが正常な食材もあります。
   const mismatch = numbersOk ? kcalMismatchWarning(numbers) : null;
 
+  /** 入力されている換算（空欄の単位は入りません）。 */
+  const filledConversions: UnitConversion[] = useMemo(
+    () =>
+      COUNTABLE_UNITS.flatMap((unit) => {
+        const text = conversions[unit].trim();
+        if (text.length === 0) return [];
+        const grams = Number(text);
+        if (!Number.isFinite(grams)) return [];
+        return [{ unit, grams }];
+      }),
+    [conversions],
+  );
+
+  /** 換算のうち、範囲から外れているもの。最初の1件だけ知らせます。 */
+  const conversionError = useMemo(() => {
+    for (const unit of COUNTABLE_UNITS) {
+      const text = conversions[unit].trim();
+      if (text.length === 0) continue;
+      const message = validateConversion(Number(text));
+      if (message !== null) return `「1${unit}」の重さ: ${message}`;
+    }
+    return null;
+  }, [conversions]);
+
   async function submit() {
     if (!nameOk) {
       setError('食材の名前を入力してください。');
@@ -85,6 +134,10 @@ export function FoodEditor({
     }
     if (!numbersOk) {
       setError('100gあたりの kcal・P・F・C をすべて入力してください（0以上の数字）。');
+      return;
+    }
+    if (conversionError !== null) {
+      setError(conversionError);
       return;
     }
 
@@ -99,6 +152,7 @@ export function FoodEditor({
         name: name.trim(),
         aliases: usefulAliases(name, aliasText),
         per100g: numbers,
+        unitConversions: filledConversions,
         note: note.trim(),
       });
       onSaved(saved);
@@ -221,6 +275,44 @@ export function FoodEditor({
         </p>
       )}
 
+      {/* ★ かぞえ方（追加仕様: 単位換算）。
+             栄養値ではなく、物差しです。100gあたりの値はここでは変わりません。 */}
+      <fieldset className="conv">
+        <legend className="field-label">かぞえ方（任意）</legend>
+
+        <p className="field-hint">
+          ここを入れておくと、契約者が<b>「2個」と入れるだけ</b>で記録できます。
+          <br />
+          卵はMサイズ1個が<b>殻を除いて約50g</b>です。殻ごと量った重さ（約60g）を
+          入れると2割ぶん多く計算されるので、<b>食べる部分の重さ</b>を入れてください。
+        </p>
+
+        {COUNTABLE_UNITS.map((unit) => (
+          <div className="conv-row" key={unit}>
+            <span className="conv-label">1{unit}</span>
+            <span className="conv-eq">=</span>
+            <input
+              className="input conv-input"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={conversions[unit]}
+              onChange={(e) => setConversions({ ...conversions, [unit]: e.target.value })}
+              aria-label={`1${unit}あたりの重さ（g）`}
+            />
+            <span className="conv-unit">g</span>
+            {/* ★ その場で1個ぶんのカロリーを出します。
+                   桁を間違えて 500 と打てば 710kcal と出るので、保存前に気づけます。 */}
+            <span className="conv-preview">{previewFor(unit, conversions[unit], numbers)}</span>
+          </div>
+        ))}
+
+        <span className="field-hint">
+          空欄の単位は登録されません。食パンの「6枚切り」と「8枚切り」のように
+          同じ単位で重さが違うものは、<b>食材を2件に分けて</b>ください。
+        </span>
+      </fieldset>
+
       <label className="field">
         <span className="field-label">別名（読み方や書き方のゆれ）</span>
         <input
@@ -267,6 +359,26 @@ export function FoodEditor({
       </div>
     </section>
   );
+}
+
+/**
+ * 「1個 ≒ 71kcal」を、入力中に出す（追加仕様: 単位換算）。
+ *
+ * ★ 保存する値ではありません。**桁の打ち間違いに気づくための鏡**です。
+ *   卵の「1個 = 50g」を 500 と打つと 710kcal と出ます。
+ *   数字だけ見ていても気づけませんが、kcal になると分かります。
+ */
+export function previewFor(
+  unit: string,
+  text: string,
+  per100g: Per100gInput,
+): string {
+  const grams = Number(text.trim());
+  if (text.trim().length === 0 || !Number.isFinite(grams)) return '';
+  if (validateConversion(grams) !== null) return '';
+  if (per100g.kcal <= 0) return '';
+
+  return `1${unit} ≒ ${Math.round((per100g.kcal * grams) / 100)}kcal`;
 }
 
 /**

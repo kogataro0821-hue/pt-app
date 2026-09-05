@@ -2,8 +2,10 @@ import { collection, deleteDoc, doc, getDocs, orderBy, query, setDoc } from 'fir
 import {
   NUTRIENT_KEYS,
   ZERO,
+  isCountableUnit,
   mealTotals,
   type DateKey,
+  type EnteredAmount,
   type Meal,
   type MealItem,
   type Nutrients,
@@ -103,7 +105,23 @@ function toItem(raw: unknown, index: number): MealItem {
     // ★ 印が無い古い記録は false になります。
     //   仮の値の仕組みより前の記録は、未確定なら栄養値が0なので、それで合っています。
     provisional: data.provisional === true,
+    enteredAs: toEnteredAs(data.enteredAs),
   };
+}
+
+/**
+ * 「2個」の控えを読む（追加仕様: 単位換算）。
+ *
+ * ★ 読めなければ null にします。**grams は触りません。**
+ *   計算に使うのはグラムだけなので、控えが壊れていても記録は正しいままです。
+ */
+function toEnteredAs(raw: unknown): EnteredAmount | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  const value = data.value;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (!isCountableUnit(data.unit)) return null;
+  return { value, unit: data.unit };
 }
 
 /**
@@ -135,6 +153,8 @@ function toFirestore(meal: Meal): Record<string, unknown> {
       foodId: i.foodId,
       pending: i.pending,
       provisional: i.provisional,
+      // ★ undefined は Firestore が受け付けないので、必ず null にします
+      enteredAs: i.enteredAs ?? null,
     })),
     // 合計も一緒に保存します。読むときは items から計算し直すので、
     // これは Firebase のコンソールから確認するためのものです。

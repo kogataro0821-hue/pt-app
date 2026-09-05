@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   computeItemNutrients,
+  entryUnitsFor,
   findExactFood,
   findSimilarFoods,
+  formatAmount,
   formatNutrients,
+  isCountableUnit,
   toDecimal,
+  toGrams,
   toInternal,
   ZERO,
+  type EntryUnit,
   type MealItem,
   type Per100gInput,
 } from '@pt/core';
@@ -61,8 +66,30 @@ export function ItemForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [grams, setGrams] = useState(initial === undefined ? '' : String(initial.grams));
+  /**
+   * 入力された量と、その単位（追加仕様: 単位換算）。
+   *
+   * ★ 「2個」と入れて開き直したら「2個」と出ます。
+   *   グラムに直した値だけを覚えていると、開くたびに「100g」に化けて、
+   *   直したいだけの人が毎回そこから考え直すことになります。
+   */
+  const [amount, setAmount] = useState(() => {
+    if (initial === undefined) return '';
+    const entered = initial.enteredAs;
+    return entered === undefined || entered === null ? String(initial.grams) : String(entered.value);
+  });
+  const [unit, setUnit] = useState<EntryUnit>(() => {
+    const entered = initial?.enteredAs;
+    return entered === undefined || entered === null ? 'g' : entered.unit;
+  });
   const [foods, setFoods] = useState<Food[]>([]);
+  /**
+   * マスタを読み終えたか。
+   *
+   * ★ 「まだ読んでいない」と「読んだが無かった」を区別するために要ります。
+   *   区別しないと、下の単位の戻し処理が**読み込む前に走ります**。
+   */
+  const [foodsLoaded, setFoodsLoaded] = useState(false);
   const [picked, setPicked] = useState<Food | null>(null);
   /**
    * その場で入れた100gあたりの栄養値。
@@ -94,7 +121,8 @@ export function ItemForm({
   useEffect(() => {
     void loadFoods()
       .then(setFoods)
-      .catch(() => setFoods([]));
+      .catch(() => setFoods([]))
+      .finally(() => setFoodsLoaded(true));
   }, []);
 
   // ★ 打った名前を、まず既存マスタに当てにいきます（別名も見ます）。
@@ -106,7 +134,36 @@ export function ItemForm({
     [foods, name, exact],
   );
 
-  const gramsNum = parse(grams);
+  /**
+   * この食材で選べる単位。マスタに換算があれば、そのぶんだけ増えます。
+   *
+   * ★ g は常に先頭にあります。換算が無くても、量りで測れば記録できます。
+   */
+  const units = useMemo(() => entryUnitsFor(exact?.unitConversions), [exact]);
+
+  // ★ 食材を変えたら、その食材に無い単位は g に戻します。
+  //   「卵 2個」のあとに名前を「白米」に書き換えると、
+  //   白米に『個』は無いので、そのままでは量が決まりません。
+  //
+  // ★ マスタを読み終えるまでは、絶対に戻しません。
+  //
+  //   ここは一度壊しました。読み込み中は exact が null なので、
+  //   選べる単位が「g だけ」に見えます。その一瞬で戻してしまうと、
+  //   「2個」で保存された記録を開いただけで **「2g」に化けました。**
+  //   画面には何も出ないまま、卵2個が2gとして保存し直されます。
+  //   起きても気づけない壊れ方なので、条件を1つ増やして防ぎます。
+  useEffect(() => {
+    if (!foodsLoaded) return;
+    if (units.includes(unit)) return;
+    setUnit('g');
+    // ★ 数だけ残すと「2個」が「2g」になります。単位が変わったら、量も入れ直しです。
+    setAmount('');
+  }, [foodsLoaded, units, unit]);
+
+  const amountNum = parse(amount);
+  /** 換算後のグラム。換算が無い単位を選んでいるときは null（0にはしません）。 */
+  const gramsNum =
+    amountNum === null ? null : toGrams(amountNum, unit, exact?.unitConversions);
   const manualNumbers: Per100gInput = {
     kcal: parse(manual.kcal) ?? 0,
     p: parse(manual.p) ?? 0,
@@ -144,6 +201,12 @@ export function ItemForm({
   const gramsOk = gramsNum !== null && gramsNum > 0 && gramsNum <= 5000;
   const canSubmit = nameOk && gramsOk;
 
+  /** 記録に残す「2個」の控え。g で入れたときは残しません。 */
+  const enteredAs =
+    unit !== 'g' && amountNum !== null && isCountableUnit(unit)
+      ? { value: amountNum, unit }
+      : null;
+
   const preview =
     per100g !== null && gramsNum !== null && gramsOk
       ? computeItemNutrients(toInternal(per100g), gramsNum)
@@ -155,7 +218,11 @@ export function ItemForm({
       return;
     }
     if (!gramsOk || gramsNum === null) {
-      setError('量は0より大きく、5000g以内で入力してください。');
+      setError(
+        unit === 'g'
+          ? '量は0より大きく、5000g以内で入力してください。'
+          : `量は0より大きく、5000g以内になるように入力してください（1${unit}あたりの重さから計算しています）。`,
+      );
       return;
     }
 
@@ -174,6 +241,7 @@ export function ItemForm({
         foodId: exact?.id ?? null,
         pending,
         provisional,
+        enteredAs,
       },
       // 未確定なら、管理者へ登録依頼を出す
       pending ? trimmed : null,
@@ -254,18 +322,52 @@ export function ItemForm({
         </>
       )}
 
-      <label className="field">
-        <span className="field-label">食べた量（g）</span>
-        <input
-          className="input"
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          value={grams}
-          onChange={(e) => setGrams(e.target.value)}
-          placeholder="150"
-        />
-      </label>
+      <div className="field">
+        <span className="field-label">食べた量</span>
+        <div className="amount-row">
+          <input
+            className="input amount-input"
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder={unit === 'g' ? '150' : '2'}
+            aria-label="食べた量"
+          />
+          {/* ★ 単位は常に出します（追加仕様: 単位換算）。
+                 食材によって欄が出たり消えたりすると、押す場所がずれます。
+                 選べる中身が増えるだけにしておきます。 */}
+          <select
+            className="input amount-unit"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as EntryUnit)}
+            aria-label="単位"
+          >
+            {units.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* ★ 換算した結果を、その場に出します。
+               「2個」と入れて何gになったのかが見えないと、確かめようがありません。 */}
+        {unit !== 'g' && gramsNum !== null && (
+          <span className="field-hint">
+            {formatAmount(amountNum ?? 0, unit)} = <b>{gramsNum}g</b> として計算します。
+          </span>
+        )}
+
+        {/* ★ この食材に、まだ かぞえ方 が登録されていないとき。
+               「なぜ『個』が選べないのか」が分からないと、壊れていると思われます。 */}
+        {units.length === 1 && exact !== null && (
+          <span className="field-hint">
+            この食材はまだ「1個＝○g」が登録されていないので、gで入れてください。
+          </span>
+        )}
+      </div>
 
       <NutritionBlock
         food={exact}
@@ -301,8 +403,10 @@ export function ItemForm({
                   f: String(r.per100g.f),
                   c: String(r.per100g.c),
                 });
-                if (grams.trim().length === 0 && r.servingGrams !== null) {
-                  setGrams(String(r.servingGrams));
+                // ★ 成分表示の「1回分◯g」はグラムなので、単位も g に戻します。
+                if (amount.trim().length === 0 && r.servingGrams !== null) {
+                  setAmount(String(r.servingGrams));
+                  setUnit('g');
                 }
                 if (name.trim().length === 0 && r.productName.length > 0) setName(r.productName);
                 setScanning(false);

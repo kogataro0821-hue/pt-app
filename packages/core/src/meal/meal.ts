@@ -2,6 +2,7 @@ import { foodKey } from '../food/matching';
 import { scaleByGrams } from '../nutrition/convert';
 import { sumNutrients } from '../nutrition/sum';
 import { ZERO, type Nutrients } from '../nutrition/types';
+import type { EnteredAmount } from '../units/conversion';
 
 /**
  * 食事の構造と、その合計（設計書 §14 / §15）。
@@ -31,7 +32,12 @@ export interface MealItem {
   /** 画面での識別用。Firestore のドキュメントIDではない */
   id: string;
   name: string;
-  /** 実際に食べた量（g） */
+  /**
+   * 実際に食べた量（g）。
+   *
+   * ★ 「2個」と入れた場合でも、ここに入るのは**換算後のグラム**です。
+   *   計算の土台は、いつでもグラムひとつだけです（下の enteredAs を参照）。
+   */
   grams: number;
   /** 100gあたりの栄養値（内部表現） */
   per100g: Nutrients;
@@ -92,6 +98,21 @@ export interface MealItem {
    *   per100g / nutrients には、契約者が入れた値が入っています。
    */
   provisional: boolean;
+
+  /**
+   * 「2個」と入れた、その入力そのもの（追加仕様: 単位換算）。
+   *
+   * ★ これは**表示のための控え**です。計算には使いません。
+   *
+   *   計算に使うのは、上の grams（換算後のグラム）だけです。
+   *   ここを計算に使うと、管理者があとで「1個＝50g → 55g」に直したとき、
+   *   3月に食べた卵のカロリーが9月に変わります。
+   *   確定した記録が、あとからアプリの都合で動いてはいけません（設計書 §47）。
+   *
+   * ★ グラムで入れたとき、および換算の仕組みより前の記録では null です。
+   *   古い記録に無い項目なので、省略されていることもあります。
+   */
+  enteredAs?: EnteredAmount | null;
 }
 
 /** 1回の食事。「1食目」「2食目」…と自由に増やせる（Q12の決定）。 */

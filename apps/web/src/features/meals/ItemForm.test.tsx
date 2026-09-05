@@ -1,11 +1,12 @@
 import { toInternal, ZERO } from '@pt/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { aFood, aProvisionalItem } from '@/test/factories';
 import { firstCall } from '@/test/helpers';
 import { ItemForm } from './ItemForm';
 import type * as FoodsRepo from '@/features/foods/foodsRepo';
+import type { Food } from '@/features/foods/foodsRepo';
 
 /**
  * 食材を1件入れる画面（設計書 §21 / Phase 9）。
@@ -87,7 +88,7 @@ describe('契約者が使うとき（canEditNutrition = false）', () => {
   it('仮の値を入れると、その値で計算され、依頼にも候補として付く', async () => {
     const { onSubmit } = setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), 'サラダチキン');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '110');
+    await userEvent.type(screen.getByLabelText('食べた量'), '110');
     await userEvent.type(screen.getByLabelText('kcal'), '105');
     await userEvent.type(screen.getByLabelText('P'), '23');
     await userEvent.type(screen.getByLabelText('F'), '2');
@@ -113,7 +114,7 @@ describe('契約者が使うとき（canEditNutrition = false）', () => {
     //   kcal だけ入れて P/F/C が空だと、たんぱく質0gの日として評価されます
     const { onSubmit } = setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), 'サラダチキン');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '110');
+    await userEvent.type(screen.getByLabelText('食べた量'), '110');
     await userEvent.type(screen.getByLabelText('kcal'), '105');
     await userEvent.click(screen.getByRole('button', { name: '追加する' }));
 
@@ -126,7 +127,7 @@ describe('契約者が使うとき（canEditNutrition = false）', () => {
   it('仮の値を入れなければ、これまでどおり栄養値0・登録待ち', async () => {
     const { onSubmit } = setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), 'サラダチキン');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '110');
+    await userEvent.type(screen.getByLabelText('食べた量'), '110');
     await userEvent.click(screen.getByRole('button', { name: '追加する' }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -144,7 +145,7 @@ describe('契約者が使うとき（canEditNutrition = false）', () => {
   it('マスタにある食材なら、その値がそのまま使われる', async () => {
     const { onSubmit } = setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), '白米');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '180');
+    await userEvent.type(screen.getByLabelText('食べた量'), '180');
 
     // 値は「表示だけ」。編集できる欄としては出ない
     expect(screen.getByText('100gあたり（共通マスタ）')).toBeInTheDocument();
@@ -163,7 +164,7 @@ describe('契約者が使うとき（canEditNutrition = false）', () => {
   it('別名で打っても、マスタの食材に当たる', async () => {
     const { onSubmit } = setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), 'ごはん');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '180');
+    await userEvent.type(screen.getByLabelText('食べた量'), '180');
     await userEvent.click(screen.getByRole('button', { name: '追加する' }));
 
     const [item] = firstCall(onSubmit);
@@ -195,7 +196,7 @@ describe('管理者が使うとき（canEditNutrition = true）', () => {
   it('空欄のままでも記録できる（あとから登録できる）', async () => {
     const { onSubmit } = setup({ canEditNutrition: true });
     await userEvent.type(screen.getByLabelText('食材の名前'), 'サラダチキン');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '110');
+    await userEvent.type(screen.getByLabelText('食べた量'), '110');
     await userEvent.click(screen.getByRole('button', { name: '追加する' }));
 
     const [item] = firstCall(onSubmit);
@@ -205,7 +206,7 @@ describe('管理者が使うとき（canEditNutrition = true）', () => {
   it('4つとも入れると、その値で計算される', async () => {
     const { onSubmit } = setup({ canEditNutrition: true });
     await userEvent.type(screen.getByLabelText('食材の名前'), 'サラダチキン');
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '100');
+    await userEvent.type(screen.getByLabelText('食べた量'), '100');
     await userEvent.type(screen.getByLabelText('kcal'), '105');
     await userEvent.type(screen.getByLabelText('P'), '23.3');
     await userEvent.type(screen.getByLabelText('F'), '1.9');
@@ -223,7 +224,7 @@ describe('入力チェック', () => {
   //   エラーを読んでから直すより、押せない理由がその場で分かるほうが早いためです。
   it('名前が空のあいだは、追加ボタンを押せない', async () => {
     const { onSubmit } = setup();
-    await userEvent.type(screen.getByLabelText('食べた量（g）'), '100');
+    await userEvent.type(screen.getByLabelText('食べた量'), '100');
 
     const button = screen.getByRole('button', { name: '追加する' });
     expect(button).toBeDisabled();
@@ -235,7 +236,7 @@ describe('入力チェック', () => {
     const { onSubmit } = setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), '白米');
     const button = screen.getByRole('button', { name: '追加する' });
-    const grams = screen.getByLabelText('食べた量（g）');
+    const grams = screen.getByLabelText('食べた量');
 
     expect(button).toBeDisabled();
 
@@ -276,7 +277,7 @@ describe('編集のとき', () => {
       },
     });
     expect(screen.getByLabelText('食材の名前')).toHaveValue('白米');
-    expect(screen.getByLabelText('食べた量（g）')).toHaveValue(180);
+    expect(screen.getByLabelText('食べた量')).toHaveValue(180);
     expect(screen.getByRole('button', { name: '変更する' })).toBeInTheDocument();
   });
 
@@ -341,7 +342,7 @@ describe('★ 管理者が「仮」の食材を開いたとき', () => {
     );
     await screen.findByDisplayValue('ささみジャーキー');
 
-    const grams = screen.getByLabelText('食べた量（g）');
+    const grams = screen.getByLabelText('食べた量');
     await userEvent.clear(grams);
     await userEvent.type(grams, '100');
     await userEvent.click(screen.getByRole('button', { name: '変更する' }));
@@ -367,5 +368,202 @@ describe('★ 管理者が「仮」の食材を開いたとき', () => {
     const [item] = firstCall(onSubmit);
     expect(item.provisional).toBe(false);
     expect(item.nutrients).toEqual(ZERO);
+  });
+});
+
+/**
+ * 単位で入れる（設計書 §10.5 / 追加仕様: 単位換算）。
+ *
+ * ★ 設計書には最初からありました。作られていなかっただけです。
+ *   §16.2 の計算テストには「卵1個（個→g換算）→ unitConversions 経由」と
+ *   書いてあります。ここでようやく、その項目が動きます。
+ *
+ * ★ 換算を持つのは食品マスタです。入れる人ではありません。
+ *   各自が目分量で入れると、Aさんの卵1個が50g、Bさんが60gになります。
+ *   マスタにある食材の栄養値を触らせないのと、まったく同じ理由です。
+ */
+describe('★ 単位で入れる', () => {
+  /** マスタの「卵」。1個 = 50g（Mサイズの可食部） */
+  const EGG = aFood({
+    id: 'たまご',
+    name: '卵',
+    aliases: [],
+    per100g: { kcal: 142, p: 12.2, f: 10.2, c: 0.4 },
+    unitConversions: [{ unit: '個', grams: 50 }],
+  });
+
+  it('かぞえ方が登録されている食材では、単位に「個」が出る', async () => {
+    withMaster([EGG]);
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '卵');
+
+    const unit = await screen.findByLabelText('単位');
+    expect(within(unit).getByRole('option', { name: 'g' })).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: '個' })).toBeInTheDocument();
+  });
+
+  it('★ 2個 と入れると、100g として計算される', async () => {
+    withMaster([EGG]);
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '卵');
+    await userEvent.selectOptions(await screen.findByLabelText('単位'), '個');
+    await userEvent.type(screen.getByLabelText('食べた量'), '2');
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }));
+
+    const [item] = firstCall(onSubmit);
+    // 計算に使うのは、いつでもグラム
+    expect(item.grams).toBe(100);
+    // 142kcal × 100g ÷ 100 = 142kcal
+    expect(item.nutrients.kcal).toBe(142_000);
+  });
+
+  it('★ 「2個」と入れたことも残す（表示のための控え）', async () => {
+    // ★ グラムだけ覚えていると、開き直すたびに「100g」に化けます。
+    //   直したいだけの人が、毎回そこから考え直すことになります。
+    withMaster([EGG]);
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '卵');
+    await userEvent.selectOptions(await screen.findByLabelText('単位'), '個');
+    await userEvent.type(screen.getByLabelText('食べた量'), '2');
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }));
+
+    expect(firstCall(onSubmit)[0].enteredAs).toEqual({ value: 2, unit: '個' });
+  });
+
+  it('g で入れたときは、控えを残さない', async () => {
+    withMaster([EGG]);
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '卵');
+    await userEvent.type(screen.getByLabelText('食べた量'), '150');
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }));
+
+    const [item] = firstCall(onSubmit);
+    expect(item.grams).toBe(150);
+    expect(item.enteredAs).toBeNull();
+  });
+
+  it('何gになったのかを、その場に出す', async () => {
+    withMaster([EGG]);
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '卵');
+    await userEvent.selectOptions(await screen.findByLabelText('単位'), '個');
+    await userEvent.type(screen.getByLabelText('食べた量'), '2');
+
+    expect(screen.getByText(/2個 =/)).toBeInTheDocument();
+    expect(screen.getByText('100g')).toBeInTheDocument();
+  });
+
+  it('★ かぞえ方が無い食材では、g だけ。しかも理由を書く', async () => {
+    // ★ 「個が選べない」だけだと、壊れていると思われます。
+    //   ボタンが無いのと機能が無いのは、使う側からは区別が付きません。
+    withMaster();
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '白米');
+
+    const unit = await screen.findByLabelText('単位');
+    expect(within(unit).queryByRole('option', { name: '個' })).not.toBeInTheDocument();
+    expect(screen.getByText(/まだ「1個＝○g」が登録されていない/)).toBeInTheDocument();
+  });
+
+  it('★ 食材を書き換えたら、その食材に無い単位は g に戻る', async () => {
+    // ★ 「卵 2個」のあとに名前を「白米」に直すと、白米に『個』はありません。
+    //   選んだままにすると、量の決まらない記録ができてしまいます。
+    withMaster([EGG, aFood()]);
+    setup();
+    const nameInput = screen.getByLabelText('食材の名前');
+    await userEvent.type(nameInput, '卵');
+    await userEvent.selectOptions(await screen.findByLabelText('単位'), '個');
+    expect(screen.getByLabelText('単位')).toHaveValue('個');
+
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, '白米');
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('単位')).toHaveValue('g');
+    });
+  });
+
+  it('編集で開くと、入れたときの「2個」で出る', async () => {
+    withMaster([EGG]);
+    setup({
+      initial: {
+        id: 'i1',
+        name: '卵',
+        grams: 100,
+        per100g: toInternal({ kcal: 142, p: 12.2, f: 10.2, c: 0.4 }),
+        nutrients: toInternal({ kcal: 142, p: 12.2, f: 10.2, c: 0.4 }),
+        foodId: 'たまご',
+        pending: false,
+        provisional: false,
+        enteredAs: { value: 2, unit: '個' },
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('単位')).toHaveValue('個');
+    });
+    expect(screen.getByLabelText('食べた量')).toHaveValue(2);
+  });
+
+  it('★★ マスタの読み込み中に「2個」が「2g」へ化けない', async () => {
+    // ★ ここは実際に壊しました。
+    //
+    //   マスタを読み終える前は、選べる単位が「g だけ」に見えます。
+    //   その一瞬で単位を g に戻す作りにしていたため、
+    //   「2個」で保存された記録を**開いただけで「2g」になりました。**
+    //   画面には何も出ません。卵2個が2gとして保存し直されます。
+    //
+    //   わざと遅れて返るマスタで、その瞬間を再現します。
+    let release: (foods: Food[]) => void = () => undefined;
+    vi.mocked(loadFoods).mockReturnValue(
+      new Promise<Food[]>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    setup({
+      initial: {
+        id: 'i1',
+        name: '卵',
+        grams: 100,
+        per100g: ZERO,
+        nutrients: ZERO,
+        foodId: 'たまご',
+        pending: false,
+        provisional: false,
+        enteredAs: { value: 2, unit: '個' },
+      },
+    });
+
+    // まだマスタが来ていない。ここで戻してはいけない
+    expect(screen.getByLabelText('食べた量')).toHaveValue(2);
+
+    release([EGG]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('単位')).toHaveValue('個');
+    });
+    expect(screen.getByLabelText('食べた量')).toHaveValue(2);
+  });
+
+  it('換算より前の古い記録は、これまでどおり g で出る', async () => {
+    withMaster([EGG]);
+    setup({
+      initial: {
+        id: 'i1',
+        name: '卵',
+        grams: 100,
+        per100g: ZERO,
+        nutrients: ZERO,
+        foodId: 'たまご',
+        pending: false,
+        provisional: false,
+      },
+    });
+
+    expect(screen.getByLabelText('食べた量')).toHaveValue(100);
+    await waitFor(() => {
+      expect(screen.getByLabelText('単位')).toHaveValue('g');
+    });
   });
 });

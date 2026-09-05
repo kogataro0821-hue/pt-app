@@ -6,6 +6,7 @@ import {
   provisionalTotals,
   dayTotals,
   diffFromTarget,
+  formatAmount,
   formatNutrients,
   mealTotals,
   nextMealLabel,
@@ -548,7 +549,14 @@ function ItemRow({
     <div className={item.pending ? 'row item-row pending' : 'row item-row'}>
       <div className="row-label">
         <span className="item-name">{item.name}</span>
-        <span className="item-grams">{item.grams}g</span>
+        {/* ★ 「2個」と入れたものは「2個」と出します（追加仕様: 単位換算）。
+               100g とだけ出ていても、卵2個ぶんだとは分かりません。
+               ただしグラムも併記します。合計の根拠はいつでもグラムです。 */}
+        <span className="item-grams">
+          {item.enteredAs === undefined || item.enteredAs === null
+            ? `${item.grams}g`
+            : `${formatAmount(item.enteredAs.value, item.enteredAs.unit)}（${item.grams}g）`}
+        </span>
       </div>
       {/* ★ 仮の値のときは、数字と「仮」の印を両方出します。
              数字だけだと確定と見分けが付かず、印だけだと合計との関係が分かりません。 */}

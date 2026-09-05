@@ -14,6 +14,7 @@ export * from './nutrition/convert';
 export * from './nutrition/sum';
 export * from './nutrition/format';
 export * from './units/types';
+export * from './units/conversion';
 export * from './client/id';
 export * from './client/targets';
 export * from './date/day';
