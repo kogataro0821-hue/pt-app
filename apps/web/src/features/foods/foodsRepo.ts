@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import {
   foodKey,
   normalizeConversions,
@@ -65,15 +65,92 @@ export function foodPer100gInternal(food: Food): Nutrients {
  */
 let cache: Food[] | null = null;
 
+/**
+ * この一覧を読んだときに見えていた「マスタの最終更新」（追加仕様: マスタ更新の反映）。
+ * null は「見に行けなかった」という意味です。0件のときの 0 とは区別します。
+ */
+let cacheStamp: number | null = null;
+
+/**
+ * マスタの「最終更新」を置く場所。中身は updatedAt ひとつだけです。
+ *
+ * ★ ここが要になった経緯（実際に困った話）。
+ *
+ *   食品マスタは、アプリを開いた最初の1回だけ読んで、あとは覚えていました。
+ *   通信を減らすためです。ところがこれには**出口がありませんでした。**
+ *   管理者が食材を登録しても、契約者のアプリには何も伝わりません。
+ *   アプリのJavaScriptが動き直すまで、ずっと古いままです。
+ *   ホーム画面から開いたアプリは、他のアプリに切り替えて戻っただけでは
+ *   動き直しません。**何日も古い一覧のまま使い続けることになります。**
+ *
+ *   契約者から見ると「登録依頼を出したのに、いつまでも反映されない」です。
+ *   単位換算を足したときに、ようやく気づきました。
+ *
+ * ★ かといって毎回200件を読み直すと、無料枠がすぐ尽きます。
+ *   そこで**1件だけ**読んで、変わっていたときだけ全部を読み直します。
+ *   ふだんの費用は「読み取り1回」です。
+ */
+const STAMP_PATH = ['config', 'foods'] as const;
+
+/**
+ * 最終更新を読む。読めなければ null。
+ *
+ * ★ 読めなくても失敗にしません。
+ *   ここが読めないだけで食材を1件も出せなくなるのは、明らかにやりすぎです。
+ *   その場合は、覚えている一覧をそのまま使います（今までどおりの動きです）。
+ */
+async function readStamp(): Promise<number | null> {
+  try {
+    const snap = await getDoc(doc(getDb(), STAMP_PATH[0], STAMP_PATH[1]));
+    const value = (snap.data() ?? {}).updatedAt;
+    // ★ 置き場所がまだ無いときは 0。「読めなかった」(null) とは別ものです。
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadFoods(force = false): Promise<Food[]> {
-  if (cache !== null && !force) return cache;
+  if (cache !== null && !force) {
+    const stamp = await readStamp();
+    // 読めなかった → 覚えているものを使う。変わっていない → そのまま使う。
+    if (stamp === null) return cache;
+    if (cacheStamp !== null && stamp === cacheStamp) return cache;
+  }
+
+  // ★ 一覧より先に最終更新を読みます。
+  //   逆にすると、読んでいる最中の更新を取りこぼして、
+  //   古い一覧に新しい印を付けてしまいます。
+  const stamp = await readStamp();
   const snap = await getDocs(collection(getDb(), 'foods'));
   cache = snap.docs.map((d) => toFood(d.id, d.data()));
+  cacheStamp = stamp;
   return cache;
 }
 
 export function clearFoodCache(): void {
   cache = null;
+  cacheStamp = null;
+}
+
+/**
+ * 「マスタが変わった」と印を付ける（管理者だけが書けます）。
+ *
+ * ★ ここが失敗しても、保存は失敗にしません。
+ *   食材そのものはもう入っています。ここで失敗を返すと、管理者は
+ *   「保存できなかった」と思ってもう一度押します。実際には入っているので、
+ *   そちらのほうが混乱します。印が付かなくても、次にアプリを開き直せば
+ *   一覧は新しくなります（今までどおりの動きに戻るだけです）。
+ */
+async function touchStamp(): Promise<void> {
+  const now = Date.now();
+  try {
+    await setDoc(doc(getDb(), STAMP_PATH[0], STAMP_PATH[1]), { updatedAt: now });
+    // 自分が付けた印です。自分の一覧まで読み直す必要はありません。
+    if (cacheStamp !== null) cacheStamp = now;
+  } catch {
+    // わざと握りつぶします（上の説明のとおり）
+  }
 }
 
 /** キャッシュを読み直さずに1件だけ差し替える。 */
@@ -118,6 +195,7 @@ export async function saveFood(food: Food): Promise<Food> {
   });
 
   upsertCache(saved);
+  await touchStamp();
   return saved;
 }
 
@@ -130,6 +208,7 @@ export async function addAlias(food: Food, alias: string): Promise<Food> {
 export async function deleteFood(foodId: string): Promise<void> {
   await deleteDoc(doc(getDb(), 'foods', foodId));
   if (cache !== null) cache = cache.filter((f) => f.id !== foodId);
+  await touchStamp();
 }
 
 // -----------------------------------------------------------------------------
