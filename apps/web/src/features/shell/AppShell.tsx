@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { APP_NAME } from '@/config/firebase';
+import { versionLine } from '@/config/version';
+import { refreshToLatest } from '@/lib/refresh';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
   clearRequestCount,
@@ -224,6 +226,25 @@ function AppMenu({
             }}
           >
             ログアウト
+          </button>
+
+          {/* ★ 版と、最新に入れ替えるボタン（追加仕様: 版の表示）。
+                 いちばん下に、目立たない大きさで置きます。
+                 毎日見るものではなく、困ったときにだけ要るものです。 */}
+          <span className="appmenu-sep" aria-hidden="true" />
+
+          <span className="appmenu-version">{versionLine()}</span>
+
+          <button
+            className="appmenu-item appmenu-refresh"
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              void refreshToLatest();
+            }}
+          >
+            最新に更新する
           </button>
         </div>
       )}

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -18,8 +19,47 @@ import { VitePWA } from 'vite-plugin-pwa';
  */
 const BASE = '/pt-app/';
 
+/**
+ * 画面の隅に出す「版」の情報（追加仕様: 版の表示）。
+ *
+ * ★ これが無くて、実際に半日つぶしました。
+ *
+ *   パソコンでの確認手段が無いので、直したものが端末に届いているかを
+ *   確かめる方法がありませんでした。「直したはずなのに直っていない」のか
+ *   「まだ古いアプリが動いている」のかが、どうやっても区別できません。
+ *   食品マスタの更新が届かない件を追いかけたとき、まさにここで止まりました。
+ *
+ * ★ 番号だけでは足りません。
+ *
+ *   ver 1.0.0 のような番号は人が決めるものなので、上げ忘れれば嘘になります。
+ *   自動で必ず変わる**組み立てた時刻**と**コミット**を一緒に出します。
+ *   コミットは GitHub の Actions の一覧に出ている文字列と同じなので、
+ *   「あの緑のやつが、この端末に入っているか」がそのまま見比べられます。
+ */
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
+) as { version?: string };
+
+const buildAt = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+}).format(new Date());
+
+// GitHub Actions が勝手に入れてくれます。手元で組み立てたときは空になります。
+const commit = (process.env.GITHUB_SHA ?? '').slice(0, 7);
+
 export default defineConfig({
   base: BASE,
+
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version ?? '0.0.0'),
+    __BUILD_AT__: JSON.stringify(buildAt),
+    __COMMIT__: JSON.stringify(commit),
+  },
 
   plugins: [
     react(),

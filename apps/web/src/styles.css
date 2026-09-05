@@ -2802,3 +2802,23 @@ select.input {
   font-size: 13px;
   text-align: right;
 }
+
+/* ---- 版の表示（追加仕様: 版の表示）--------------------------------------- */
+
+/* ★ 毎日見るものではないので、いちばん小さく、いちばん下に置きます */
+.appmenu-version {
+  display: block;
+  padding: 4px var(--space-md);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  /* 長い行でも枠を広げない */
+  overflow-wrap: anywhere;
+}
+
+.appmenu-refresh {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}

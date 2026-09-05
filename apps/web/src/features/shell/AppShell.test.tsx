@@ -279,6 +279,25 @@ describe('右上のメニュー', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
+  it('★ 版が出る（この端末で動いているものが分かる）', async () => {
+    // ★ これが無くて、実際に半日つぶしました。
+    //   「直したはずなのに直っていない」のか「まだ古いアプリが動いている」のか、
+    //   区別する手段がありませんでした。
+    showMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+
+    expect(screen.getByText(/^ver /)).toBeInTheDocument();
+  });
+
+  it('★ 「最新に更新する」がある', async () => {
+    // ★ ホーム画面から開いたアプリは、勝手には新しくなりません。
+    //   自分で押せる道を1つ用意して、そこを断ち切ります。
+    showMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'メニュー' }));
+
+    expect(screen.getByRole('menuitem', { name: '最新に更新する' })).toBeInTheDocument();
+  });
+
   it('読み上げに、開いているかどうかが伝わる', async () => {
     showMenu();
     const button = screen.getByRole('button', { name: 'メニュー' });
