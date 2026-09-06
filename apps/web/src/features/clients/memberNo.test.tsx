@@ -34,6 +34,21 @@ vi.mock('./clientsRepo', () => ({
 
 vi.mock('./DangerZone', () => ({ DangerZone: () => null }));
 
+/**
+ * ★ 帳簿は Firestore を読みにいきます（追加仕様: かけらの帳簿）。
+ *
+ *   テストでは繋がらないので読み込みに失敗し、
+ *   「帳簿を読み込めませんでした」という role="alert" が出ます。
+ *   すると、この画面の別のエラーを探している検査が
+ *   **2つ見つけてしまって落ちます**。
+ *
+ *   しかも失敗が届くのは非同期なので、検査より先に届くかどうかが
+ *   実行のたびに変わります。手元では通ってCIで落ちる、という
+ *   いちばんたちの悪い形になりました（実際にそうなりました）。
+ *   ここで止めておきます。
+ */
+vi.mock('@/features/points/ShardLog', () => ({ ShardLog: () => null }));
+
 function show() {
   render(<ClientEditScreen clientId="test01" onBack={vi.fn()} />);
   return screen.findByLabelText(/会員整理番号/);
