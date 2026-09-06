@@ -95,6 +95,12 @@ export function PointsCard({
         <p className="points-days">これまで {state.totalDays.toLocaleString('ja-JP')} 日</p>
       )}
 
+      {/* ★ 何にいくつ使ったかは、使った本人こそ見られる必要があります。
+             管理者が代理で見ているときも、その人の記録として開けます。 */}
+      <Link className="button-quiet compact points-history" to={`/c/${client.clientId}/shards`}>
+        これまでの記録
+      </Link>
+
       {/* ★ 交換の入口。管理者が代理で見ているときは出しません。
              トレーナーがうっかり押して、その人のぶんが減っては困ります。 */}
       {!isAdmin && points > 0 && (

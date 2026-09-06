@@ -26,6 +26,7 @@ import { PointsGrantScreen } from '@/features/points/PointsGrantScreen';
 import { QrScreen } from '@/features/points/QrScreen';
 import { RedeemScreen } from '@/features/points/RedeemScreen';
 import { ScanScreen } from '@/features/points/ScanScreen';
+import { ShardLogScreen } from '@/features/points/ShardLogScreen';
 import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AiConsentCard } from '@/features/ai/AiConsentCard';
@@ -241,6 +242,14 @@ function AppRoutes({
         element={<CalendarRoute onChangePassword={onChangePassword} />}
       />
       <Route path="/c/:clientId/d/:date" element={<DayRoute onChangePassword={onChangePassword} />} />
+
+      {/* ★ かけらの記録（追加仕様: かけらの帳簿）。
+             契約者が自分で開けます。使っているのは本人なので、
+             何にいくつ使ったかは本人こそ見られる必要があります。 */}
+      <Route
+        path="/c/:clientId/shards"
+        element={<ShardLogRoute onChangePassword={onChangePassword} />}
+      />
       <Route
         path="/c/:clientId/weight"
         element={<WeightRoute onChangePassword={onChangePassword} />}
@@ -382,6 +391,31 @@ function ClientListRoute() {
 function PointsGrantRoute() {
   const navigate = useNavigate();
   return <PointsGrantScreen onBack={() => navigate('/clients')} />;
+}
+
+function ShardLogRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const { clientId } = useParams();
+  if (clientId === undefined) return <Navigate to="/" replace />;
+
+  return (
+    <ClientGate
+      clientId={clientId}
+      wrap={(node) => <Shell onChangePassword={onChangePassword}>{node}</Shell>}
+    >
+      {(client, isAdmin) => (
+        <Shell
+          onChangePassword={onChangePassword}
+          viewing={
+            isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
+          }
+          bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
+        >
+          <ShardLogScreen client={client} />
+        </Shell>
+      )}
+    </ClientGate>
+  );
 }
 
 function ScanRoute({ onChangePassword }: { onChangePassword: () => void }) {

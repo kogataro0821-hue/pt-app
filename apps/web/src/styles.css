@@ -3463,3 +3463,9 @@ hr.rule {
 .shard-log-kind {
   width: 100%;
 }
+
+/* ★ 記録へのリンク。札の中の補助的な出口なので、控えめに置きます。 */
+.points-history {
+  align-self: flex-start;
+  margin-top: 2px;
+}

@@ -134,6 +134,7 @@ describe('表示', () => {
       ),
     );
     expect(await screen.findByText('これまで 12 日')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'これまでの記録' })).toBeInTheDocument();
   });
 
   it('まだ0日なら、日数は出さない', async () => {
@@ -146,7 +147,8 @@ describe('表示', () => {
       ),
     );
     await waitFor(() => expect(screen.getByLabelText('0 かけら')).toBeInTheDocument());
-    expect(screen.queryByText(/これまで/)).not.toBeInTheDocument();
+    // ★ 「これまでの記録」のリンクは常に出るので、日数の行だけを見ます
+    expect(screen.queryByText(/これまで \d+ 日/)).not.toBeInTheDocument();
   });
 
   it('桁区切りが入る', async () => {
