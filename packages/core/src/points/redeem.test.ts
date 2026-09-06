@@ -6,6 +6,7 @@ import {
   MAX_REDEEM,
   MAX_REDEEM_TEXT,
   parseRedeem,
+  readScannedRedeem,
   redeemUrl,
 } from './redeem';
 
@@ -122,5 +123,41 @@ describe('★ 足りるかどうか', () => {
 
   it('0の人は、何も交換できない', () => {
     expect(afterRedeem(0, 1)).toBeNull();
+  });
+});
+
+describe('★ 読み取ったQRを、そのまま信じない', () => {
+  const ORIGIN = 'https://example.github.io';
+  const BASE = '/pt-app/';
+  const read = (s: string) => readScannedRedeem(s, ORIGIN, BASE);
+
+  it('自分のサイトの交換URLなら、読める', () => {
+    const url = redeemUrl(ORIGIN, BASE, { amount: 3, text: 'プロテイン' });
+    expect(read(url)).toEqual({ amount: 3, text: 'プロテイン' });
+  });
+
+  it('★ よそのサイトのURLは、通さない', () => {
+    // ★ 誰でもQRは作れます。中身が正しい形でも、置き場所が違えば別物です
+    expect(read('https://evil.example.com/pt-app/redeem?a=999&t=x')).toBeNull();
+  });
+
+  it('★ 同じサイトでも、交換以外のページは通さない', () => {
+    expect(read(`${ORIGIN}${BASE}clients?a=3&t=x`)).toBeNull();
+  });
+
+  it('URLですらない文字列は、通さない', () => {
+    expect(read('4901234567894')).toBeNull(); // 商品のバーコード
+    expect(read('こんにちは')).toBeNull();
+    expect(read('')).toBeNull();
+  });
+
+  it('Wi-Fi設定などの別の形式も、通さない', () => {
+    expect(read('WIFI:S:MyHome;T:WPA;P:secret;;')).toBeNull();
+  });
+
+  it('自分のサイトでも、中身がおかしければ通さない', () => {
+    expect(read(`${ORIGIN}${BASE}redeem?a=0&t=x`)).toBeNull();
+    expect(read(`${ORIGIN}${BASE}redeem?a=-5&t=x`)).toBeNull();
+    expect(read(`${ORIGIN}${BASE}redeem`)).toBeNull();
   });
 });

@@ -1,9 +1,18 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pointDayKey } from '@pt/core';
 import { aClient } from '@/test/factories';
 import { PointsCard } from './PointsCard';
 import type * as PointsRepo from './pointsRepo';
+
+/**
+ * ★ 札の中に「QRを読んで交換する」のリンクがあるので、
+ *   Router の中で描かないと壊れます。
+ */
+function inRouter(node: React.ReactNode) {
+  return <MemoryRouter>{node}</MemoryRouter>;
+}
 
 /**
  * ポイントの札（追加仕様: ログインポイント）。
@@ -40,7 +49,7 @@ describe('★ 開いたら、たまる', () => {
       totalDays: 1,
     });
 
-    render(<PointsCard client={aClient({ points: 0 })} isAdmin={false} />);
+    render(inRouter(<PointsCard client={aClient({ points: 0 })} isAdmin={false} />));
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalledTimes(1));
     expect(await screen.findByLabelText('1 かけら')).toBeInTheDocument();
@@ -49,10 +58,12 @@ describe('★ 開いたら、たまる', () => {
 
   it('★ きょうのぶんを受け取ってあれば、投げない', async () => {
     render(
-      <PointsCard
+      inRouter(
+        <PointsCard
         client={aClient({ points: 5, pointsLastDate: TODAY, pointsTotalDays: 5 })}
         isAdmin={false}
-      />,
+        />,
+      ),
     );
 
     await waitFor(() => expect(screen.getByLabelText('5 かけら')).toBeInTheDocument());
@@ -70,16 +81,16 @@ describe('★ 開いたら、たまる', () => {
     });
     const client = aClient({ points: 0 });
 
-    const { rerender } = render(<PointsCard client={client} isAdmin={false} />);
-    rerender(<PointsCard client={client} isAdmin={false} />);
-    rerender(<PointsCard client={client} isAdmin={false} />);
+    const { rerender } = render(inRouter(<PointsCard client={client} isAdmin={false} />));
+    rerender(inRouter(<PointsCard client={client} isAdmin={false} />));
+    rerender(inRouter(<PointsCard client={client} isAdmin={false} />));
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalledTimes(1));
   });
 
   it('★ 管理者が代理で見ているときは、たまらない', async () => {
     // ★ トレーナーが様子を見ただけで、その人のポイントが増えては困ります
-    render(<PointsCard client={aClient({ points: 5 })} isAdmin={true} />);
+    render(inRouter(<PointsCard client={aClient({ points: 5 })} isAdmin={true} />));
 
     await waitFor(() => expect(screen.getByLabelText('5 かけら')).toBeInTheDocument());
     expect(claimDailyPoints).not.toHaveBeenCalled();
@@ -91,7 +102,7 @@ describe('★ 開いたら、たまる', () => {
     //   ここで赤いエラーを出しても、本人にできることがありません
     claimDailyPoints.mockRejectedValue(new Error('offline'));
 
-    render(<PointsCard client={aClient({ points: 3 })} isAdmin={false} />);
+    render(inRouter(<PointsCard client={aClient({ points: 3 })} isAdmin={false} />));
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -102,10 +113,12 @@ describe('★ 開いたら、たまる', () => {
 describe('表示', () => {
   it('1日にたまる額を伝える', async () => {
     render(
-      <PointsCard
+      inRouter(
+        <PointsCard
         client={aClient({ points: 1, pointsLastDate: TODAY, pointsDailyAmount: 3 })}
         isAdmin={false}
-      />,
+        />,
+      ),
     );
     expect(await screen.findByText(/3 つ たまります/)).toBeInTheDocument();
     expect(screen.getByText(/朝4時/)).toBeInTheDocument();
@@ -113,20 +126,24 @@ describe('表示', () => {
 
   it('これまでの日数を出す', async () => {
     render(
-      <PointsCard
+      inRouter(
+        <PointsCard
         client={aClient({ points: 12, pointsLastDate: TODAY, pointsTotalDays: 12 })}
         isAdmin={false}
-      />,
+        />,
+      ),
     );
     expect(await screen.findByText('これまで 12 日')).toBeInTheDocument();
   });
 
   it('まだ0日なら、日数は出さない', async () => {
     render(
-      <PointsCard
+      inRouter(
+        <PointsCard
         client={aClient({ points: 0, pointsLastDate: TODAY, pointsTotalDays: 0 })}
         isAdmin={false}
-      />,
+        />,
+      ),
     );
     await waitFor(() => expect(screen.getByLabelText('0 かけら')).toBeInTheDocument());
     expect(screen.queryByText(/これまで/)).not.toBeInTheDocument();
@@ -134,10 +151,12 @@ describe('表示', () => {
 
   it('桁区切りが入る', async () => {
     render(
-      <PointsCard
+      inRouter(
+        <PointsCard
         client={aClient({ points: 12345, pointsLastDate: TODAY })}
         isAdmin={false}
-      />,
+        />,
+      ),
     );
     expect(await screen.findByLabelText('12,345 かけら')).toBeInTheDocument();
   });

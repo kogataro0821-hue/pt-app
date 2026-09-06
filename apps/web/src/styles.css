@@ -3321,3 +3321,48 @@ hr.rule {
 .redeem-done-mark {
   margin: 0 0 var(--space-sm);
 }
+
+/* ---- QRの読み取り（追加仕様: かけらの交換QR）------------------------------ */
+
+.points-scan {
+  align-self: flex-start;
+  margin-top: var(--space-sm);
+}
+
+.scan {
+  text-align: center;
+}
+
+/* ★ 映像は正方形に切ります。
+   縦長のままだと、QRを画面のどこに合わせればよいか伝わりません。 */
+.scan-view {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1 / 1;
+  margin: var(--space-md) auto;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: #000000;
+}
+
+.scan-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ★ 枠。ここに合わせればよいと分かるように、四隅だけ描きます。
+   全部囲うと、枠の中に入れないと読めないと誤解されます。 */
+.scan-frame {
+  position: absolute;
+  inset: 16%;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+}
+
+/* 読み取り用。画面には出しません */
+.scan-canvas {
+  display: none;
+}

@@ -15,6 +15,7 @@
     "@pt/ai-contract": "*",
     "@pt/core": "*",
     "firebase": "^12.18.0",
+    "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

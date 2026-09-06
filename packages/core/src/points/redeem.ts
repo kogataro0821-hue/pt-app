@@ -90,3 +90,42 @@ export function afterRedeem(points: number, amount: number): number | null {
   if (!canAfford(points, amount)) return null;
   return points - amount;
 }
+
+/**
+ * 読み取ったQRの文字列から、交換の中身を取り出す（追加仕様: かけらの交換QR）。
+ *
+ * ★ QRには何でも入っています。
+ *
+ *   商品のバーコード、他所のサイト、Wi-Fiの設定、ただの文章。
+ *   カメラを向ければ、そういうものも読めてしまいます。
+ *   **このアプリの交換URLでなければ、何も返しません。**
+ *
+ * ★ 自分のサイトのものだけを通します。
+ *
+ *   よそのサイトが `?a=999&t=…` の付いたURLを配っても、
+ *   置き場所（origin と base）が違えば通りません。
+ *   ここを緩めると、他人の作ったQRで交換画面が出せてしまいます。
+ *
+ * @param scanned 読み取った文字列そのもの
+ * @param origin  自分のサイトの先頭（window.location.origin）
+ * @param base    アプリの置き場所（import.meta.env.BASE_URL）
+ */
+export function readScannedRedeem(
+  scanned: string,
+  origin: string,
+  base: string,
+): RedeemRequest | null {
+  let url: URL;
+  try {
+    url = new URL(scanned);
+  } catch {
+    // URLですらない（ただの文字列、商品バーコードなど）
+    return null;
+  }
+
+  const mine = new URL(redeemUrl(origin, base, { amount: 1, text: 'x' }));
+  if (url.origin !== mine.origin) return null;
+  if (url.pathname !== mine.pathname) return null;
+
+  return parseRedeem(url.searchParams);
+}

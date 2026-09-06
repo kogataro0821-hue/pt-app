@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { pointDayKey, canClaimToday, SHARD_NAME } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
 import { claimDailyPoints, pointsOf } from './pointsRepo';
@@ -92,6 +93,14 @@ export function PointsCard({
 
       {state.totalDays > 0 && (
         <p className="points-days">これまで {state.totalDays.toLocaleString('ja-JP')} 日</p>
+      )}
+
+      {/* ★ 交換の入口。管理者が代理で見ているときは出しません。
+             トレーナーがうっかり押して、その人のぶんが減っては困ります。 */}
+      {!isAdmin && points > 0 && (
+        <Link className="button-secondary compact points-scan" to="/scan">
+          QRを読んで交換する
+        </Link>
       )}
     </section>
   );

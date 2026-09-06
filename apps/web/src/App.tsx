@@ -25,6 +25,7 @@ import { PointsCard } from '@/features/points/PointsCard';
 import { PointsGrantScreen } from '@/features/points/PointsGrantScreen';
 import { QrScreen } from '@/features/points/QrScreen';
 import { RedeemScreen } from '@/features/points/RedeemScreen';
+import { ScanScreen } from '@/features/points/ScanScreen';
 import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AiConsentCard } from '@/features/ai/AiConsentCard';
@@ -210,6 +211,11 @@ function AppRoutes({
              管理者専用ではありません。使うのは契約者本人です。 */}
       <Route path="/redeem" element={<RedeemRoute onChangePassword={onChangePassword} />} />
 
+      {/* ★ アプリの中でQRを読む（追加仕様: かけらの交換QR）。
+             標準カメラから開くと Safari 側になり、ログインし直しに
+             なることがあります。こちらならアプリの中で完結します。 */}
+      <Route path="/scan" element={<ScanRoute onChangePassword={onChangePassword} />} />
+
       {/* 共通食品マスタと登録依頼。数字の出どころなので管理者だけが触れます（設計書 §21） */}
       <Route
         path="/foods"
@@ -376,6 +382,21 @@ function ClientListRoute() {
 function PointsGrantRoute() {
   const navigate = useNavigate();
   return <PointsGrantScreen onBack={() => navigate('/clients')} />;
+}
+
+function ScanRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <Shell onChangePassword={onChangePassword}>
+      <ScanScreen
+        onFound={(req) => {
+          const q = new URLSearchParams({ a: String(req.amount), t: req.text });
+          navigate(`/redeem?${q.toString()}`, { replace: true });
+        }}
+        onCancel={() => navigate(-1)}
+      />
+    </Shell>
+  );
 }
 
 function QrRoute() {
