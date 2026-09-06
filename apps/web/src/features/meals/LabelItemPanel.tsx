@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { computeItemNutrients, toInternal, type MealItem } from '@pt/core';
 import { LabelScanner } from '@/features/foods/LabelScanner';
+import type { CountableUnit } from '@pt/core';
 import type { LabelCandidate } from '@/features/foods/requestsRepo';
 import { newItemId } from './mealsRepo';
 
@@ -32,6 +33,19 @@ import { newItemId } from './mealsRepo';
  *   桁の読み違いも、参考値の取り違えも起こります。
  *   全員のマスタに入る数値を決めるのは管理者、という線は動かしません。
  */
+/**
+ * 「1袋ぶん」で登録された食材かどうか（追加仕様: 成分表示の読み取り）。
+ *
+ * ★ undefined も null として扱います。
+ *   この項目はあとから足したものなので、
+ *   持っていない古い記録が普通に流れてきます。
+ *   `!== null` だけで見ると、そういう記録が全部
+ *   「1袋ぶんの食材」に化けます。
+ */
+function servingUnitOf(read: { servingUnit?: CountableUnit | null }): CountableUnit | null {
+  return read.servingUnit ?? null;
+}
+
 export function LabelItemPanel({
   onAdd,
   onClose,
@@ -43,6 +57,7 @@ export function LabelItemPanel({
     candidate: LabelCandidate;
     productName: string;
     servingGrams: number | null;
+    servingUnit: CountableUnit | null;
   } | null>(null);
   const [name, setName] = useState('');
   const [grams, setGrams] = useState('');
@@ -65,12 +80,22 @@ export function LabelItemPanel({
               candidate: { source: 'label', per100g: r.per100g, note: r.note, photo: r.photo },
               productName: r.productName,
               servingGrams: r.servingGrams,
+              servingUnit: r.servingUnit ?? null,
             });
             setName(r.productName);
             // ★ 1回分のグラム数が書いてあれば入れます。
             //   書いていない（100g当たり表示の）商品では空のままにします。
             //   100gを勝手に入れると、直し忘れがそのまま記録に残ります。
-            setGrams(r.servingGrams === null ? '' : String(r.servingGrams));
+            // ★ 「1袋ぶん」で読んだときは、1袋 = 100g として入れておきます
+            //   （追加仕様: 成分表示の読み取り）。
+            //   空のままにすると、グラムを聞かれていると誤解されます。
+            setGrams(
+              (r.servingUnit ?? null) !== null
+                ? '100'
+                : r.servingGrams === null
+                  ? ''
+                  : String(r.servingGrams),
+            );
           }}
         />
       </div>
@@ -140,7 +165,9 @@ export function LabelItemPanel({
         </label>
 
         <label className="field">
-          <span className="field-label">食べた量（g）</span>
+          <span className="field-label">
+            {servingUnitOf(read) === null ? '食べた量（g）' : '食べた量'}
+          </span>
           <input
             className="input"
             type="number"
@@ -148,11 +175,19 @@ export function LabelItemPanel({
             step="0.1"
             value={grams}
             onChange={(e) => setGrams(e.target.value)}
-            placeholder={read.servingGrams === null ? '食べた量' : String(read.servingGrams)}
-            autoFocus={read.servingGrams === null}
+            placeholder={
+              servingUnitOf(read) !== null
+                ? '100'
+                : read.servingGrams === null
+                  ? '食べた量'
+                  : String(read.servingGrams)
+            }
+            autoFocus={read.servingGrams === null && servingUnitOf(read) === null}
           />
           <span className="field-hint">
-            {read.servingGrams === null
+            {servingUnitOf(read) !== null
+              ? `「1${servingUnitOf(read)}ぶん」で登録した食材です。1${servingUnitOf(read)}なら 100、半分なら 50 と入れてください。`
+              : read.servingGrams === null
               ? '100g当たりの表示だったため、量は書かれていませんでした。食べた量を入れてください。'
               : `表示の「1回分 ${read.servingGrams}g」を入れてあります。半分だけ食べたなら直してください。`}
           </span>

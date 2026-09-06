@@ -404,7 +404,10 @@ export function ItemForm({
                   c: String(r.per100g.c),
                 });
                 // ★ 成分表示の「1回分◯g」はグラムなので、単位も g に戻します。
-                if (amount.trim().length === 0 && r.servingGrams !== null) {
+                // ★ 「1袋ぶん」で読んだときは 1袋 = 100g（追加仕様: 成分表示の読み取り）
+                if (amount.trim().length === 0 && (r.servingUnit ?? null) !== null) {
+                  setAmount('100');
+                } else if (amount.trim().length === 0 && r.servingGrams !== null) {
                   setAmount(String(r.servingGrams));
                   setUnit('g');
                 }

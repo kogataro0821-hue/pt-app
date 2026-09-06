@@ -31,6 +31,7 @@ export function aFood(over: Partial<Food> = {}): Food {
     aliases: ['ごはん'],
     per100g: { kcal: 156, p: 2.5, f: 0.3, c: 37.1 },
     unitConversions: [],
+    servingUnit: null,
     note: '',
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,

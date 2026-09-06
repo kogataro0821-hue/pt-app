@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
 import {
+  COUNTABLE_UNITS,
   formatNutrients,
   kcalMismatchWarning,
   labelBasisLabel,
   labelToPer100g,
   toInternal,
+  type CountableUnit,
   type DecimalNutrients,
   type LabelBasis,
   type LabelReading,
@@ -58,6 +60,14 @@ export function LabelScanner({
     photo: string;
     /** 表示に書いてあった1回分のグラム数。書いていなければ null */
     servingGrams: number | null;
+    /**
+     * 「1袋ぶん」として登録したときの単位（追加仕様: 成分表示の読み取り）。
+     *
+     * ★ null でないとき、per100g は **本当の100gあたりではありません**。
+     *   「1袋ぶん」の数字がそのまま入っています。受け取った側は
+     *   必ずこれを見て、表示と入力の単位を変えてください。
+     */
+    servingUnit: CountableUnit | null;
   }) => void;
   onCancel: () => void;
 }) {
@@ -69,6 +79,16 @@ export function LabelScanner({
   const [evidence, setEvidence] = useState('');
   const [aiNotes, setAiNotes] = useState<string[]>([]);
   const [gramsInput, setGramsInput] = useState('');
+  /**
+   * グラム数が分からないときに「1袋ぶん」として登録するかどうか
+   * （追加仕様: 成分表示の読み取り）。
+   *
+   * ★ 既定は「グラムを入れる」のままです。
+   *   分かるなら、そのほうが正しい100gあたりが手に入ります。
+   *   分からない人だけが、もう片方を選びます。
+   */
+  const [useServingUnit, setUseServingUnit] = useState(false);
+  const [servingUnit, setServingUnit] = useState<CountableUnit>('袋');
   /** 撮った写真そのもの。管理者が確かめられるように持ち回る */
   const [photo, setPhoto] = useState<string>('');
 
@@ -122,7 +142,8 @@ export function LabelScanner({
       ? null
       : { ...reading, servingGrams: parseGrams(gramsInput) ?? reading.servingGrams };
 
-  const converted = effective === null ? null : labelToPer100g(effective);
+  const converted =
+    effective === null ? null : labelToPer100g(effective, useServingUnit ? servingUnit : null);
   const mismatch =
     converted !== null && converted.ok ? kcalMismatchWarning(converted.per100g) : null;
 
@@ -202,22 +223,76 @@ export function LabelScanner({
             </select>
           </label>
 
+          {/* ★ 「1回分あたり」の表示は、グラム数が無いと100gあたりに直せません。
+                 ただしグラム数が書かれていない商品があります（追加仕様: 成分表示の読み取り）。
+                 その場合のために、もう1つの道を用意しています。 */}
           {reading.basis === 'perServing' && (
-            <label className="field">
-              <span className="field-label">1回分は何g？</span>
-              <input
-                className="input"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                value={gramsInput}
-                onChange={(e) => setGramsInput(e.target.value)}
-                placeholder="57"
-              />
-              <span className="field-hint">
-                表示に書いてあれば自動で入ります。入っていなければ、パッケージを見て入力してください。
-              </span>
-            </label>
+            <div className="serving-choice">
+              <div className="choice-row" role="radiogroup" aria-label="1回分の決め方">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!useServingUnit}
+                  className={!useServingUnit ? 'choice on' : 'choice'}
+                  onClick={() => setUseServingUnit(false)}
+                >
+                  グラム数を入れる
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={useServingUnit}
+                  className={useServingUnit ? 'choice on' : 'choice'}
+                  onClick={() => setUseServingUnit(true)}
+                >
+                  「1袋ぶん」で登録
+                </button>
+              </div>
+
+              {!useServingUnit ? (
+                <label className="field">
+                  <span className="field-label">1回分は何g？</span>
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    value={gramsInput}
+                    onChange={(e) => setGramsInput(e.target.value)}
+                    placeholder="57"
+                  />
+                  <span className="field-hint">
+                    表示に書いてあれば自動で入ります。表の中に無くても、
+                    パッケージのどこかに「内容量 ○g」と書いてあることがほとんどです。
+                  </span>
+                </label>
+              ) : (
+                <label className="field">
+                  <span className="field-label">数える単位</span>
+                  <select
+                    className="input"
+                    value={servingUnit}
+                    onChange={(e) => setServingUnit(e.target.value as CountableUnit)}
+                  >
+                    {COUNTABLE_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="field-hint">
+                    表示の数字を「1{servingUnit}ぶん」として登録します。
+                    記録するときは「1{servingUnit}」「0.5{servingUnit}」と入れてください。
+                  </span>
+                  {/* ★ 引き換えに失うものは、選ぶ前に伝えます。
+                         あとから「100gあたりが見られない」と気づいても直せません。 */}
+                  <span className="field-hint">
+                    ※ このやり方だと、この食品を <strong>グラムで量ることはできなくなります</strong>。
+                    大袋から少しずつ取る商品には向きません。
+                  </span>
+                </label>
+              )}
+            </div>
           )}
 
           {aiNotes.length > 0 && (
@@ -236,7 +311,11 @@ export function LabelScanner({
 
           {converted !== null && converted.ok && (
             <>
-              <p className="field-hint">100gあたり（この値を使います）</p>
+              <p className="field-hint">
+                {converted.servingUnit === null
+                  ? '100gあたり（この値を使います）'
+                  : `1${converted.servingUnit}あたり（この値を使います）`}
+              </p>
               <div className="macros">
                 <span className="kcal">
                   {formatNutrients(toInternal(converted.per100g)).kcal}kcal
@@ -281,6 +360,7 @@ export function LabelScanner({
                   productName,
                   servingGrams:
                     effective.basis === 'perServing' ? effective.servingGrams : null,
+                  servingUnit: converted.servingUnit,
                   note: [labelBasisLabel(effective), evidence, ...converted.notes]
                     .filter((s) => s.length > 0)
                     .join(' / ')

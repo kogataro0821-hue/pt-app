@@ -75,6 +75,13 @@ export function FoodEditor({
     }
     return out;
   });
+  /**
+   * 「1袋ぶん」で登録された食品の単位（追加仕様: 成分表示の読み取り）。
+   *
+   * ★ null でないとき、下の数字は100gあたりではありません。
+   *   見出しを「1袋あたり」に変えて、取り違えを防ぎます。
+   */
+  const [servingUnit, setServingUnit] = useState<CountableUnit | null>(base.servingUnit);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -153,6 +160,7 @@ export function FoodEditor({
         aliases: usefulAliases(name, aliasText),
         per100g: numbers,
         unitConversions: filledConversions,
+        servingUnit,
         note: note.trim(),
       });
       onSaved(saved);
@@ -243,13 +251,30 @@ export function FoodEditor({
             });
             if (name.trim().length === 0 && r.productName.length > 0) setName(r.productName);
             if (note.trim().length === 0) setNote(r.note);
+
+            // ★ 「1袋ぶん」で読み取ったときは、1袋 = 100g の換算を一緒に入れます。
+            //   これがないと「1袋」と入力できず、数字だけが宙に浮きます。
+            setServingUnit(r.servingUnit);
+            if (r.servingUnit !== null) {
+              setConversions((prev) => ({ ...prev, [r.servingUnit as CountableUnit]: '100' }));
+            }
+
             setScanning(false);
           }}
         />
       )}
 
       <fieldset className="per100g">
-        <legend className="field-label">100gあたり</legend>
+        <legend className="field-label">
+          {servingUnit === null ? '100gあたり' : `1${servingUnit}あたり`}
+        </legend>
+        {servingUnit !== null && (
+          <p className="note">
+            ★ この食材は「1{servingUnit}ぶん」で登録されています。
+            下の数字は<strong>100gあたりではありません</strong>。
+            記録するときは「1{servingUnit}」と入れてください。グラムでは量れません。
+          </p>
+        )}
         <div className="grid-4">
           {(['kcal', 'p', 'f', 'c'] as const).map((key) => (
             <label className="field" key={key}>

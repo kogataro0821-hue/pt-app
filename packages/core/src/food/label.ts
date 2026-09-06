@@ -1,4 +1,5 @@
 import type { DecimalNutrients } from '../nutrition/types';
+import type { CountableUnit } from '../units/conversion';
 
 /**
  * 栄養成分表示の読み取り結果を、100gあたりへ直す（設計書 §47 / 追加仕様: 成分表示の読み取り）。
@@ -51,7 +52,19 @@ export interface LabelReading {
 }
 
 export type LabelConversion =
-  | { ok: true; per100g: DecimalNutrients; notes: string[] }
+  | {
+      ok: true;
+      per100g: DecimalNutrients;
+      notes: string[];
+      /**
+       * 「1袋ぶん」として登録したときの単位（追加仕様: 成分表示の読み取り）。
+       *
+       * ★ ここが null でないとき、per100g は **本当の100gあたりではありません**。
+       *   「1袋ぶん」の数字が、そのまま入っています。
+       *   受け取った側は必ずこれを見て、表示を「1袋あたり」に変えてください。
+       */
+      servingUnit: CountableUnit | null;
+    }
   | { ok: false; reason: LabelProblem; message: string };
 
 export type LabelProblem =
@@ -68,8 +81,22 @@ export type LabelProblem =
  */
 const SODIUM_TO_SALT = 2.54;
 
-export function labelToPer100g(reading: LabelReading): LabelConversion {
+export function labelToPer100g(
+  reading: LabelReading,
+  /**
+   * グラム数が分からないときに、「1◯ぶん」として登録する単位。
+   *
+   * ★ null なら、これまでどおり止まってグラム数を聞きます。
+   *
+   *   単位を渡されたときは、**1◯ = 100g という嘘の重さ**を置いて通します。
+   *   計算はそれで合います（1袋と入れれば表示どおりの数字が出ます）が、
+   *   その食品の「100gあたり」は本当の意味を失います。
+   *   だから servingUnit を必ず返して、呼び出し側に印を残させます。
+   */
+  fallbackUnit: CountableUnit | null = null,
+): LabelConversion {
   const notes: string[] = [];
+  let servingUnit: CountableUnit | null = null;
 
   // ---- 1. 100gあたりにするための倍率 ----------------------------------------
 
@@ -86,14 +113,25 @@ export function labelToPer100g(reading: LabelReading): LabelConversion {
   } else {
     const grams = reading.servingGrams;
     if (grams === null || !Number.isFinite(grams) || grams <= 0) {
-      return {
-        ok: false,
-        reason: 'need-serving-grams',
-        message:
-          '「1食当たり」などと書かれていますが、1回分が何グラムかが読み取れませんでした。グラム数を入力してください。',
-      };
+      // ★ 単位を選んでもらえていれば、「1袋ぶん」として通します。
+      if (fallbackUnit !== null) {
+        factor = 1;
+        servingUnit = fallbackUnit;
+        notes.push(
+          `グラム数が分からないため、表示の数字を「1${fallbackUnit}ぶん」として登録します。` +
+            `記録するときは「1${fallbackUnit}」と入れてください。`,
+        );
+      } else {
+        return {
+          ok: false,
+          reason: 'need-serving-grams',
+          message:
+            '「1食当たり」などと書かれていますが、1回分が何グラムかが読み取れませんでした。グラム数を入力するか、「1袋ぶん」として登録してください。',
+        };
+      }
+    } else {
+      factor = 100 / grams;
     }
-    factor = 100 / grams;
   }
 
   // ---- 2. 炭水化物 -----------------------------------------------------------
@@ -151,7 +189,7 @@ export function labelToPer100g(reading: LabelReading): LabelConversion {
     );
   }
 
-  return { ok: true, per100g, notes };
+  return { ok: true, per100g, notes, servingUnit };
 }
 
 /**

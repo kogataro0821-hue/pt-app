@@ -1,9 +1,11 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import {
+  COUNTABLE_UNITS,
   foodKey,
   normalizeConversions,
   shouldAddAlias,
   toInternal,
+  type CountableUnit,
   type NameableFood,
   type Nutrients,
   type Per100gInput,
@@ -45,6 +47,22 @@ export interface Food extends NameableFood {
    *   「皮なし」「ゆで」を分けているのと同じやり方です。
    */
   unitConversions: UnitConversion[];
+  /**
+   * 「1袋ぶん」で登録された食品の単位（追加仕様: 成分表示の読み取り）。
+   *
+   * ★ ここが null でないとき、**per100g は本当の100gあたりではありません。**
+   *
+   *   成分表示に「1食当たり」とだけあってグラム数が書かれていない商品を
+   *   登録するために用意しました。1◯ = 100g という嘘の重さを置いて、
+   *   表示の数字をそのまま per100g に入れてあります。
+   *   「1袋」と入れれば表示どおりの数字が出るので、計算は合います。
+   *
+   *   そのかわり、この食品の「100gあたり」には意味がありません。
+   *   印を持たせずに数字だけ入れると、あとで見た人が
+   *   「100gでこのカロリー？」と誤解します。画面では必ずこれを見て、
+   *   `100gあたり` ではなく `1袋あたり` と出してください。
+   */
+  servingUnit: CountableUnit | null;
   /** 補足。「皮なし」「ゆで」など、管理者が残すメモ */
   note: string;
   createdAt: number | null;
@@ -189,6 +207,7 @@ export async function saveFood(food: Food): Promise<Food> {
     key: foodKey(saved.name),
     per100g: saved.per100g,
     unitConversions: saved.unitConversions,
+    servingUnit: saved.servingUnit,
     note: saved.note,
     createdAt: saved.createdAt,
     updatedAt: saved.updatedAt,
@@ -220,6 +239,7 @@ export function emptyFood(name = ''): Food {
     aliases: [],
     per100g: { kcal: 0, p: 0, f: 0, c: 0 },
     unitConversions: [],
+    servingUnit: null,
     note: '',
     createdAt: null,
     updatedAt: null,
@@ -240,6 +260,9 @@ function toFood(id: string, data: Record<string, unknown>): Food {
     unitConversions: normalizeConversions(
       Array.isArray(data.unitConversions) ? (data.unitConversions as UnitConversion[]) : [],
     ),
+    // ★ 知らない単位が入っていたら null に落とします。
+    //   変な値を信じて「1あたり」と出すより、100gあたりに戻るほうが安全です。
+    servingUnit: COUNTABLE_UNITS.find((u) => u === data.servingUnit) ?? null,
     note: typeof data.note === 'string' ? data.note : '',
     createdAt: numOrNull(data.createdAt),
     updatedAt: numOrNull(data.updatedAt),

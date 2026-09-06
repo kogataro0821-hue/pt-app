@@ -182,3 +182,83 @@ describe('何として読んだかの表示', () => {
     expect(labelBasisLabel({ basis: 'perServing', servingGrams: null })).toContain('不明');
   });
 });
+
+/**
+ * ★ グラム数が書かれていない商品（追加仕様: 成分表示の読み取り）。
+ *
+ * ★ 守りたいのは3つです。
+ *
+ *   1. 単位を渡さなければ、これまでどおり止まること
+ *   2. 単位を渡せば通り、**表示の数字がそのまま**入ること
+ *   3. 「1袋ぶん」だという印が、必ず返ること
+ */
+describe('★ グラム数が書いていない商品', () => {
+  const noGrams: LabelReading = {
+    basis: 'perServing',
+    servingGrams: null,
+    kcal: 200,
+    p: 10,
+    f: 5,
+    c: 30,
+    sugar: null,
+    fiber: null,
+    salt: null,
+    sodiumMg: null,
+  };
+
+  it('★ 単位を渡さなければ、これまでどおり止まる', () => {
+    // ★ 黙って100gとみなすと、根拠のない数字が全員のマスタに入ります
+    const out = labelToPer100g(noGrams);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toBe('need-serving-grams');
+  });
+
+  it('★ 単位を渡すと通り、表示の数字がそのまま入る', () => {
+    const out = labelToPer100g(noGrams, '袋');
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+
+    // ★ 1袋 = 100g として置くので、割り算は起きません
+    expect(out.per100g.kcal).toBe(200);
+    expect(out.per100g.p).toBe(10);
+    expect(out.per100g.f).toBe(5);
+    expect(out.per100g.c).toBe(30);
+  });
+
+  it('★ 「1袋ぶん」だという印が返る', () => {
+    // ★ この印を落とすと、あとで見た人が「100gでこのカロリー？」と誤解します
+    const out = labelToPer100g(noGrams, '袋');
+    expect(out.ok && out.servingUnit).toBe('袋');
+  });
+
+  it('印には、選んだ単位がそのまま入る', () => {
+    const out = labelToPer100g(noGrams, '本');
+    expect(out.ok && out.servingUnit).toBe('本');
+  });
+
+  it('そう決めたことが、控えに残る', () => {
+    const out = labelToPer100g(noGrams, '袋');
+    expect(out.ok && out.notes.join('')).toContain('1袋ぶん');
+  });
+
+  it('★ グラム数が読めているときは、単位を渡してもグラムを優先する', () => {
+    // ★ 分かっているなら、本当の100gあたりのほうが価値があります
+    const out = labelToPer100g({ ...noGrams, servingGrams: 50 }, '袋');
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.per100g.kcal).toBe(400); // 50g で 200kcal → 100g で 400kcal
+    expect(out.servingUnit).toBeNull();
+  });
+
+  it('100g当たりの表示では、単位を渡しても印は付かない', () => {
+    const out = labelToPer100g({ ...noGrams, basis: 'per100g' }, '袋');
+    expect(out.ok && out.servingUnit).toBeNull();
+  });
+
+  it('炭水化物が読めていなければ、単位を渡しても止まる', () => {
+    // ★ グラム数の話と、数字が足りない話は別です
+    const out = labelToPer100g({ ...noGrams, c: null, sugar: null }, '袋');
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toBe('need-carbs');
+  });
+});
