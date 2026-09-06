@@ -2440,7 +2440,7 @@ describe('★ お知らせを、契約者が自分で作れないか', () => {
  *   契約者にできるのは「今日ぶんを1回受け取る」だけ。
  *   その1回も、サーバー時刻の今日で、設定された額ぴったりでなければ通りません。
  */
-describe('★ ポイントを、契約者が自分で増やせないか', () => {
+describe('★ かけらを、契約者が自分で増やせないか', () => {
   /** サーバー時刻でいまの「ポイント日」（JST 朝4時区切り）。 */
   function pointDay(offsetDays = 0): string {
     const shifted = new Date(Date.now() + 5 * 3600_000 - offsetDays * 86_400_000);
@@ -2459,50 +2459,51 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertSucceeds(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
     });
 
-    it('★ 額を多くすると、通らない', async () => {
+    it('★ 数を多くすると、通らない', async () => {
       // ★ ここが本丸です。画面を書き換えても、直接書いても、額は動かせません
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100000, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 1000, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
     });
 
-    it('1ポイントでも多いと、通らない', async () => {
+    it('1つでも多いと、通らない', async () => {
       // ★ 「少しなら」を許すと、毎日少しずつ増やせます
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 101, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 2, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
     });
 
-    it('額を少なくしても、通らない（ぴったりでなければ駄目）', async () => {
+    it('増えていない書き込みも、通らない（ぴったりでなければ駄目）', async () => {
+      await seedPoints({ points: 5 });
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 50, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 5, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
     });
 
     it('★ 同じ日に2回目は、通らない', async () => {
-      await seedPoints({ points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1 });
+      await seedPoints({ points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1 });
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 200, pointsLastDate: pointDay(), pointsTotalDays: 2 },
+          { points: 2, pointsLastDate: pointDay(), pointsTotalDays: 2 },
           { merge: true },
         ),
       );
@@ -2513,7 +2514,7 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(-1), pointsTotalDays: 1 },
+          { points: 1, pointsLastDate: pointDay(-1), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
@@ -2523,64 +2524,64 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(1), pointsTotalDays: 1 },
+          { points: 1, pointsLastDate: pointDay(1), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
     });
 
-    it('日付を書かずにポイントだけ増やすのは、通らない', async () => {
-      await assertFails(setDoc(doc(alice(), 'clients/alice'), { points: 100 }, { merge: true }));
+    it('日付を書かずにかけらだけ増やすのは、通らない', async () => {
+      await assertFails(setDoc(doc(alice(), 'clients/alice'), { points: 1 }, { merge: true }));
     });
 
     it('累計日数を余分に増やすと、通らない', async () => {
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(), pointsTotalDays: 999 },
+          { points: 1, pointsLastDate: pointDay(), pointsTotalDays: 999 },
           { merge: true },
         ),
       );
     });
 
     it('きのう受け取っていれば、今日は受け取れる', async () => {
-      await seedPoints({ points: 100, pointsLastDate: pointDay(1), pointsTotalDays: 1 });
+      await seedPoints({ points: 1, pointsLastDate: pointDay(1), pointsTotalDays: 1 });
       await assertSucceeds(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 200, pointsLastDate: pointDay(), pointsTotalDays: 2 },
+          { points: 2, pointsLastDate: pointDay(), pointsTotalDays: 2 },
           { merge: true },
         ),
       );
     });
 
     it('★ 何日空いていても、今日ぶんは受け取れる（休んだ罰は無い）', async () => {
-      await seedPoints({ points: 300, pointsLastDate: pointDay(90), pointsTotalDays: 3 });
+      await seedPoints({ points: 3, pointsLastDate: pointDay(90), pointsTotalDays: 3 });
       await assertSucceeds(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 400, pointsLastDate: pointDay(), pointsTotalDays: 4 },
+          { points: 4, pointsLastDate: pointDay(), pointsTotalDays: 4 },
           { merge: true },
         ),
       );
     });
   });
 
-  describe('★ 1日の付与額は、契約者には動かせない', () => {
-    it('付与額そのものを書き換えられない', async () => {
+  describe('★ 1日にたまる数は、契約者には動かせない', () => {
+    it('その数そのものを書き換えられない', async () => {
       await assertFails(
         setDoc(doc(alice(), 'clients/alice'), { pointsDailyAmount: 99999 }, { merge: true }),
       );
     });
 
-    it('★ 付与額を上げながら受け取る、もできない', async () => {
+    it('★ その数を上げながら受け取る、もできない', async () => {
       // ★ これができると、上の「額ぴったり」の守りが素通りになります
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
           {
-            points: 99999,
-            pointsDailyAmount: 99999,
+            points: 999,
+            pointsDailyAmount: 999,
             pointsLastDate: pointDay(),
             pointsTotalDays: 1,
           },
@@ -2589,20 +2590,20 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       );
     });
 
-    it('管理者が額を変えたら、その額でしか受け取れない', async () => {
-      await seedPoints({ pointsDailyAmount: 250 });
+    it('管理者が数を変えたら、その数でしか受け取れない', async () => {
+      await seedPoints({ pointsDailyAmount: 3 });
 
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
       await assertSucceeds(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 250, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 3, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
@@ -2625,7 +2626,7 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { displayName: 'アリス', points: 100000 },
+          { displayName: 'アリス', points: 1000 },
           { merge: true },
         ),
       );
@@ -2636,7 +2637,7 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertFails(
         setDoc(
           doc(alice(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1, rank: 'CROWN' },
+          { points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1, rank: 'CROWN' },
           { merge: true },
         ),
       );
@@ -2648,7 +2649,7 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertFails(
         setDoc(
           doc(alice(), 'clients/bob'),
-          { points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
@@ -2656,7 +2657,7 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
 
     it('他人のポイントを減らせない', async () => {
       // ★ 嫌がらせでゼロにされては困ります
-      await seedPoints({ points: 5000 });
+      await seedPoints({ points: 50 });
       await assertFails(setDoc(doc(alice(), 'clients/bob'), { points: 0 }, { merge: true }));
     });
 
@@ -2664,7 +2665,7 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
       await assertFails(
         setDoc(
           doc(guest(), 'clients/alice'),
-          { points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1 },
+          { points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1 },
           { merge: true },
         ),
       );
@@ -2672,29 +2673,46 @@ describe('★ ポイントを、契約者が自分で増やせないか', () => 
   });
 
   describe('管理者は自由に付け外しできる', () => {
-    it('好きな額を付けられる', async () => {
+    it('好きな数を付けられる', async () => {
       await assertSucceeds(
-        setDoc(doc(admin(), 'clients/alice'), { points: 5000 }, { merge: true }),
+        setDoc(doc(admin(), 'clients/alice'), { points: 50 }, { merge: true }),
       );
     });
 
     it('★ 減らせる（交換したとき）', async () => {
-      await seedPoints({ points: 5000 });
+      await seedPoints({ points: 50 });
       await assertSucceeds(
-        setDoc(doc(admin(), 'clients/alice'), { points: 1000 }, { merge: true }),
+        setDoc(doc(admin(), 'clients/alice'), { points: 10 }, { merge: true }),
       );
     });
 
-    it('1日の付与額を変えられる', async () => {
+    it('1日にたまる数を変えられる', async () => {
       await assertSucceeds(
-        setDoc(doc(admin(), 'clients/alice'), { pointsDailyAmount: 250 }, { merge: true }),
+        setDoc(doc(admin(), 'clients/alice'), { pointsDailyAmount: 3 }, { merge: true }),
       );
     });
 
     it('受け取り日を無視して付けられる', async () => {
-      await seedPoints({ points: 100, pointsLastDate: pointDay(), pointsTotalDays: 1 });
+      await seedPoints({ points: 1, pointsLastDate: pointDay(), pointsTotalDays: 1 });
       await assertSucceeds(
-        setDoc(doc(admin(), 'clients/alice'), { points: 600 }, { merge: true }),
+        setDoc(doc(admin(), 'clients/alice'), { points: 60 }, { merge: true }),
+      );
+    });
+
+    it('★ その日ぶんを受け取ったあとでも、いつでも減らせる', async () => {
+      // ★ 交換はいつ起きるか分かりません。朝4時の区切りは
+      //   「契約者がその日ぶんを受け取る」ときだけの条件で、
+      //   管理者の増減には一切かかっていません。
+      await seedPoints({ points: 30, pointsLastDate: pointDay(), pointsTotalDays: 30 });
+      await assertSucceeds(
+        setDoc(doc(admin(), 'clients/alice'), { points: 27 }, { merge: true }),
+      );
+    });
+
+    it('★ その日ぶんをまだ受け取っていなくても、減らせる', async () => {
+      await seedPoints({ points: 30, pointsLastDate: pointDay(5), pointsTotalDays: 30 });
+      await assertSucceeds(
+        setDoc(doc(admin(), 'clients/alice'), { points: 27 }, { merge: true }),
       );
     });
   });

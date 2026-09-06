@@ -34,8 +34,8 @@ beforeEach(() => {
 describe('★ 開いたら、たまる', () => {
   it('まだ受け取っていなければ、受け取りにいく', async () => {
     claimDailyPoints.mockResolvedValue({
-      points: 100,
-      dailyPoints: 100,
+      points: 1,
+      dailyPoints: 1,
       lastDate: TODAY,
       totalDays: 1,
     });
@@ -43,19 +43,19 @@ describe('★ 開いたら、たまる', () => {
     render(<PointsCard client={aClient({ points: 0 })} isAdmin={false} />);
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('100 pt')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('+100 pt');
+    expect(await screen.findByText('1 かけら')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('+1 かけら');
   });
 
   it('★ きょうのぶんを受け取ってあれば、投げない', async () => {
     render(
       <PointsCard
-        client={aClient({ points: 500, pointsLastDate: TODAY, pointsTotalDays: 5 })}
+        client={aClient({ points: 5, pointsLastDate: TODAY, pointsTotalDays: 5 })}
         isAdmin={false}
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('500 pt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('5 かけら')).toBeInTheDocument());
     expect(claimDailyPoints).not.toHaveBeenCalled();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
@@ -63,8 +63,8 @@ describe('★ 開いたら、たまる', () => {
   it('★ 描き直されても、1回しか投げない', async () => {
     // ★ 親が再描画するたびに投げると、同じ日に何度も弾かれ続けます
     claimDailyPoints.mockResolvedValue({
-      points: 100,
-      dailyPoints: 100,
+      points: 1,
+      dailyPoints: 1,
       lastDate: TODAY,
       totalDays: 1,
     });
@@ -79,9 +79,9 @@ describe('★ 開いたら、たまる', () => {
 
   it('★ 管理者が代理で見ているときは、たまらない', async () => {
     // ★ トレーナーが様子を見ただけで、その人のポイントが増えては困ります
-    render(<PointsCard client={aClient({ points: 500 })} isAdmin={true} />);
+    render(<PointsCard client={aClient({ points: 5 })} isAdmin={true} />);
 
-    await waitFor(() => expect(screen.getByText('500 pt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('5 かけら')).toBeInTheDocument());
     expect(claimDailyPoints).not.toHaveBeenCalled();
     expect(screen.getByText(/トレーナーが見ている/)).toBeInTheDocument();
   });
@@ -91,11 +91,11 @@ describe('★ 開いたら、たまる', () => {
     //   ここで赤いエラーを出しても、本人にできることがありません
     claimDailyPoints.mockRejectedValue(new Error('offline'));
 
-    render(<PointsCard client={aClient({ points: 300 })} isAdmin={false} />);
+    render(<PointsCard client={aClient({ points: 3 })} isAdmin={false} />);
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByText('300 pt')).toBeInTheDocument();
+    expect(screen.getByText('3 かけら')).toBeInTheDocument();
   });
 });
 
@@ -103,18 +103,18 @@ describe('表示', () => {
   it('1日にたまる額を伝える', async () => {
     render(
       <PointsCard
-        client={aClient({ points: 100, pointsLastDate: TODAY, pointsDailyAmount: 250 })}
+        client={aClient({ points: 1, pointsLastDate: TODAY, pointsDailyAmount: 3 })}
         isAdmin={false}
       />,
     );
-    expect(await screen.findByText(/250 pt たまります/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 かけら たまります/)).toBeInTheDocument();
     expect(screen.getByText(/朝4時/)).toBeInTheDocument();
   });
 
   it('これまでの日数を出す', async () => {
     render(
       <PointsCard
-        client={aClient({ points: 1200, pointsLastDate: TODAY, pointsTotalDays: 12 })}
+        client={aClient({ points: 12, pointsLastDate: TODAY, pointsTotalDays: 12 })}
         isAdmin={false}
       />,
     );
@@ -128,7 +128,7 @@ describe('表示', () => {
         isAdmin={false}
       />,
     );
-    await waitFor(() => expect(screen.getByText('0 pt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('0 かけら')).toBeInTheDocument());
     expect(screen.queryByText(/これまで/)).not.toBeInTheDocument();
   });
 
@@ -139,6 +139,6 @@ describe('表示', () => {
         isAdmin={false}
       />,
     );
-    expect(await screen.findByText('12,345 pt')).toBeInTheDocument();
+    expect(await screen.findByText('12,345 かけら')).toBeInTheDocument();
   });
 });

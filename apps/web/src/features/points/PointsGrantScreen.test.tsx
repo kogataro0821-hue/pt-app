@@ -31,8 +31,8 @@ vi.mock('./pointsRepo', async () => {
   };
 });
 
-const alice = aClient({ clientId: 'alice', displayName: 'アリス', points: 500 });
-const bob = aClient({ clientId: 'bob', displayName: 'ボブ', points: 1200 });
+const alice = aClient({ clientId: 'alice', displayName: 'アリス', points: 5 });
+const bob = aClient({ clientId: 'bob', displayName: 'ボブ', points: 12 });
 const carol = aClient({ clientId: 'carol', displayName: 'キャロル', points: 0 });
 
 beforeEach(() => {
@@ -40,7 +40,7 @@ beforeEach(() => {
   listClients.mockResolvedValue([alice, bob, carol]);
   grantPoints.mockImplementation((clients: { clientId: string; displayName: string }[]) =>
     Promise.resolve(
-      clients.map((c) => ({ clientId: c.clientId, displayName: c.displayName, applied: 100, points: 100 })),
+      clients.map((c) => ({ clientId: c.clientId, displayName: c.displayName, applied: 1, points: 1 })),
     ),
   );
 });
@@ -116,15 +116,15 @@ describe('★ 相手を選ぶ', () => {
 
   it('いまの残高が、選ぶところに出る', async () => {
     await open();
-    expect(screen.getByText('500 pt')).toBeInTheDocument();
-    expect(screen.getByText('1,200 pt')).toBeInTheDocument();
+    expect(screen.getByText('5 かけら')).toBeInTheDocument();
+    expect(screen.getByText('12 かけら')).toBeInTheDocument();
   });
 });
 
 describe('★ ポイントの額', () => {
-  it('既定は +100', async () => {
+  it('既定は +1', async () => {
     await open();
-    expect(screen.getByRole('spinbutton')).toHaveValue(100);
+    expect(screen.getByRole('spinbutton')).toHaveValue(1);
   });
 
   it('★ マイナスを打つと、減らせる（交換したとき）', async () => {
@@ -133,11 +133,11 @@ describe('★ ポイントの額', () => {
 
     const amount = screen.getByRole('spinbutton');
     await userEvent.clear(amount);
-    await userEvent.type(amount, '-300');
+    await userEvent.type(amount, '-3');
 
     await userEvent.click(screen.getByRole('button', { name: '送信' }));
     await waitFor(() => expect(grantPoints).toHaveBeenCalled());
-    expect(grantPoints.mock.calls[0]?.[1]).toBe(-300);
+    expect(grantPoints.mock.calls[0]?.[1]).toBe(-3);
   });
 
   it('★ 0 は送れない', async () => {
@@ -157,7 +157,7 @@ describe('★ ポイントの額', () => {
 
     const amount = screen.getByRole('spinbutton');
     await userEvent.clear(amount);
-    await userEvent.type(amount, '99999999');
+    await userEvent.type(amount, '99999');
 
     expect(screen.getByRole('button', { name: '送信' })).toBeDisabled();
     expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe('★ ポイントの額', () => {
   it('ポイントを動かさず、お知らせだけ送れる', async () => {
     await open();
     await userEvent.click(screen.getByRole('button', { name: /アリス/ }));
-    await userEvent.click(screen.getByRole('checkbox', { name: /ポイントを動かす/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /かけらを動かす/ }));
 
     // 文面が空なら、送るものが何も無いので止める
     expect(screen.getByRole('button', { name: '送信' })).toBeDisabled();
@@ -191,8 +191,8 @@ describe('★ お知らせ', () => {
     const notice = grantPoints.mock.calls[0]?.[2] as { kind: string; title: string; body: string };
     expect(notice).not.toBeNull();
     expect(notice.kind).toBe('points');
-    expect(notice.title).toBe('ポイントが届きました');
-    expect(notice.body).toContain('+100 pt');
+    expect(notice.title).toBe('かけらが届きました');
+    expect(notice.body).toContain('+1 かけら');
   });
 
   it('減らしたときは、見出しが変わる', async () => {
@@ -201,13 +201,13 @@ describe('★ お知らせ', () => {
 
     const amount = screen.getByRole('spinbutton');
     await userEvent.clear(amount);
-    await userEvent.type(amount, '-300');
+    await userEvent.type(amount, '-3');
     await userEvent.click(screen.getByRole('button', { name: '送信' }));
     await waitFor(() => expect(grantPoints).toHaveBeenCalled());
 
     const notice = grantPoints.mock.calls[0]?.[2] as { title: string; body: string };
-    expect(notice.title).toBe('ポイントを引きました');
-    expect(notice.body).toContain('−300 pt');
+    expect(notice.title).toBe('かけらを引きました');
+    expect(notice.body).toContain('−3 かけら');
   });
 
   it('書いた見出しと本文が、そのまま入る', async () => {
@@ -228,7 +228,7 @@ describe('★ お知らせ', () => {
 describe('送ったあと', () => {
   it('誰にいくら動いたかが出る', async () => {
     grantPoints.mockResolvedValue([
-      { clientId: 'alice', displayName: 'アリス', applied: -300, points: 200 },
+      { clientId: 'alice', displayName: 'アリス', applied: -3, points: 2 },
     ]);
     await open();
     await userEvent.click(screen.getByRole('button', { name: /アリス/ }));
@@ -236,22 +236,22 @@ describe('送ったあと', () => {
 
     const result = await screen.findByText('送りました');
     expect(result).toBeInTheDocument();
-    expect(screen.getByText('−300 pt')).toBeInTheDocument();
-    expect(screen.getByText('200 pt')).toBeInTheDocument();
+    expect(screen.getByText('−3 かけら')).toBeInTheDocument();
+    expect(screen.getByText('2 かけら')).toBeInTheDocument();
   });
 
   it('★ 残高が足りなくて引ききれなかったら、そう伝える', async () => {
     // ★ 500 引くつもりが 300 しか引けなかった、を黙って済ませません。
     //   交換の場で「引いた」と思ったまま帰されると、後から合いません。
     grantPoints.mockResolvedValue([
-      { clientId: 'carol', displayName: 'キャロル', applied: -300, points: 0 },
+      { clientId: 'carol', displayName: 'キャロル', applied: -3, points: 0 },
     ]);
     await open();
     await userEvent.click(screen.getByRole('button', { name: /キャロル/ }));
 
     const amount = screen.getByRole('spinbutton');
     await userEvent.clear(amount);
-    await userEvent.type(amount, '-500');
+    await userEvent.type(amount, '-5');
     await userEvent.click(screen.getByRole('button', { name: '送信' }));
 
     await screen.findByText('送りました');

@@ -90,14 +90,14 @@ describe('日ぶんを受け取る', () => {
   it('初めての日は、設定された額そのまま', () => {
     const claim = claimDaily(EMPTY_POINTS, '2026-09-05');
     expect(claim?.gained).toBe(DEFAULT_DAILY_POINTS);
-    expect(claim?.next.points).toBe(100);
+    expect(claim?.next.points).toBe(1);
     expect(claim?.next.totalDays).toBe(1);
     expect(claim?.next.lastDate).toBe('2026-09-05');
   });
 
-  it('管理者が額を変えたら、その額で増える', () => {
-    const state: PointsState = { ...EMPTY_POINTS, dailyPoints: 250 };
-    expect(claimDaily(state, '2026-09-05')?.gained).toBe(250);
+  it('管理者が数を変えたら、その数で増える', () => {
+    const state: PointsState = { ...EMPTY_POINTS, dailyPoints: 3 };
+    expect(claimDaily(state, '2026-09-05')?.gained).toBe(3);
   });
 
   it('0に設定してあれば、増えない（受け取り自体は成立する）', () => {
@@ -108,20 +108,20 @@ describe('日ぶんを受け取る', () => {
   });
 
   it('★ 同じ日に2回目は受け取れない', () => {
-    const state: PointsState = { ...EMPTY_POINTS, points: 100, lastDate: '2026-09-05', totalDays: 1 };
+    const state: PointsState = { ...EMPTY_POINTS, points: 1, lastDate: '2026-09-05', totalDays: 1 };
     expect(claimDaily(state, '2026-09-05')).toBeNull();
   });
 
   it('★ 時計を戻しても受け取れない', () => {
-    const state: PointsState = { ...EMPTY_POINTS, points: 100, lastDate: '2026-09-05', totalDays: 1 };
+    const state: PointsState = { ...EMPTY_POINTS, points: 1, lastDate: '2026-09-05', totalDays: 1 };
     expect(claimDaily(state, '2026-09-04')).toBeNull();
     expect(claimDaily(state, '2025-01-01')).toBeNull();
   });
 
   it('★ 何日空いても、ちゃんと受け取れる（休んだ罰は無い）', () => {
-    const away: PointsState = { ...EMPTY_POINTS, points: 500, lastDate: '2026-06-01', totalDays: 5 };
+    const away: PointsState = { ...EMPTY_POINTS, points: 5, lastDate: '2026-06-01', totalDays: 5 };
     const claim = claimDaily(away, '2026-09-05');
-    expect(claim?.next.points).toBe(600);
+    expect(claim?.next.points).toBe(6);
     expect(claim?.next.totalDays).toBe(6);
   });
 
@@ -133,31 +133,31 @@ describe('日ぶんを受け取る', () => {
     // ★ 交換で残高を使い切った翌日に受け取れないと、交換した人が損をします。
     const spent: PointsState = { ...EMPTY_POINTS, points: 0, lastDate: '2026-09-05', totalDays: 10 };
     const claim = claimDaily(spent, '2026-09-06');
-    expect(claim?.next.points).toBe(100);
+    expect(claim?.next.points).toBe(1);
   });
 });
 
 describe('★ 管理者が付ける・減らす', () => {
   it('付ける', () => {
-    expect(applyGrant(100, 500)).toEqual({ points: 600, applied: 500 });
+    expect(applyGrant(1, 5)).toEqual({ points: 6, applied: 5 });
   });
 
   it('減らす（交換した）', () => {
-    expect(applyGrant(1000, -300)).toEqual({ points: 700, applied: -300 });
+    expect(applyGrant(10, -3)).toEqual({ points: 7, applied: -3 });
   });
 
   it('★ 残高より多く引いても、マイナスにはならない', () => {
-    // 300 しか無い人から 500 引く → 引けるのは 300 まで
-    expect(applyGrant(300, -500)).toEqual({ points: 0, applied: -300 });
+    // 3 しか無い人から 5 引く → 引けるのは 3 まで
+    expect(applyGrant(3, -5)).toEqual({ points: 0, applied: -3 });
   });
 
   it('0 の人から引いても、0 のまま', () => {
-    expect(applyGrant(0, -100)).toEqual({ points: 0, applied: 0 });
+    expect(applyGrant(0, -5)).toEqual({ points: 0, applied: 0 });
   });
 
   it('打ってよい数', () => {
-    expect(isValidGrant(100)).toBe(true);
-    expect(isValidGrant(-100)).toBe(true);
+    expect(isValidGrant(3)).toBe(true);
+    expect(isValidGrant(-3)).toBe(true);
     expect(isValidGrant(MAX_GRANT)).toBe(true);
   });
 
@@ -179,14 +179,14 @@ describe('★ 管理者が付ける・減らす', () => {
 
 describe('1日の付与ポイントの設定', () => {
   it('ふつうの数', () => {
-    expect(isValidDailyPoints(100)).toBe(true);
+    expect(isValidDailyPoints(1)).toBe(true);
     expect(isValidDailyPoints(0)).toBe(true);
-    expect(isValidDailyPoints(10000)).toBe(true);
+    expect(isValidDailyPoints(100)).toBe(true);
   });
 
   it('範囲の外は受け付けない', () => {
     expect(isValidDailyPoints(-1)).toBe(false);
-    expect(isValidDailyPoints(10001)).toBe(false);
+    expect(isValidDailyPoints(101)).toBe(false);
     expect(isValidDailyPoints(1.5)).toBe(false);
   });
 });
@@ -195,15 +195,15 @@ describe('保存されたものを読む', () => {
   it('ふつうに読める', () => {
     expect(
       readPoints({
-        points: 1200,
-        pointsDailyAmount: 150,
+        points: 12,
+        pointsDailyAmount: 2,
         pointsLastDate: '2026-09-05',
         pointsTotalDays: 12,
       }),
-    ).toEqual({ points: 1200, dailyPoints: 150, lastDate: '2026-09-05', totalDays: 12 });
+    ).toEqual({ points: 12, dailyPoints: 2, lastDate: '2026-09-05', totalDays: 12 });
   });
 
-  it('まだ無ければ、ゼロと既定の100から', () => {
+  it('まだ無ければ、ゼロと既定の1から', () => {
     expect(readPoints({})).toEqual({
       points: 0,
       dailyPoints: DEFAULT_DAILY_POINTS,
@@ -226,23 +226,23 @@ describe('保存されたものを読む', () => {
   });
 
   it('マイナスが入っていても0として読む', () => {
-    expect(readPoints({ points: -500 }).points).toBe(0);
+    expect(readPoints({ points: -5 }).points).toBe(0);
   });
 
   it('1日の付与が範囲外なら、範囲に収める', () => {
-    expect(readPoints({ pointsDailyAmount: 999999 }).dailyPoints).toBe(10000);
+    expect(readPoints({ pointsDailyAmount: 999999 }).dailyPoints).toBe(100);
     expect(readPoints({ pointsDailyAmount: -5 }).dailyPoints).toBe(0);
   });
 });
 
 describe('表示', () => {
   it('桁区切りが入る', () => {
-    expect(formatPoints(1200)).toBe('1,200 pt');
-    expect(formatPoints(0)).toBe('0 pt');
+    expect(formatPoints(1200)).toBe('1,200 かけら');
+    expect(formatPoints(0)).toBe('0 かけら');
   });
 
   it('符号が付く', () => {
-    expect(formatDelta(100)).toBe('+100 pt');
-    expect(formatDelta(-50)).toBe('−50 pt');
+    expect(formatDelta(3)).toBe('+3 かけら');
+    expect(formatDelta(-5)).toBe('−5 かけら');
   });
 });

@@ -44,20 +44,36 @@ const POINT_DAY_SHIFT_HOURS = 4;
 
 const HOUR_MS = 60 * 60 * 1000;
 
-/** 1日の付与ポイントの既定値。管理者が契約者ごとに変えられます。 */
-export const DEFAULT_DAILY_POINTS = 100;
+/**
+ * 画面に出す名前。
+ *
+ * ★ コードの中では points（ポイント）のままにしてあります。
+ *
+ *   Firestore に保存されている項目名（points / pointsDailyAmount / …）と
+ *   Rules の条件が、その名前で書かれているためです。
+ *   名前を揃えるためだけに項目名を変えると、Rules の貼り直しと
+ *   既存データの移行が必要になります。割に合いません。
+ *   **画面に出る言葉だけ「かけら」にしてあります。**
+ */
+export const SHARD_NAME = 'タンパク質のかけら';
 
-/** 1日の付与ポイントに認める範囲。 */
+/** 数のうしろに付ける短い呼び方。 */
+export const SHARD_UNIT = 'かけら';
+
+/** 1日にたまる数の既定値。管理者が契約者ごとに変えられます。 */
+export const DEFAULT_DAILY_POINTS = 1;
+
+/** 1日にたまる数に認める範囲。 */
 export const MIN_DAILY_POINTS = 0;
-export const MAX_DAILY_POINTS = 10000;
+export const MAX_DAILY_POINTS = 100;
 
 /**
- * 一度に付け外しできる額の上限。
+ * 一度に付け外しできる数の上限。
  *
  * ★ 上限を置くのは、桁を打ち間違えたときのためです。
- *   100 のつもりで 1000000 と打っても、交換の場で気づけません。
+ *   3 のつもりで 3000 と打っても、交換の場で気づけません。
  */
-export const MAX_GRANT = 100000;
+export const MAX_GRANT = 1000;
 
 /**
  * その時刻が属する「ポイント日」。
@@ -188,15 +204,15 @@ export function isValidDailyPoints(value: number): boolean {
   return value >= MIN_DAILY_POINTS && value <= MAX_DAILY_POINTS;
 }
 
-/** 「1,200 pt」のように読みやすく。 */
+/** 「12 かけら」のように読みやすく。 */
 export function formatPoints(points: number): string {
-  return `${points.toLocaleString('ja-JP')} pt`;
+  return `${points.toLocaleString('ja-JP')} ${SHARD_UNIT}`;
 }
 
-/** 「+100 pt」「−50 pt」のように符号を付けて。 */
+/** 「+3 かけら」「−5 かけら」のように符号を付けて。 */
 export function formatDelta(delta: number): string {
   const sign = delta < 0 ? '−' : '+';
-  return `${sign}${Math.abs(delta).toLocaleString('ja-JP')} pt`;
+  return `${sign}${Math.abs(delta).toLocaleString('ja-JP')} ${SHARD_UNIT}`;
 }
 
 /**

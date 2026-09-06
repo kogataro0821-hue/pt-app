@@ -165,12 +165,16 @@ service cloud.firestore {
            + '-' + pad(pointDayTs().day());
     }
 
-    // 管理者が決めた1日ぶん。設定が無ければ 100。
+    // 管理者が決めた1日ぶん（かけらの数）。設定が無ければ 1。
     //
     // ★ get() を足さずに resource から読めるのが大事なところです。
     //   同じ契約者ドキュメントの中にあるので、余計な読み取りが要りません。
+    //
+    // ★ この既定値は core 側の DEFAULT_DAILY_POINTS と必ず同じにしてください。
+    //   ずれると、画面が出す数と Rules が求める数が食い違い、
+    //   受け取りが静かに弾かれ続けます。
     function dailyAmount() {
-      return resource.data.get('pointsDailyAmount', 100);
+      return resource.data.get('pointsDailyAmount', 1);
     }
 
     function claimsDailyPoints() {

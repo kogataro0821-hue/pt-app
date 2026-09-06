@@ -97,7 +97,7 @@ export function AppShell({
           <AdminLink to="/clients" label="契約者" />
           <AdminLink to="/foods" label="食品マスタ" />
           <AdminLink to="/foods/requests" label="登録依頼" badge={pendingRequests} />
-          <AdminLink to="/points" label="ポイント" />
+          <AdminLink to="/points" label="かけら" />
         </nav>
       )}
 

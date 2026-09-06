@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatPoints, pointDayKey, canClaimToday } from '@pt/core';
+import { formatPoints, pointDayKey, canClaimToday, SHARD_NAME, SHARD_UNIT } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
 import { claimDailyPoints, pointsOf } from './pointsRepo';
 
@@ -72,20 +72,20 @@ export function PointsCard({
   return (
     <section className="card points-card">
       <div className="points-head">
-        <span className="points-label">ポイント</span>
+        <span className="points-label">{SHARD_NAME}</span>
         <span className="points-total">{formatPoints(points)}</span>
       </div>
 
       {gained !== null && gained > 0 && (
         <p className="points-gained" role="status">
-          きょうのぶん +{gained.toLocaleString('ja-JP')} pt
+          きょうのぶん +{gained.toLocaleString('ja-JP')} {SHARD_UNIT}
         </p>
       )}
 
       <p className="points-note">
         {isAdmin
           ? 'トレーナーが見ているので、受け取りは動きません。'
-          : `毎日ひらくと ${daily.toLocaleString('ja-JP')} pt たまります（朝4時で切り替わります）。`}
+          : `毎日ひらくと ${daily.toLocaleString('ja-JP')} ${SHARD_UNIT} たまります（朝4時で切り替わります）。`}
       </p>
 
       {state.totalDays > 0 && (

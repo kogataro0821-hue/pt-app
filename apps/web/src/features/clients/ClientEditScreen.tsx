@@ -18,8 +18,10 @@ import {
   DEFAULT_DAILY_POINTS,
   MAX_DAILY_POINTS,
   MIN_DAILY_POINTS,
-  formatPoints,
+  SHARD_NAME,
+  SHARD_UNIT,
 } from '@pt/core';
+import { QuickShards } from '@/features/points/QuickShards';
 
 /**
  * 契約者の編集（設計書 §11.3 A-3）。
@@ -452,21 +454,35 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
           />
         </section>
 
-        {/* ★ ポイント（追加仕様: ログインポイント）。
-               残高そのものは、ここでは動かしません。
-               付ける・減らすは「ポイントを配る」画面（/points）です。
-               お知らせを添えずに残高だけ動くのを避けるためです。 */}
+        {/* ★ タンパク質のかけら（追加仕様: ログインポイント）。
+
+               ここには2つ置いてあります。
+
+                 1. その場で増やす・減らす … 押した瞬間に反映（保存ボタン不要）
+                 2. 1日にたまる数         … この画面の「保存する」で確定
+
+               1 を保存ボタンに混ぜていないのは、目標を書きかけたまま
+               画面を離れたときに、交換の記録まで消えてしまうからです。 */}
         <section className="card">
-          <h3 className="card-title">ポイント</h3>
+          <h3 className="card-title">{SHARD_NAME}</h3>
 
-          <p className="lede">
-            いまの残高 <strong>{formatPoints(draft.points)}</strong>
-            {draft.pointsTotalDays > 0 && (
-              <span className="field-hint">（これまで {draft.pointsTotalDays} 日）</span>
-            )}
-          </p>
+          {draft.pointsTotalDays > 0 && (
+            <p className="field-hint">これまで {draft.pointsTotalDays} 日ぶん受け取っています</p>
+          )}
 
-          <Field label="1日にたまるポイント">
+          <QuickShards
+            client={draft}
+            onChanged={(points) => {
+              // ★ 即時反映ぶんは、この画面の下書きにも入れておきます。
+              //   入れないと「保存する」で古い残高に戻ります。
+              setClient((c) => (c === null ? c : { ...c, points }));
+              patch({ points });
+            }}
+          />
+
+          <hr className="rule" />
+
+          <Field label={`1日にたまる${SHARD_UNIT}の数`}>
             <input
               className="input"
               type="number"
@@ -486,12 +502,9 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
             <span className="field-hint">
               既定は {DEFAULT_DAILY_POINTS}。1日の区切りは朝4時です。
               0 にすると、開いてもたまりません。
+              （こちらは「保存する」で確定します）
             </span>
           </Field>
-
-          <p className="note">
-            付ける・減らすは「ポイント」画面から。お知らせを一緒に届けられます。
-          </p>
         </section>
 
         {error !== null && (

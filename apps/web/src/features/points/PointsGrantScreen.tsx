@@ -4,6 +4,8 @@ import {
   formatPoints,
   isValidGrant,
   MAX_GRANT,
+  SHARD_NAME,
+  SHARD_UNIT,
 } from '@pt/core';
 import { listClients } from '@/features/clients/clientsRepo';
 import type { Client } from '@/features/clients/clientTypes';
@@ -38,7 +40,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
 
   const [movePoints, setMovePoints] = useState(true);
   /** 入力は文字列で持ちます。「-」だけ打った途中の状態を消さないためです */
-  const [amountText, setAmountText] = useState('100');
+  const [amountText, setAmountText] = useState('1');
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -110,9 +112,9 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
       title.trim().length > 0
         ? title.trim()
         : delta > 0
-          ? 'ポイントが届きました'
+          ? `${SHARD_UNIT}が届きました`
           : delta < 0
-            ? 'ポイントを引きました'
+            ? `${SHARD_UNIT}を引きました`
             : 'トレーナーからのお知らせ';
 
     const lines: string[] = [];
@@ -176,7 +178,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
               </li>
             ))}
           </ul>
-          {moved.length === 0 && <p className="note">ポイントは動かしていません。</p>}
+          {moved.length === 0 && <p className="note">{SHARD_UNIT}は動かしていません。</p>}
         </section>
 
         <div className="form-actions">
@@ -196,7 +198,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
   return (
     <>
       <div className="section-head">
-        <h2 className="title">ポイントを配る</h2>
+        <h2 className="title">{SHARD_NAME}を配る</h2>
         <button className="button-secondary compact" type="button" onClick={onBack}>
           戻る
         </button>
@@ -276,7 +278,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
 
           {/* ---- 2. ポイント ------------------------------------------------ */}
           <section className="card">
-            <h3 className="card-title">2. ポイント</h3>
+            <h3 className="card-title">2. {SHARD_UNIT}</h3>
 
             <label className="check-row">
               <input
@@ -284,13 +286,13 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
                 checked={movePoints}
                 onChange={(e) => setMovePoints(e.target.checked)}
               />
-              <span>ポイントを動かす</span>
+              <span>{SHARD_UNIT}を動かす</span>
             </label>
 
             {movePoints && (
               <>
                 <label className="field">
-                  <span className="field-label">ポイント</span>
+                  <span className="field-label">{SHARD_UNIT}の数</span>
                   <input
                     className="input"
                     type="number"
@@ -303,7 +305,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
                 </label>
 
                 <div className="choice-row compact">
-                  {[100, 500, 1000].map((n) => (
+                  {[1, 3, 5, 10].map((n) => (
                     <button
                       key={n}
                       type="button"
@@ -324,6 +326,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
 
                 <p className="note">
                   マイナスを打つと減らせます（交換したとき）。残高より多くは引かれません。
+                  1人だけなら、その人の設定画面からのほうが速く動かせます。
                 </p>
 
                 {!amountOk && (
@@ -348,7 +351,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder={movePoints ? 'ポイントが届きました' : 'お知らせ'}
+                placeholder={movePoints ? `${SHARD_UNIT}が届きました` : 'お知らせ'}
                 maxLength={40}
               />
             </label>
@@ -366,7 +369,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
             </label>
 
             <p className="note">
-              空でも届きます。ポイントが動いたことは自動で書き足されます。
+              空でも届きます。{SHARD_UNIT}が動いたことは自動で書き足されます。
             </p>
           </section>
 

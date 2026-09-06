@@ -3082,3 +3082,50 @@ select.input {
 .form-actions .button-secondary {
   flex: 1 1 auto;
 }
+
+/* ---- その場で増やす・減らす（追加仕様: ログインポイント）------------------ */
+
+/* ★ 交換の場で使う欄なので、指で押せる大きさを優先しています。 */
+.quick-shards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.quick-shards-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* ★ 数の欄は広げません。1〜2桁しか入らないためです。
+   広いと「もっと大きい数を入れるところ」に見えます。 */
+.quick-shards-amount {
+  width: 5.5em;
+  flex: none;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-shards-row .button-primary,
+.quick-shards-row .button-secondary {
+  flex: 1 1 auto;
+}
+
+.quick-shards-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.quick-shards-presets .choice {
+  min-width: 44px;
+  padding: 6px 10px;
+}
+
+/* ★ 2つの区切り。上は即時、下は保存ボタンで確定と、性質が違います。 */
+hr.rule {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: var(--space-lg) 0;
+}
