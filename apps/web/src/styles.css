@@ -3129,3 +3129,195 @@ hr.rule {
   border-top: 1px solid var(--rule);
   margin: var(--space-lg) 0;
 }
+
+/* ---- かけらの絵（追加仕様: ログインポイント）------------------------------- */
+
+/* ★ 数と石を、ひとかたまりとして扱います。
+   間で折り返すと「12」と石が別の行に離れて、意味が壊れます。 */
+.shards {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  white-space: nowrap;
+}
+
+/* ★ 数字の幅を固定します。
+   残高が 9 → 10 に変わるたびに石が横に跳ねると、目障りです。 */
+.shards-n {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ★ 石は文字と同じ大きさに揃えます（size は 1em 既定）。
+   ベースラインだと少し沈むので、わずかに持ち上げます。 */
+.shard-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.12em;
+}
+
+/* 残高の大きい表示。石も一緒に大きくなります */
+.points-total.shards {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.shards.strong {
+  font-weight: 700;
+}
+
+/* ★ キラキラ。光の点を、少しずつ違うころあいで瞬かせます。
+   3つを同時に光らせると点滅に見えるので、ずらしてあります。 */
+.shard-glint {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: shard-twinkle 2.6s ease-in-out infinite;
+}
+
+.shard-glint-b {
+  animation-duration: 3.4s;
+  animation-delay: 0.8s;
+}
+
+.shard-glint-c {
+  animation-duration: 4.1s;
+  animation-delay: 1.7s;
+}
+
+@keyframes shard-twinkle {
+  0%,
+  100% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+/* ★ 動きを減らす設定の端末では、光らせません。
+   一覧に何個も並ぶ絵が動き続けると、乗り物酔いのような不快感が出ます。 */
+@media (prefers-reduced-motion: reduce) {
+  .shard-glint {
+    animation: none;
+  }
+}
+
+/* ---- 交換のQR（追加仕様: かけらの交換QR）---------------------------------- */
+
+.qr-card {
+  text-align: center;
+}
+
+.qr-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-md);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.qr-amount {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* ★ QRは大きく出します。
+   離れたところから読ませることがあるので、小さいと何度も撮り直しになります。
+   白い余白も削りません。詰めると読み取り率が落ちます。 */
+.qr-image {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto var(--space-md);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+/* ★ 受け取りの一覧。ここが「本当に払われた」証拠です。 */
+.qr-paid {
+  list-style: none;
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.qr-paid li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.qr-paid-mark {
+  display: inline-flex;
+  font-size: 20px;
+}
+
+.qr-paid-name {
+  font-weight: 700;
+}
+
+.qr-paid-what {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.qr-paid-left {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- 交換画面（契約者）---------------------------------------------------- */
+
+.redeem,
+.redeem-done {
+  text-align: center;
+}
+
+/* ★ 数を大きく出します。
+   いくつ払うのかが、押す前にいちばん目に入る必要があります。 */
+.redeem-amount {
+  margin: var(--space-md) 0;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.redeem-lines {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xl);
+  margin: var(--space-lg) 0;
+}
+
+.redeem-lines div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.redeem-lines dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.redeem-lines dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.redeem-done-mark {
+  margin: 0 0 var(--space-sm);
+}

@@ -26,4 +26,5 @@ export * from './photo/retention';
 export * from './review/safety';
 export * from './rank/rank';
 export * from './points/points';
+export * from './points/redeem';
 export * from './notice/notice';

@@ -79,8 +79,8 @@ describe('★ その場で動かす', () => {
     await userEvent.click(screen.getByRole('button', { name: '減らす' }));
 
     const ok = await screen.findByRole('status');
-    expect(ok).toHaveTextContent('−3 かけら');
-    expect(ok).toHaveTextContent('2 かけら');
+    expect(ok).toHaveTextContent('−3');
+    expect(ok).toHaveTextContent('残り 2');
   });
 
   it('★ 引ききれなかったら、そう伝える', async () => {

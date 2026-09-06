@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { formatDelta, formatPoints, isValidGrant, MAX_GRANT, SHARD_UNIT } from '@pt/core';
+import { formatDelta, isValidGrant, MAX_GRANT, SHARD_UNIT } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
 import { pointsNotice } from '@/features/notices/noticesRepo';
 import { grantPoints, pointsOf } from './pointsRepo';
+import { Shards, ShardDelta } from './ShardIcon';
 
 /**
  * その場で増やす・減らす（追加仕様: ログインポイント）。
@@ -75,7 +76,7 @@ export function QuickShards({
   return (
     <div className="quick-shards">
       <p className="lede">
-        いまの残高 <strong>{formatPoints(state.points)}</strong>
+        いまの残高 <Shards n={state.points} className="strong" />
       </p>
 
       <div className="quick-shards-row">
@@ -150,7 +151,7 @@ export function QuickShards({
 
       {done !== null && (
         <p className="form-ok" role="status">
-          {formatDelta(done.applied)} 反映しました（残り {formatPoints(done.points)}）
+          <ShardDelta delta={done.applied} /> 反映しました（残り <Shards n={done.points} />）
           {short && <> ／ 残高が足りなかったので、残っていたぶんだけ引きました</>}
         </p>
       )}

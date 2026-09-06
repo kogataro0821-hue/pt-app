@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import { currentMonthKey, isValidDateKey, isValidMonthKey } from '@pt/core';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { LoginScreen } from '@/features/auth/LoginScreen';
@@ -15,6 +23,8 @@ import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { MemberCard } from '@/features/rank/MemberCard';
 import { PointsCard } from '@/features/points/PointsCard';
 import { PointsGrantScreen } from '@/features/points/PointsGrantScreen';
+import { QrScreen } from '@/features/points/QrScreen';
+import { RedeemScreen } from '@/features/points/RedeemScreen';
 import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AiConsentCard } from '@/features/ai/AiConsentCard';
@@ -187,6 +197,18 @@ function AppRoutes({
           </AdminOnly>
         }
       />
+      <Route
+        path="/points/qr"
+        element={
+          <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
+            <QrRoute />
+          </AdminOnly>
+        }
+      />
+
+      {/* ★ QRから開かれる交換画面（追加仕様: かけらの交換QR）。
+             管理者専用ではありません。使うのは契約者本人です。 */}
+      <Route path="/redeem" element={<RedeemRoute onChangePassword={onChangePassword} />} />
 
       {/* 共通食品マスタと登録依頼。数字の出どころなので管理者だけが触れます（設計書 §21） */}
       <Route
@@ -354,6 +376,65 @@ function ClientListRoute() {
 function PointsGrantRoute() {
   const navigate = useNavigate();
   return <PointsGrantScreen onBack={() => navigate('/clients')} />;
+}
+
+function QrRoute() {
+  const navigate = useNavigate();
+  return <QrScreen onBack={() => navigate('/points')} />;
+}
+
+/**
+ * QRから開かれる交換画面（追加仕様: かけらの交換QR）。
+ *
+ * ★ 契約者IDはURLに入れていません。
+ *
+ *   QRは「値札」なので、誰あてかは書かれていません。
+ *   読んだ人が自分のぶんを払う、という形です。
+ *   だからログインしている本人のIDを使います。
+ */
+function RedeemRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const navigate = useNavigate();
+  const { state } = useAuth();
+  const [search] = useSearchParams();
+
+  const user = state.status === 'signedIn' ? state.user : null;
+  const cid = user?.clientId ?? null;
+
+  if (cid === null) {
+    return (
+      <Shell onChangePassword={onChangePassword}>
+        <section className="card">
+          <h2 className="title">交換できません</h2>
+          <p className="lede">
+            {state.status === 'signedIn'
+              ? 'トレーナー用のアカウントでは交換できません。'
+              : 'ログインしてから、もう一度QRを読んでください。'}
+          </p>
+          <button className="button-primary" type="button" onClick={() => navigate('/')}>
+            もどる
+          </button>
+        </section>
+      </Shell>
+    );
+  }
+
+  return (
+    <ClientGate
+      clientId={cid}
+      wrap={(node) => <Shell onChangePassword={onChangePassword}>{node}</Shell>}
+    >
+      {(client, isAdmin) => (
+        <Shell onChangePassword={onChangePassword}>
+          <RedeemScreen
+            client={client}
+            isAdmin={isAdmin}
+            params={search}
+            onDone={() => navigate(`/c/${client.clientId}`)}
+          />
+        </Shell>
+      )}
+    </ClientGate>
+  );
 }
 
 function ClientCreateRoute() {

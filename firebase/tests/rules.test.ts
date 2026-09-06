@@ -6,7 +6,15 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 /**
@@ -2713,6 +2721,159 @@ describe('★ かけらを、契約者が自分で増やせないか', () => {
       await seedPoints({ points: 30, pointsLastDate: pointDay(5), pointsTotalDays: 30 });
       await assertSucceeds(
         setDoc(doc(admin(), 'clients/alice'), { points: 27 }, { merge: true }),
+      );
+    });
+  });
+});
+
+/**
+ * ★ かけらの交換（追加仕様: かけらの交換QR）。
+ *
+ * ★ ここは、契約者が自分のかけらを**減らせる**唯一の場所です。
+ *
+ *   減らすのは本人の損なので、それ自体は攻撃になりません。
+ *   危ないのは「払っていないのに払ったことにする」ほうです。
+ *   減った数と控えの数が一致していなければ通しません。
+ */
+describe('★ かけらの交換で、ごまかせないか', () => {
+  async function seedPoints(fields: Record<string, unknown>): Promise<void> {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'clients/alice'), fields, { merge: true });
+    });
+  }
+
+  /** 交換の書き込みを作る。時刻はサーバー時刻（serverTimestamp）。 */
+  function spend(points: number, amount: number, text = 'プロテイン') {
+    return {
+      points,
+      lastRedemption: { at: serverTimestamp(), amount, text },
+    };
+  }
+
+  describe('ふつうの交換', () => {
+    it('残高が足りていれば、交換できる', async () => {
+      await seedPoints({ points: 5 });
+      await assertSucceeds(
+        setDoc(doc(alice(), 'clients/alice'), spend(2, 3), { merge: true }),
+      );
+    });
+
+    it('ちょうど使い切るのも通る', async () => {
+      await seedPoints({ points: 3 });
+      await assertSucceeds(
+        setDoc(doc(alice(), 'clients/alice'), spend(0, 3), { merge: true }),
+      );
+    });
+  });
+
+  describe('★ ごまかしを止める', () => {
+    it('★ 3引いたことにして、1しか引かないのは通らない', async () => {
+      // ★ ここが要です。控えの数と、実際に減った数が一致していないと通しません。
+      //   通してしまうと「払いました」の画面だけ本物になります。
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(doc(alice(), 'clients/alice'), spend(4, 3), { merge: true }),
+      );
+    });
+
+    it('★ 何も引かずに控えだけ書くのは通らない', async () => {
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(doc(alice(), 'clients/alice'), spend(5, 3), { merge: true }),
+      );
+    });
+
+    it('★ 残高より多くは引けない（マイナスにならない）', async () => {
+      await seedPoints({ points: 2 });
+      await assertFails(
+        setDoc(doc(alice(), 'clients/alice'), spend(-1, 3), { merge: true }),
+      );
+    });
+
+    it('★ マイナスの交換で、増やすことはできない', async () => {
+      // ★ amount にマイナスを入れると、引き算が足し算になります
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(doc(alice(), 'clients/alice'), spend(10, -5), { merge: true }),
+      );
+    });
+
+    it('★ 0 の交換は通らない', async () => {
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(doc(alice(), 'clients/alice'), spend(5, 0), { merge: true }),
+      );
+    });
+
+    it('★ 端末の時計で時刻を書くのは通らない', async () => {
+      // ★ 「さっき払いました」と好きな時刻で書けると、控えの意味がありません
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(
+          doc(alice(), 'clients/alice'),
+          { points: 2, lastRedemption: { at: Date.now(), amount: 3, text: 'x' } },
+          { merge: true },
+        ),
+      );
+    });
+
+    it('控えを付けずに、かけらだけ減らすのは通らない', async () => {
+      await seedPoints({ points: 5 });
+      await assertFails(setDoc(doc(alice(), 'clients/alice'), { points: 2 }, { merge: true }));
+    });
+
+    it('控えの内容が長すぎると通らない', async () => {
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(doc(alice(), 'clients/alice'), spend(2, 3, 'あ'.repeat(41)), { merge: true }),
+      );
+    });
+
+    it('交換にまぎれて、他の項目は書き換えられない', async () => {
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(
+          doc(alice(), 'clients/alice'),
+          { ...spend(2, 3), rank: 'CROWN' },
+          { merge: true },
+        ),
+      );
+    });
+
+    it('★ 交換にまぎれて、1日にたまる数は変えられない', async () => {
+      await seedPoints({ points: 5 });
+      await assertFails(
+        setDoc(
+          doc(alice(), 'clients/alice'),
+          { ...spend(2, 3), pointsDailyAmount: 999 },
+          { merge: true },
+        ),
+      );
+    });
+  });
+
+  describe('★ 他人のかけら', () => {
+    it('他人のぶんは交換できない', async () => {
+      await assertFails(setDoc(doc(alice(), 'clients/bob'), spend(2, 3), { merge: true }));
+    });
+
+    it('未認証では、そもそも書けない', async () => {
+      await assertFails(setDoc(doc(guest(), 'clients/alice'), spend(2, 3), { merge: true }));
+    });
+  });
+
+  describe('管理者', () => {
+    it('交換の控えは、管理者からも読める', async () => {
+      await seedPoints({ points: 5, lastRedemption: { at: null, amount: 3, text: 'プロテイン' } });
+      await assertSucceeds(getDoc(doc(admin(), 'clients/alice')));
+    });
+
+    it('★ 交換のあとでも、管理者は戻してあげられる', async () => {
+      // ★ 契約者側に取り消しは付けていません。間違えたときは
+      //   トレーナーが増やして戻す、という運用にしています。
+      await seedPoints({ points: 2 });
+      await assertSucceeds(
+        setDoc(doc(admin(), 'clients/alice'), { points: 5 }, { merge: true }),
       );
     });
   });

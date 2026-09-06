@@ -43,8 +43,8 @@ describe('★ 開いたら、たまる', () => {
     render(<PointsCard client={aClient({ points: 0 })} isAdmin={false} />);
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('1 かけら')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('+1 かけら');
+    expect(await screen.findByLabelText('1 かけら')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('きょうのぶん +1');
   });
 
   it('★ きょうのぶんを受け取ってあれば、投げない', async () => {
@@ -55,7 +55,7 @@ describe('★ 開いたら、たまる', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('5 かけら')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('5 かけら')).toBeInTheDocument());
     expect(claimDailyPoints).not.toHaveBeenCalled();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
@@ -81,7 +81,7 @@ describe('★ 開いたら、たまる', () => {
     // ★ トレーナーが様子を見ただけで、その人のポイントが増えては困ります
     render(<PointsCard client={aClient({ points: 5 })} isAdmin={true} />);
 
-    await waitFor(() => expect(screen.getByText('5 かけら')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('5 かけら')).toBeInTheDocument());
     expect(claimDailyPoints).not.toHaveBeenCalled();
     expect(screen.getByText(/トレーナーが見ている/)).toBeInTheDocument();
   });
@@ -95,7 +95,7 @@ describe('★ 開いたら、たまる', () => {
 
     await waitFor(() => expect(claimDailyPoints).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByText('3 かけら')).toBeInTheDocument();
+    expect(screen.getByLabelText('3 かけら')).toBeInTheDocument();
   });
 });
 
@@ -107,7 +107,7 @@ describe('表示', () => {
         isAdmin={false}
       />,
     );
-    expect(await screen.findByText(/3 かけら たまります/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 つ たまります/)).toBeInTheDocument();
     expect(screen.getByText(/朝4時/)).toBeInTheDocument();
   });
 
@@ -128,7 +128,7 @@ describe('表示', () => {
         isAdmin={false}
       />,
     );
-    await waitFor(() => expect(screen.getByText('0 かけら')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('0 かけら')).toBeInTheDocument());
     expect(screen.queryByText(/これまで/)).not.toBeInTheDocument();
   });
 
@@ -139,6 +139,6 @@ describe('表示', () => {
         isAdmin={false}
       />,
     );
-    expect(await screen.findByText('12,345 かけら')).toBeInTheDocument();
+    expect(await screen.findByLabelText('12,345 かけら')).toBeInTheDocument();
   });
 });

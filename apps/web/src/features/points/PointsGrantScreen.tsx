@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   formatDelta,
-  formatPoints,
   isValidGrant,
   MAX_GRANT,
   SHARD_NAME,
@@ -11,6 +10,7 @@ import { listClients } from '@/features/clients/clientsRepo';
 import type { Client } from '@/features/clients/clientTypes';
 import { pointsNotice } from '@/features/notices/noticesRepo';
 import { grantPoints, pointsOf, type GrantResult } from './pointsRepo';
+import { Shards, ShardDelta } from './ShardIcon';
 
 /**
  * ポイントを配る（追加仕様: ログインポイント）。管理者だけが開けます。
@@ -169,12 +169,8 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
             {done.map((r) => (
               <li key={r.clientId}>
                 <span className="points-result-name">{r.displayName}</span>
-                {r.applied !== 0 && (
-                  <span className={r.applied < 0 ? 'points-delta minus' : 'points-delta plus'}>
-                    {formatDelta(r.applied)}
-                  </span>
-                )}
-                <span className="points-result-total">{formatPoints(r.points)}</span>
+                {r.applied !== 0 && <ShardDelta delta={r.applied} />}
+                <Shards n={r.points} className="points-result-total" />
               </li>
             ))}
           </ul>
@@ -263,9 +259,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
                           {on ? '✓' : ''}
                         </span>
                         <span className="points-pick-name">{c.displayName}</span>
-                        <span className="points-pick-points">
-                          {formatPoints(pointsOf(c).points)}
-                        </span>
+                        <Shards n={pointsOf(c).points} className="points-pick-points" />
                       </button>
                     </li>
                   );
@@ -385,7 +379,7 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
                   {movePoints && amountOk ? (
                     <>
                       {' '}
-                      <strong>{formatDelta(amount)}</strong>
+                      <ShardDelta delta={amount} />
                     </>
                   ) : (
                     'お知らせだけ'

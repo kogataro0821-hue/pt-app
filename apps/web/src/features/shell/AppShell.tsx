@@ -98,6 +98,7 @@ export function AppShell({
           <AdminLink to="/foods" label="食品マスタ" />
           <AdminLink to="/foods/requests" label="登録依頼" badge={pendingRequests} />
           <AdminLink to="/points" label="かけら" />
+          <AdminLink to="/points/qr" label="交換QR" />
         </nav>
       )}
 

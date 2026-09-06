@@ -116,8 +116,8 @@ describe('★ 相手を選ぶ', () => {
 
   it('いまの残高が、選ぶところに出る', async () => {
     await open();
-    expect(screen.getByText('5 かけら')).toBeInTheDocument();
-    expect(screen.getByText('12 かけら')).toBeInTheDocument();
+    expect(screen.getByLabelText('5 かけら')).toBeInTheDocument();
+    expect(screen.getByLabelText('12 かけら')).toBeInTheDocument();
   });
 });
 
@@ -236,8 +236,8 @@ describe('送ったあと', () => {
 
     const result = await screen.findByText('送りました');
     expect(result).toBeInTheDocument();
-    expect(screen.getByText('−3 かけら')).toBeInTheDocument();
-    expect(screen.getByText('2 かけら')).toBeInTheDocument();
+    expect(screen.getByLabelText('−3 かけら')).toBeInTheDocument();
+    expect(screen.getByLabelText('2 かけら')).toBeInTheDocument();
   });
 
   it('★ 残高が足りなくて引ききれなかったら、そう伝える', async () => {

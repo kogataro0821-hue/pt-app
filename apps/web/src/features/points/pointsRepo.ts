@@ -11,9 +11,10 @@
  *   ものを**そのまま**書きます。自分で足し算をしないでください。
  */
 
-import { doc, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import {
   addNotice,
+  afterRedeem,
   applyGrant,
   claimDaily,
   pointDayKey,
@@ -126,4 +127,39 @@ export async function setDailyPoints(clientId: string, amount: number): Promise<
     { pointsDailyAmount: amount, updatedAt: Date.now() },
     { merge: true },
   );
+}
+
+/**
+ * かけらを交換で使う（追加仕様: かけらの交換QR）。
+ *
+ * ★ 契約者本人が書きます。管理者ではありません。
+ *
+ *   Rules は「減った数」と「控えに書いた数」が一致することを見ています。
+ *   だから、この2つを1回の書き込みでまとめて入れます。
+ *   別々に書くと、片方だけ通って残りが弾かれます。
+ *
+ * ★ 時刻は serverTimestamp() を使います。
+ *   端末の時計で書くと Rules に弾かれます（そういう条件にしてあります）。
+ *
+ * @returns 交換したあとの残高。足りなければ null（何も書きません）
+ */
+export async function spendShards(
+  client: Client,
+  amount: number,
+  text: string,
+): Promise<number | null> {
+  const state = pointsOf(client);
+  const next = afterRedeem(state.points, amount);
+  if (next === null) return null;
+
+  await setDoc(
+    doc(getDb(), 'clients', client.clientId),
+    {
+      points: next,
+      lastRedemption: { at: serverTimestamp(), amount, text },
+      updatedAt: Date.now(),
+    },
+    { merge: true },
+  );
+  return next;
 }

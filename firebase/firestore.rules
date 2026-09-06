@@ -177,6 +177,39 @@ service cloud.firestore {
       return resource.data.get('pointsDailyAmount', 1);
     }
 
+    // -------------------------------------------------------------------------
+    // かけらの交換（追加仕様: かけらの交換QR）
+    //
+    // ★ ここだけは、契約者が自分のかけらを**減らせます**。
+    //
+    //   減らすのは本人の損なので、それ自体は攻撃になりません。
+    //   危ないのは「払っていないのに払ったことにする」ほうです。
+    //   だから、減った数と控えに書く数が **一致していないと通しません**。
+    //   3引いたことにして0しか引かない、ができないようにしてあります。
+    //
+    // ★ 時刻はサーバーのものを使わせます。
+    //   端末の時計で「さっき払いました」と書けると、控えの意味がありません。
+    //
+    // ★ 残高より多くは引けません（マイナスにならない）。
+    // -------------------------------------------------------------------------
+
+    function spendsShards() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['points', 'lastRedemption', 'updatedAt'])
+          // 控えの中身が、形として成立していること
+          && request.resource.data.lastRedemption.amount is int
+          && request.resource.data.lastRedemption.amount > 0
+          && request.resource.data.lastRedemption.text is string
+          && request.resource.data.lastRedemption.text.size() <= 40
+          // 時刻はサーバー時刻ちょうど。端末の時計は使わせない
+          && request.resource.data.lastRedemption.at == request.time
+          // ★ 要。減った数と、控えに書いた数が一致すること
+          && request.resource.data.points
+               == resource.data.get('points', 0) - request.resource.data.lastRedemption.amount
+          // 残高より多くは引けない
+          && request.resource.data.points >= 0;
+    }
+
     function claimsDailyPoints() {
       return request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['points', 'pointsLastDate', 'pointsTotalDays', 'updatedAt'])
@@ -232,6 +265,10 @@ service cloud.firestore {
       // ★ 今日ぶんのポイントを受け取る（追加仕様: ログインポイント）。
       //   条件は上の claimsDailyPoints() に全部書いてあります。
       allow update: if isClient(cid) && claimsDailyPoints();
+
+      // ★ かけらを交換で使う（追加仕様: かけらの交換QR）。
+      //   条件は上の spendsShards() に全部書いてあります。
+      allow update: if isClient(cid) && spendsShards();
 
       // ---- 日次データ -------------------------------------------------------
 
