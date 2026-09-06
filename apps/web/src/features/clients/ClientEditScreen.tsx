@@ -22,6 +22,7 @@ import {
   SHARD_UNIT,
 } from '@pt/core';
 import { QuickShards } from '@/features/points/QuickShards';
+import { ShardLog } from '@/features/points/ShardLog';
 
 /**
  * 契約者の編集（設計書 §11.3 A-3）。
@@ -505,6 +506,14 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
               （こちらは「保存する」で確定します）
             </span>
           </Field>
+
+          <hr className="rule" />
+
+          {/* ★ 帳簿（追加仕様: かけらの帳簿）。
+                 かけらは実物と交換するので、あとから
+                 「何にいくつ使ったか」を追えないと困ります。 */}
+          <h4 className="card-title">出入りの記録</h4>
+          <ShardLog clientId={clientId} />
         </section>
 
         {error !== null && (

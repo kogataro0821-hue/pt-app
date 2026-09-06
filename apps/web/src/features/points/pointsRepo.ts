@@ -11,19 +11,58 @@
  *   ものを**そのまま**書きます。自分で足し算をしないでください。
  */
 
-import { doc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import {
   addNotice,
   afterRedeem,
   applyGrant,
+  sortLedger,
+  toLedgerEntry,
   claimDaily,
   pointDayKey,
   readPoints,
+  type LedgerEntry,
+  type LedgerKind,
   type Notice,
   type PointsState,
 } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 import type { Client } from '@/features/clients/clientTypes';
+
+/**
+ * 帳簿に1行足す（追加仕様: かけらの帳簿）。
+ *
+ * ★ 残高を動かす書き込みと**同じ batch に入れて**ください。
+ *
+ *   別々に書くと、残高だけ動いて帳簿が空、という行が生まれます。
+ *   batch は全部通るか全部通らないかのどちらかなので、ずれません。
+ */
+function addLedger(
+  batch: ReturnType<typeof writeBatch>,
+  clientId: string,
+  entry: { delta: number; balance: number; text: string; kind: LedgerKind },
+): void {
+  const ref = doc(collection(getDb(), 'clients', clientId, 'shardLog'));
+  batch.set(ref, {
+    delta: entry.delta,
+    balance: entry.balance,
+    text: entry.text.slice(0, 60),
+    kind: entry.kind,
+    // ★ サーバー時刻。端末の時計で書くと Rules に弾かれます
+    at: serverTimestamp(),
+  });
+}
 
 /** 契約者ドキュメントから、いまのポイントの状態を読む。 */
 export function pointsOf(client: Client): PointsState {
@@ -86,6 +125,8 @@ export async function grantPoints(
   clients: readonly Client[],
   delta: number,
   notice: Notice | null,
+  /** 帳簿に残す理由。空なら「手渡し」「交換」が入ります */
+  reason = '',
 ): Promise<GrantResult[]> {
   const results: GrantResult[] = [];
   const db = getDb();
@@ -106,6 +147,19 @@ export async function grantPoints(
       if (notice !== null) patch.notices = addNotice(client.notices, notice);
 
       batch.set(doc(db, 'clients', client.clientId), patch, { merge: true });
+
+      // ★ 動いたときだけ帳簿に残します。
+      //   0 のとき（お知らせだけ送ったとき）に行を作ると、
+      //   帳簿に「0」がずらりと並んで読めなくなります。
+      if (applied !== 0) {
+        addLedger(batch, client.clientId, {
+          delta: applied,
+          balance: points,
+          text: reason.trim().length > 0 ? reason.trim() : applied > 0 ? '手渡し' : '交換',
+          kind: 'grant',
+        });
+      }
+
       results.push({
         clientId: client.clientId,
         displayName: client.displayName,
@@ -152,7 +206,10 @@ export async function spendShards(
   const next = afterRedeem(state.points, amount);
   if (next === null) return null;
 
-  await setDoc(
+  // ★ 残高と帳簿を、1回の batch でまとめて書きます。
+  //   別々に書くと、残高だけ減って帳簿に残らない交換が生まれます。
+  const batch = writeBatch(getDb());
+  batch.set(
     doc(getDb(), 'clients', client.clientId),
     {
       points: next,
@@ -161,5 +218,45 @@ export async function spendShards(
     },
     { merge: true },
   );
+  addLedger(batch, client.clientId, {
+    delta: -amount,
+    balance: next,
+    text,
+    kind: 'redeem',
+  });
+  await batch.commit();
+
   return next;
+}
+
+/**
+ * 帳簿を読む（追加仕様: かけらの帳簿）。
+ *
+ * ★ 上限を付けています。何年も使うと行が増え続けるためです。
+ *   古いぶんは消しません。読む数を絞るだけです。
+ */
+export async function listLedger(clientId: string, max = 100): Promise<LedgerEntry[]> {
+  const snap = await getDocs(
+    query(collection(getDb(), 'clients', clientId, 'shardLog'), orderBy('at', 'desc'), limit(max)),
+  );
+  return sortLedger(snap.docs.map((d) => toLedgerEntry(d.id, d.data() as Record<string, unknown>)));
+}
+
+/**
+ * 帳簿を見張る（管理者のQR画面用）。
+ *
+ * ★ 交換が起きたら、その場で気づける必要があります。
+ *   交換の場に立っているので、読み直しを待たせるわけにいきません。
+ */
+export function watchLedger(
+  clientId: string,
+  onRows: (rows: LedgerEntry[]) => void,
+  max = 20,
+): () => void {
+  return onSnapshot(
+    query(collection(getDb(), 'clients', clientId, 'shardLog'), orderBy('at', 'desc'), limit(max)),
+    (snap) => {
+      onRows(sortLedger(snap.docs.map((d) => toLedgerEntry(d.id, d.data() as Record<string, unknown>))));
+    },
+  );
 }

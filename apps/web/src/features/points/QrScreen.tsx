@@ -2,15 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { collection, onSnapshot } from 'firebase/firestore';
 import {
+  findSameItem,
   isValidRedeem,
+  MAX_EXCHANGE_ITEMS,
   MAX_REDEEM,
   MAX_REDEEM_TEXT,
   redeemUrl,
   SHARD_NAME,
   SHARD_UNIT,
+  type ExchangeItem,
 } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 import { Shards, ShardIcon } from './ShardIcon';
+import {
+  deleteExchangeItem,
+  listExchangeItems,
+  saveExchangeItem,
+} from './exchangeItemsRepo';
 
 /**
  * 交換のQRを作る（追加仕様: かけらの交換QR）。管理者だけが開けます。
@@ -41,6 +49,11 @@ export function QrScreen({ onBack }: { onBack: () => void }) {
   const [amountText, setAmountText] = useState('3');
   const [text, setText] = useState('');
   const [png, setPng] = useState<string | null>(null);
+
+  /** 保存した交換（追加仕様: かけらの交換QR）。同じQRを作り直さないため */
+  const [items, setItems] = useState<ExchangeItem[] | null>(null);
+  const [itemError, setItemError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   /** 直近に届いた交換。この画面を開いている間だけ拾います */
   const [paid, setPaid] = useState<
@@ -126,6 +139,47 @@ export function QrScreen({ onBack }: { onBack: () => void }) {
 
   const clearPaid = useCallback(() => setPaid([]), []);
 
+  const loadItems = useCallback(async () => {
+    setItemError(null);
+    try {
+      setItems(await listExchangeItems());
+    } catch {
+      setItemError('保存した交換を読み込めませんでした。');
+      setItems([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadItems();
+  }, [loadItems]);
+
+  /** いま入力している内容が、すでに保存されているか */
+  const already = items === null ? undefined : findSameItem(items, req);
+  const full = (items?.length ?? 0) >= MAX_EXCHANGE_ITEMS;
+
+  async function save() {
+    if (!ok || saving || already !== undefined || full) return;
+    setSaving(true);
+    setItemError(null);
+    try {
+      await saveExchangeItem({ text: req.text, amount: req.amount });
+      await loadItems();
+    } catch {
+      setItemError('保存できませんでした。通信状態を確認してください。');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await deleteExchangeItem(id);
+      await loadItems();
+    } catch {
+      setItemError('消せませんでした。通信状態を確認してください。');
+    }
+  }
+
   return (
     <>
       <div className="section-head">
@@ -134,6 +188,44 @@ export function QrScreen({ onBack }: { onBack: () => void }) {
           戻る
         </button>
       </div>
+
+      {/* ★ よく使うものを先に出します。
+             毎回同じ内容を打ち直すのは無駄ですし、
+             打ち直すたびに数を間違える余地が生まれます。 */}
+      {items !== null && items.length > 0 && (
+        <section className="card">
+          <h3 className="card-title">保存した交換</h3>
+          <ul className="exchange-items">
+            {items.map((it) => {
+              const on = it.text === req.text && it.amount === req.amount;
+              return (
+                <li key={it.id}>
+                  <button
+                    type="button"
+                    className={on ? 'exchange-item on' : 'exchange-item'}
+                    aria-pressed={on}
+                    onClick={() => {
+                      setText(it.text);
+                      setAmountText(String(it.amount));
+                    }}
+                  >
+                    <span className="exchange-item-text">{it.text}</span>
+                    <Shards n={it.amount} className="exchange-item-amount" />
+                  </button>
+                  <button
+                    type="button"
+                    className="button-secondary compact"
+                    aria-label={`${it.text} を消す`}
+                    onClick={() => void remove(it.id)}
+                  >
+                    消す
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="card">
         <h3 className="card-title">なにと、いくつで交換するか</h3>
@@ -180,6 +272,31 @@ export function QrScreen({ onBack }: { onBack: () => void }) {
         {!ok && (
           <p className="note">
             交換するものを書いて、数を 1 〜 {MAX_REDEEM.toLocaleString('ja-JP')} で入れてください。
+          </p>
+        )}
+
+        {ok && (
+          <div className="form-actions">
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={saving || already !== undefined || full}
+              onClick={() => void save()}
+            >
+              {already !== undefined
+                ? '保存ずみ'
+                : full
+                  ? `保存は ${MAX_EXCHANGE_ITEMS} 件までです`
+                  : saving
+                    ? '保存しています…'
+                    : 'この内容を保存する'}
+            </button>
+          </div>
+        )}
+
+        {itemError !== null && (
+          <p className="form-error" role="alert">
+            {itemError}
           </p>
         )}
       </section>

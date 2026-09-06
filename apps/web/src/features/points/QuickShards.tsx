@@ -57,7 +57,14 @@ export function QuickShards({
     const lines = [reason.trim(), formatDelta(delta)].filter((s) => s.length > 0);
 
     try {
-      const [result] = await grantPoints([client], delta, pointsNotice(title, lines.join('\n\n'), at));
+      const [result] = await grantPoints(
+        [client],
+        delta,
+        pointsNotice(title, lines.join('\n\n'), at),
+        // ★ 帳簿にも同じ理由を残します。お知らせは30件で切れますが、
+        //   帳簿は消えません。あとから追えるのはこちらです。
+        reason,
+      );
       if (result === undefined) return;
       setDone({ applied: result.applied, points: result.points });
       setReason('');

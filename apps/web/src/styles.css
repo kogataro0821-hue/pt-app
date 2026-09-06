@@ -3366,3 +3366,100 @@ hr.rule {
 .scan-canvas {
   display: none;
 }
+
+/* ---- 保存した交換（追加仕様: かけらの交換QR）------------------------------ */
+
+.exchange-items {
+  list-style: none;
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.exchange-items li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* ★ 行そのものを押せるようにします。交換の場では指で選ぶためです。 */
+.exchange-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exchange-item.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.exchange-item-text {
+  font-weight: 600;
+}
+
+.exchange-item-amount {
+  font-weight: 700;
+}
+
+/* ---- かけらの帳簿（追加仕様: かけらの帳簿）-------------------------------- */
+
+.shard-log {
+  list-style: none;
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shard-log-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* ★ 本人が交換した行に、左の線を入れます。
+   トレーナーが動かした行と混ざると、あとから読んだときに
+   「誰がやったのか」が分からなくなります。 */
+.shard-log-row.redeem {
+  border-left: 3px solid var(--accent);
+  padding-left: var(--space-sm);
+}
+
+.shard-log-at {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.shard-log-text {
+  flex: 1;
+  min-width: 8em;
+  font-weight: 600;
+}
+
+.shard-log-left,
+.shard-log-kind {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.shard-log-kind {
+  width: 100%;
+}

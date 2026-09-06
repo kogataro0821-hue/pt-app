@@ -2878,3 +2878,143 @@ describe('★ かけらの交換で、ごまかせないか', () => {
     });
   });
 });
+
+/**
+ * ★ かけらの帳簿（追加仕様: かけらの帳簿）。
+ *
+ * ★ 帳簿の値打ちは「消せないこと」で決まります。
+ *
+ *   書き足せるだけなら、都合の悪い行を後から消せてしまい、
+ *   残っているものを信じられなくなります。
+ *   契約者に許すのは create だけ。update と delete は管理者だけです。
+ */
+describe('★ かけらの帳簿を、契約者が消せないか', () => {
+  const entry = (delta: number, kind = 'redeem') => ({
+    delta,
+    balance: 2,
+    text: 'プロテイン',
+    kind,
+    at: serverTimestamp(),
+  });
+
+  async function seedEntry(): Promise<void> {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'clients/alice/shardLog/e1'), {
+        delta: -3,
+        balance: 2,
+        text: 'プロテイン',
+        kind: 'redeem',
+        at: new Date(),
+      });
+    });
+  }
+
+  it('自分の交換を、帳簿に書き足せる', async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), 'clients/alice/shardLog/new1'), entry(-3)),
+    );
+  });
+
+  it('自分の帳簿を読める', async () => {
+    await seedEntry();
+    await assertSucceeds(getDoc(doc(alice(), 'clients/alice/shardLog/e1')));
+  });
+
+  it('★ 書いた行を、あとから消せない', async () => {
+    // ★ ここが帳簿の意味を支えています
+    await seedEntry();
+    await assertFails(deleteDoc(doc(alice(), 'clients/alice/shardLog/e1')));
+  });
+
+  it('★ 書いた行を、あとから書き換えられない', async () => {
+    await seedEntry();
+    await assertFails(
+      setDoc(doc(alice(), 'clients/alice/shardLog/e1'), { text: '別のもの' }, { merge: true }),
+    );
+  });
+
+  it('★ 増えた体の行は、契約者には書けない', async () => {
+    // ★ 通すと「トレーナーから3もらった」を自分で書けてしまいます
+    await assertFails(setDoc(doc(alice(), 'clients/alice/shardLog/new2'), entry(3)));
+  });
+
+  it('★ トレーナーがやった体の行も、契約者には書けない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'clients/alice/shardLog/new3'), entry(-3, 'grant')),
+    );
+  });
+
+  it('★ 端末の時計で時刻を書くのは通らない', async () => {
+    await assertFails(
+      setDoc(doc(alice(), 'clients/alice/shardLog/new4'), {
+        delta: -3,
+        balance: 2,
+        text: 'x',
+        kind: 'redeem',
+        at: Date.now(),
+      }),
+    );
+  });
+
+  it('他人の帳簿は、読むことも書くこともできない', async () => {
+    await assertFails(getDoc(doc(alice(), 'clients/bob/shardLog/e1')));
+    await assertFails(setDoc(doc(alice(), 'clients/bob/shardLog/new5'), entry(-3)));
+  });
+
+  it('管理者は、書くのも直すのも消すのもできる', async () => {
+    await seedEntry();
+    await assertSucceeds(
+      setDoc(doc(admin(), 'clients/alice/shardLog/a1'), entry(3, 'grant')),
+    );
+    await assertSucceeds(
+      setDoc(doc(admin(), 'clients/alice/shardLog/e1'), { text: '直した' }, { merge: true }),
+    );
+    await assertSucceeds(deleteDoc(doc(admin(), 'clients/alice/shardLog/e1')));
+  });
+
+  it('未認証では、そもそも書けない', async () => {
+    await assertFails(setDoc(doc(guest(), 'clients/alice/shardLog/new6'), entry(-3)));
+  });
+});
+
+/**
+ * ★ 保存した交換（追加仕様: かけらの交換QR）。
+ *
+ * ★ 管理者だけのものです。
+ *   契約者が値札を作れると、好きな数の交換QRを自分で用意できます。
+ */
+describe('★ 保存した交換を、契約者が触れないか', () => {
+  const item = { text: 'プロテイン1杯', amount: 3 };
+
+  async function seedItem(): Promise<void> {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'exchangeItems/i1'), item);
+    });
+  }
+
+  it('管理者は作れる・読める・消せる', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'exchangeItems/i2'), item));
+    await assertSucceeds(getDoc(doc(admin(), 'exchangeItems/i2')));
+    await assertSucceeds(deleteDoc(doc(admin(), 'exchangeItems/i2')));
+  });
+
+  it('★ 契約者は作れない', async () => {
+    // ★ 作れてしまうと、好きな数の交換QRを自分で用意できます
+    await assertFails(setDoc(doc(alice(), 'exchangeItems/i3'), item));
+  });
+
+  it('契約者は読めない', async () => {
+    await seedItem();
+    await assertFails(getDoc(doc(alice(), 'exchangeItems/i1')));
+  });
+
+  it('契約者は消せない', async () => {
+    await seedItem();
+    await assertFails(deleteDoc(doc(alice(), 'exchangeItems/i1')));
+  });
+
+  it('未認証では、何もできない', async () => {
+    await assertFails(getDoc(doc(guest(), 'exchangeItems/i1')));
+    await assertFails(setDoc(doc(guest(), 'exchangeItems/i4'), item));
+  });
+});

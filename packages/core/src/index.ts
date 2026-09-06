@@ -27,4 +27,6 @@ export * from './review/safety';
 export * from './rank/rank';
 export * from './points/points';
 export * from './points/redeem';
+export * from './points/ledger';
+export * from './points/exchangeItem';
 export * from './notice/notice';

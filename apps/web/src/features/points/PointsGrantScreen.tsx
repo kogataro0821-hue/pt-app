@@ -127,6 +127,9 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
         targets,
         delta,
         pointsNotice(finalTitle, finalBody, at),
+        // ★ 帳簿にも残します。見出しのほうが短くて後から読みやすいので、
+        //   本文ではなく見出しを渡します
+        title.trim().length > 0 ? title.trim() : finalTitle,
       );
       setDone(results);
       await load();

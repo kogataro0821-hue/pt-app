@@ -270,6 +270,37 @@ service cloud.firestore {
       //   条件は上の spendsShards() に全部書いてあります。
       allow update: if isClient(cid) && spendsShards();
 
+      // -----------------------------------------------------------------------
+      // かけらの帳簿（追加仕様: かけらの帳簿）
+      //
+      // ★ 契約者は「書き足す」だけできます。**消せません。**
+      //
+      //   自分の交換は自分で書きます（そうしないと交換できません）。
+      //   ただし update と delete は管理者だけなので、
+      //   後から都合の悪い行を消したり書き換えたりはできません。
+      //
+      // ★ 契約者が書けるのは「自分が減らした」行だけです。
+      //   管理者が付けた体の行を、自分で作ることはできません。
+      // -----------------------------------------------------------------------
+      match /shardLog/{entryId} {
+        allow read: if canRead(cid);
+
+        allow create: if isAdmin()
+                      || (isClient(cid)
+                          && request.resource.data.kind == 'redeem'
+                          && request.resource.data.delta is int
+                          && request.resource.data.delta < 0
+                          && request.resource.data.balance is int
+                          && request.resource.data.balance >= 0
+                          && request.resource.data.text is string
+                          && request.resource.data.text.size() <= 60
+                          // 時刻はサーバー時刻ちょうど。端末の時計は使わせない
+                          && request.resource.data.at == request.time);
+
+        // ★ 消せるのは管理者だけ。ここが帳簿の意味を支えています
+        allow update, delete: if isAdmin();
+      }
+
       // ---- 日次データ -------------------------------------------------------
 
       match /days/{date} {
@@ -480,6 +511,16 @@ service cloud.firestore {
     match /recipes/{recipeId} {
       allow read: if isKnownUser();
       allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 保存した交換（追加仕様: かけらの交換QR）
+    //
+    // ★ 管理者だけのものです。契約者は見る必要がありません。
+    //   交換の内容と数はQRに入って渡るので、一覧を読む場面がありません。
+    // -------------------------------------------------------------------------
+    match /exchangeItems/{itemId} {
+      allow read, write: if isAdmin();
     }
 
     match /config/{docId} {
