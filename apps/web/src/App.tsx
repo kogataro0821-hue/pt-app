@@ -13,6 +13,8 @@ import { RequestsScreen } from '@/features/foods/RequestsScreen';
 import type { Client } from '@/features/clients/clientTypes';
 import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { MemberCard } from '@/features/rank/MemberCard';
+import { PointsCard } from '@/features/points/PointsCard';
+import { PointsGrantScreen } from '@/features/points/PointsGrantScreen';
 import { DayScreen } from '@/features/days/DayScreen';
 import { WeightScreen } from '@/features/weight/WeightScreen';
 import { AiConsentCard } from '@/features/ai/AiConsentCard';
@@ -171,6 +173,17 @@ function AppRoutes({
         element={
           <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
             <ClientEditRoute />
+          </AdminOnly>
+        }
+      />
+
+      {/* ★ ポイントを配る（追加仕様: ログインポイント）。
+             実物と交換する数字を動かすので、管理者だけです。 */}
+      <Route
+        path="/points"
+        element={
+          <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
+            <PointsGrantRoute />
           </AdminOnly>
         }
       />
@@ -338,6 +351,11 @@ function ClientListRoute() {
   );
 }
 
+function PointsGrantRoute() {
+  const navigate = useNavigate();
+  return <PointsGrantScreen onBack={() => navigate('/clients')} />;
+}
+
 function ClientCreateRoute() {
   const navigate = useNavigate();
   return (
@@ -390,6 +408,10 @@ function CalendarRoute({ onChangePassword }: { onChangePassword: () => void }) {
                  ここにあった管理者向けの「設定」は、右上のメニューへ移しました。
                  同じ行き先が2か所にあると、片方を直し忘れます。 */}
           <MemberCard client={client} isAdmin={isAdmin} />
+          {/* ★ 会員証のすぐ下（追加仕様: ログインポイント）。
+                 開いた瞬間に目に入る場所に、手応えを並べます。
+                 開くだけで今日ぶんが入ります（ボタンは押させません）。 */}
+          <PointsCard client={client} isAdmin={isAdmin} />
           <CalendarScreen clientId={client.clientId} month={month} />
         </Shell>
       )}

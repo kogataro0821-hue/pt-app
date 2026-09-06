@@ -25,4 +25,5 @@ export * from './food/label';
 export * from './photo/retention';
 export * from './review/safety';
 export * from './rank/rank';
+export * from './points/points';
 export * from './notice/notice';

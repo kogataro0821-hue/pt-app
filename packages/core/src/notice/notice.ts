@@ -23,6 +23,14 @@ export type NoticeKind =
   | 'rankUp'
   /** トレーナーからコメントが届いた */
   | 'comment'
+  /**
+   * トレーナーからのお知らせ（ポイントが動いたことが多い）。
+   *
+   * ★ ポイントを付けた／減らしたときと、
+   *   ポイント抜きでただ伝えたいときの、両方に使います。
+   *   受け取る側にとっては「トレーナーから届いた」で同じものです。
+   */
+  | 'points'
   /** アプリが新しくなった（アプリに同梱） */
   | 'app';
 
@@ -136,7 +144,7 @@ export function toNotices(raw: unknown): Notice[] {
   return sortNotices(out).slice(0, NOTICE_KEEP);
 }
 
-const KINDS: readonly NoticeKind[] = ['welcome', 'rankUp', 'comment', 'app'];
+const KINDS: readonly NoticeKind[] = ['welcome', 'rankUp', 'comment', 'points', 'app'];
 
 function toNotice(raw: unknown): Notice | null {
   if (typeof raw !== 'object' || raw === null) return null;

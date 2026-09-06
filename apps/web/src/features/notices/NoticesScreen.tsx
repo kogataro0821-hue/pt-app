@@ -147,6 +147,8 @@ export function kindLabel(kind: NoticeKind): string {
       return '昇格';
     case 'comment':
       return 'コメント';
+    case 'points':
+      return 'トレーナー';
     case 'app':
       return 'アプリ';
   }

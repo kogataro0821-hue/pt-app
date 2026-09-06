@@ -1,4 +1,5 @@
 import {
+  DEFAULT_DAILY_POINTS,
   DEFAULT_TARGETS,
   INITIAL_RANK,
   type Notice,
@@ -129,6 +130,21 @@ export interface Client {
    */
   rankGoals: RankGoals;
   /**
+   * ポイント（追加仕様: ログインポイント）。いまの残高。
+   *
+   * ★ 実物と交換する数字なので、自由に書ける extra ではなく
+   *   決まった項目に置いています。契約者が触れるのは
+   *   「今日ぶんを1回受け取る」ときだけで、その条件は
+   *   Firestore Security Rules に書いてあります（firestore.rules）。
+   */
+  points: number;
+  /** 1日に配るポイント。管理者だけが変えられます（既定 100） */
+  pointsDailyAmount: number;
+  /** 最後に日ぶんを受け取ったポイント日（朝4時区切り）。まだなら空文字 */
+  pointsLastDate: string;
+  /** 累計で受け取った日数 */
+  pointsTotalDays: number;
+  /**
    * 会員整理番号（0001 から）。
    *
    * ★ 契約者IDとは別に持ちます。
@@ -188,6 +204,10 @@ export function emptyClient(clientId: string): Client {
     rankSeeded: false,
     rankGoals: {},
     memberNo: null,
+    points: 0,
+    pointsDailyAmount: DEFAULT_DAILY_POINTS,
+    pointsLastDate: '',
+    pointsTotalDays: 0,
     notices: [],
     extra: {},
     createdAt: null,

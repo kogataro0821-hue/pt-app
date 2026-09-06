@@ -127,3 +127,24 @@ export function commentNotice(date: string, at: number = Date.now()): Notice {
     date,
   };
 }
+
+/**
+ * トレーナーからのお知らせ（追加仕様: ログインポイント）。
+ *
+ * ★ 目印に時刻を入れて、1回ごとに別の1件にします。
+ *
+ *   コメントのお知らせは「同じ日なら1件」にまとめました。
+ *   こちらは逆です。3回ポイントを付けたなら、3件残らないと
+ *   受け取った側が何をもらったか分からなくなります。
+ *
+ */
+export function pointsNotice(title: string, body: string, at: number = Date.now()): Notice {
+  return {
+    id: `points-${at}`,
+    kind: 'points',
+    at,
+    title,
+    body,
+    date: null,
+  };
+}

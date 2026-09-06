@@ -2598,6 +2598,7 @@ select.input {
 .notice-kind-welcome,
 .notice-kind-rankup,
 .notice-kind-comment,
+.notice-kind-points,
 .notice-kind-app {
   font-size: 11px;
 }
@@ -2842,4 +2843,242 @@ select.input {
   border-color: var(--attention);
   border-left-width: 4px;
   border-left-style: solid;
+}
+
+/* ---- ログインボーナス（追加仕様: ログインボーナス）----------------------- */
+
+.card.bonus {
+  /* 会員証のすぐ下に続くので、間を詰めて一体に見せます */
+  margin-top: calc(var(--space-md) * -1 + var(--space-sm));
+}
+
+.bonus-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+/* ★ その日ぶんが増えた瞬間だけ出ます。常時出ていると意味が薄れます */
+.bonus-gained {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bonus-points {
+  margin: 2px 0 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.bonus-number {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.bonus-unit {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+
+/* -----------------------------------------------------------------------------
+   ポイント（追加仕様: ログインポイント）
+   -------------------------------------------------------------------------- */
+
+/* ★ 会員証のすぐ下に置く札。
+   数字そのものが主役なので、余計な飾りは付けません。 */
+.points-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.points-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.points-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.points-total {
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ★ 「きょうのぶんが入った」は、入った日だけ出ます。
+   毎日同じ位置に出しておくと、入っていない日との違いが伝わりません。 */
+.points-gained {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--attention);
+}
+
+.points-note,
+.points-days {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ---- 配る画面 ------------------------------------------------------------ */
+
+/* ★ 相手を選ぶ行。指で押す前提なので、行そのものをボタンにしてあります。 */
+.points-pick {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.points-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.points-pick-row.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ★ 印の幅を固定しておかないと、選んだ瞬間に名前が横にずれます。 */
+.points-pick-mark {
+  width: 16px;
+  flex: none;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.points-pick-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.points-pick-points {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* ---- 送ったあとの控え ---------------------------------------------------- */
+
+.points-result {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.points-result li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.points-result-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.points-result-total {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.points-delta {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.points-delta.plus {
+  color: var(--accent);
+}
+
+.points-delta.minus {
+  color: var(--attention);
+}
+
+/* ★ 「個人 / 選ぶ / 全員」の切り替え。 */
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.choice-row.compact {
+  margin-top: 6px;
+}
+
+.choice {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.choice.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 700;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* ★ 画面の下に並べる操作。主・副の順に置きます。 */
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+.form-actions .button-primary,
+.form-actions .button-secondary {
+  flex: 1 1 auto;
 }

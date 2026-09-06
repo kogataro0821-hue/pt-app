@@ -14,6 +14,12 @@ import { REVIEW_MODES, sexLabel, type Client, type ReviewMode, type Sex } from '
 import { DangerZone } from './DangerZone';
 import { GoalRow } from './GoalRow';
 import { AUTO_MAX_RANK, RANKS, rankLabel, rankOrder, type Rank, type RankGoal } from '@pt/core';
+import {
+  DEFAULT_DAILY_POINTS,
+  MAX_DAILY_POINTS,
+  MIN_DAILY_POINTS,
+  formatPoints,
+} from '@pt/core';
 
 /**
  * 契約者の編集（設計書 §11.3 A-3）。
@@ -444,6 +450,48 @@ export function ClientEditScreen({ clientId, onBack }: { clientId: string; onBac
             checked={draft.permissions.allowRecipeCreate}
             onChange={(v) => patch({ permissions: { ...draft.permissions, allowRecipeCreate: v } })}
           />
+        </section>
+
+        {/* ★ ポイント（追加仕様: ログインポイント）。
+               残高そのものは、ここでは動かしません。
+               付ける・減らすは「ポイントを配る」画面（/points）です。
+               お知らせを添えずに残高だけ動くのを避けるためです。 */}
+        <section className="card">
+          <h3 className="card-title">ポイント</h3>
+
+          <p className="lede">
+            いまの残高 <strong>{formatPoints(draft.points)}</strong>
+            {draft.pointsTotalDays > 0 && (
+              <span className="field-hint">（これまで {draft.pointsTotalDays} 日）</span>
+            )}
+          </p>
+
+          <Field label="1日にたまるポイント">
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={MIN_DAILY_POINTS}
+              max={MAX_DAILY_POINTS}
+              value={draft.pointsDailyAmount}
+              onChange={(e) =>
+                patch({
+                  pointsDailyAmount: Math.min(
+                    MAX_DAILY_POINTS,
+                    Math.max(MIN_DAILY_POINTS, Number(e.target.value) || 0),
+                  ),
+                })
+              }
+            />
+            <span className="field-hint">
+              既定は {DEFAULT_DAILY_POINTS}。1日の区切りは朝4時です。
+              0 にすると、開いてもたまりません。
+            </span>
+          </Field>
+
+          <p className="note">
+            付ける・減らすは「ポイント」画面から。お知らせを一緒に届けられます。
+          </p>
         </section>
 
         {error !== null && (

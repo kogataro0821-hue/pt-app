@@ -129,6 +129,65 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
+    // ポイント（追加仕様: ログインポイント）
+    //
+    // ★ このポイントは実物と交換します。だから守り方が他と違います。
+    //
+    //   貯まったポイントは、トレーナーと直接やり取りして何かと交換します。
+    //   本物の価値がある数字なので、契約者が自分で書き換えられては困ります。
+    //   画面を直しても、ブラウザの開発者ツールから直接書いても、
+    //   ここを通らないものは通りません。
+    //
+    // ★ 契約者にできるのは「今日ぶんを1回受け取る」だけです。
+    //   しかもその1回に、次の全部が揃っていないと通りません。
+    //
+    //     ・触る項目が points / pointsLastDate / pointsTotalDays / updatedAt だけ
+    //     ・pointsLastDate が **サーバー時刻の今日**（端末の時計は見ない）
+    //     ・今日はまだ受け取っていない
+    //     ・増える額が、管理者の設定した1日ぶん **ぴったり**
+    //     ・累計日数が ちょうど 1 増える
+    //
+    //   1日の付与額（pointsDailyAmount）は管理者しか書けないので、
+    //   「額を自分で大きくしてから受け取る」もできません。
+    // -------------------------------------------------------------------------
+
+    // その時刻が属する「ポイント日」。区切りは JST の朝4時。
+    //
+    // ★ JST は +9時間。そこから4時間戻すので、差し引き +5時間の暦日です。
+    //   core 側（packages/core/src/points/points.ts）と同じ数にしてあります。
+    function pointDayTs() {
+      return request.time + duration.value(5, 'h');
+    }
+
+    function pointDay() {
+      return string(pointDayTs().year())
+           + '-' + pad(pointDayTs().month())
+           + '-' + pad(pointDayTs().day());
+    }
+
+    // 管理者が決めた1日ぶん。設定が無ければ 100。
+    //
+    // ★ get() を足さずに resource から読めるのが大事なところです。
+    //   同じ契約者ドキュメントの中にあるので、余計な読み取りが要りません。
+    function dailyAmount() {
+      return resource.data.get('pointsDailyAmount', 100);
+    }
+
+    function claimsDailyPoints() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['points', 'pointsLastDate', 'pointsTotalDays', 'updatedAt'])
+          // サーバー時刻の今日ちょうど。前借りも後付けもできない
+          && request.resource.data.pointsLastDate == pointDay()
+          // 今日はまだ受け取っていない
+          && resource.data.get('pointsLastDate', '') < pointDay()
+          // 増える額は、設定された1日ぶんぴったり
+          && request.resource.data.points == resource.data.get('points', 0) + dailyAmount()
+          // 累計日数は ちょうど 1 増える
+          && request.resource.data.pointsTotalDays
+               == resource.data.get('pointsTotalDays', 0) + 1;
+    }
+
+    // -------------------------------------------------------------------------
     // 既定：全拒否
     // 明示的に許可を書いたパスだけが通ります。
     // -------------------------------------------------------------------------
@@ -157,10 +216,18 @@ service cloud.firestore {
 
       // 契約者が自分で変えてよいのは、表示名・メモ・拡張欄・AI同意だけ。
       // 目標値(targets)・権限(permissions)・評価モード・有効フラグは触れない。
+      //
+      // ★ ポイント（points）はここに入れていません。実物と交換する数字なので、
+      //   自由に書ける extra にも置いていません。下の「今日ぶんの受け取り」
+      //   だけを、条件付きで別に開けてあります。
       allow update: if isAdmin()
         || (isClient(cid)
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(['displayName', 'memo', 'extra', 'aiConsent', 'passwordChangedAt', 'updatedAt']));
+
+      // ★ 今日ぶんのポイントを受け取る（追加仕様: ログインポイント）。
+      //   条件は上の claimsDailyPoints() に全部書いてあります。
+      allow update: if isClient(cid) && claimsDailyPoints();
 
       // ---- 日次データ -------------------------------------------------------
 
