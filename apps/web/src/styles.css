@@ -3469,3 +3469,379 @@ hr.rule {
   align-self: flex-start;
   margin-top: 2px;
 }
+
+/* -----------------------------------------------------------------------------
+   導入の演出（追加仕様: 導入の演出）
+   -------------------------------------------------------------------------- */
+
+/* ---- ログイン画面の入口 -------------------------------------------------- */
+
+/* ★ CSSだけで動かしています。
+   JavaScript で時間を計って出し入れすると、その間ボタンが押せない作りに
+   なりがちです。入力欄は最初から触れて、見た目だけが動きます。 */
+.auth-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+/* ★ 石は下から浮き上がって、少し回ります。
+   まっすぐ出すと「読み込み中の絵」に見えます。 */
+.auth-intro-stone {
+  display: inline-flex;
+  animation: auth-stone-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-stone-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) rotate(-18deg) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0) scale(1);
+  }
+}
+
+/* ★ 題字は石より少し遅らせます。
+   同時に出すと、2つが1つの塊に見えて印象に残りません。 */
+.auth-intro .auth-title {
+  margin: 0;
+  animation: auth-title-in 700ms 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-title-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    letter-spacing: 0.18em;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    letter-spacing: normal;
+  }
+}
+
+/* ---- その日ぶんが入ったときの演出 ---------------------------------------- */
+
+/* ★ 裏の画面はもう出来上がっていて、これはその上に重なるだけです。
+   どこを触ってもすぐ消えます。消えるのを待たせません。 */
+.shard-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  border: 0;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  animation: shard-intro-in 240ms ease-out both;
+}
+
+.shard-intro.leaving {
+  animation: shard-intro-out 240ms ease-in both;
+}
+
+@keyframes shard-intro-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shard-intro-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.shard-intro-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  text-align: center;
+}
+
+.shard-intro-hello {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-2);
+  animation: shard-hello-in 500ms ease-out both;
+}
+
+@keyframes shard-hello-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ★ 石は落ちてきて、着いたところで一度だけ跳ねます。
+   落下と光を同時にやると、何が起きたのか読み取れません。
+   落ちる → 着く → 光る、の順に見せます。 */
+.shard-intro-stone {
+  margin: var(--space-md) 0;
+  animation: shard-drop 760ms 180ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes shard-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-90px) rotate(-30deg) scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(6px) rotate(4deg) scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0) scale(1);
+  }
+}
+
+/* ★ 着いたあとに、外へ広がる光の輪を1回だけ。
+   石のまわりが明るくなることで「手に入った」が伝わります。 */
+.shard-intro-stone::after {
+  content: '';
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  border: 2px solid var(--attention);
+  opacity: 0;
+  animation: shard-ring 700ms 820ms ease-out both;
+}
+
+.shard-intro-stone {
+  position: relative;
+  display: inline-flex;
+}
+
+@keyframes shard-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+.shard-intro-gained {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--attention);
+  animation: shard-hello-in 500ms 900ms ease-out both;
+}
+
+.shard-intro-total {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  animation: shard-hello-in 500ms 1040ms ease-out both;
+}
+
+.shard-intro-skip {
+  margin: var(--space-lg) 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  animation: shard-hello-in 500ms 1400ms ease-out both;
+}
+
+/* ★ 動きを減らす設定の端末では、どちらも動かしません。
+   画面いっぱいに動くものが出るのは、人によっては具合が悪くなります。
+   （その日ぶんの演出は、そもそも出さないようにしてあります） */
+@media (prefers-reduced-motion: reduce) {
+  .auth-intro-stone,
+  .auth-intro .auth-title,
+  .shard-intro,
+  .shard-intro-inner > *,
+  .shard-intro-stone,
+  .shard-intro-stone::after {
+    animation: none;
+  }
+}
+
+/* ---- ログイン前の1枚（追加仕様: 導入の演出）------------------------------- */
+
+/* ★ この画面だけは、明暗の設定に関係なく濃紺です。
+   アプリの地色とは別にしてあります。入口だけ世界が違うほうが、
+   切り替わった感じが出ます。白文字を乗せる前提なので、
+   明るい地色に変わると読めなくなります。だから色を固定しています。
+
+   ★ ひとつのグラデーションでは作れません。
+     上が濃い青、下が明るい水色で、その間がむらになっている空気感なので、
+     ぼかした円をいくつか重ねてから、下地の縦グラデーションに乗せます。
+     1本の直線グラデーションだと、帯に見えて安っぽくなります。 */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xxl);
+  padding: var(--space-xl);
+  border: 0;
+  text-align: center;
+  cursor: pointer;
+  color: #ffffff;
+
+  background:
+    radial-gradient(85% 55% at 22% 12%, rgba(40, 86, 138, 0.95) 0%, rgba(40, 86, 138, 0) 62%),
+    radial-gradient(75% 48% at 82% 26%, rgba(28, 64, 108, 0.9) 0%, rgba(28, 64, 108, 0) 66%),
+    radial-gradient(90% 55% at 62% 58%, rgba(62, 118, 158, 0.55) 0%, rgba(62, 118, 158, 0) 70%),
+    radial-gradient(130% 65% at 45% 104%, rgba(124, 194, 202, 0.6) 0%, rgba(124, 194, 202, 0) 72%),
+    linear-gradient(180deg, #1b3f66 0%, #2a5c80 58%, #4a8fa0 100%);
+
+  /* ★ 長押しで文字が選択されると、進めずに困ります */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xl);
+  max-width: 24em;
+}
+
+/* ---- アプリの顔 ---------------------------------------------------------- */
+
+/* ★ 最初から見えています。
+   言葉と一緒に出すと、何のアプリを開いたのか分からない間ができます。 */
+.splash-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  animation: splash-fade-in 900ms ease-out both;
+}
+
+/* ★ 角丸の四角に入れて、アプリの絵柄らしくします。
+   石だけ置くと、ただの飾りに見えます。 */
+.splash-badge-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.45);
+}
+
+.splash-badge-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+@keyframes splash-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---- 言葉 ---------------------------------------------------------------- */
+
+.splash-quote {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  /* ★ 行の間を広く取ります。1行ずつ出るので、
+     詰まっていると「増えていく」感じが出ません。 */
+  gap: var(--space-md);
+}
+
+/* ★ にじみ出るように現れます。
+ *
+ *   位置は動かしません。その場でぼけた状態から焦点が合い、
+ *   濃くなっていきます。上下に動かすと「出てきた」に見えますが、
+ *   動かさないほうが「浮かび上がってきた」に見えます。
+ *
+ *   ゆっくりにしてあります（1.5秒）。速いと「表示された」だけで
+ *   終わって、言葉として読まれません。
+ */
+.splash-line {
+  display: block;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.8;
+  /* ★ 濃紺に白文字なので、わずかに光らせると沈みません */
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.25);
+  opacity: 0;
+  animation: splash-bleed-in 1500ms ease-out both;
+}
+
+@keyframes splash-bleed-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 0.72;
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ---- 次へ進む ------------------------------------------------------------ */
+
+/* ★ 最初から見えています。
+   出そろうまで隠す形も試しましたが、急いでいる人には
+   「まだ押せない」ように見えるほうが不親切でした。
+   ボタンに見えますが、画面のどこを触っても進みます。 */
+.splash-next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+  animation: splash-fade-in 900ms 200ms ease-out both;
+}
+
+/* ★ 動きを減らす設定の端末では、最初から全部出ています。
+   1行ずつ現れるのは、人によっては読みづらさにもなります。 */
+.splash.calm .splash-line,
+.splash.calm .splash-badge,
+.splash.calm .splash-next {
+  opacity: 1;
+  animation: none;
+  filter: none;
+}

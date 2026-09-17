@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { APP_NAME } from '@/config/firebase';
+import { ShardIcon } from '@/features/points/ShardIcon';
 import { LoginError, useAuth } from './AuthProvider';
 import { authErrorMessage } from './authTypes';
 
@@ -38,7 +39,21 @@ export function LoginScreen() {
   return (
     <div className="auth-screen">
       <main className="auth-card">
-        <h1 className="auth-title">{APP_NAME}</h1>
+        {/* ★ 入口の演出（追加仕様: 導入の演出）。
+               ログインしたままの人には出ないので、見るのは数か月に1回です。
+               だから少しだけ手をかけてあります。
+
+               ★ CSSだけで動かしています。JavaScript で時間を計って
+                 出し入れすると、その間ボタンが押せない作りになりがちです。
+                 **入力欄は最初から触れます。** 動いているのは見た目だけです。
+
+               ★ 動きを減らす設定の端末では動きません（styles.css を参照）。 */}
+        <div className="auth-intro">
+          <span className="auth-intro-stone" aria-hidden="true">
+            <ShardIcon size="40px" />
+          </span>
+          <h1 className="auth-title">{APP_NAME}</h1>
+        </div>
         <p className="auth-lede">
           {mode === 'client'
             ? '契約者IDとパスワードでログインしてください。'

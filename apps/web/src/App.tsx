@@ -11,6 +11,7 @@ import {
 import { currentMonthKey, isValidDateKey, isValidMonthKey } from '@pt/core';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { LoginScreen } from '@/features/auth/LoginScreen';
+import { SplashScreen } from '@/features/auth/SplashScreen';
 import { PasswordChangeScreen } from '@/features/auth/PasswordChangeScreen';
 import { ClientListScreen } from '@/features/clients/ClientListScreen';
 import { ClientCreateScreen } from '@/features/clients/ClientCreateScreen';
@@ -63,6 +64,18 @@ function Gate() {
   const [changedUid, setChangedUid] = useState<string | null>(null);
 
   /**
+   * 導入の1枚を見終わったか（追加仕様: 導入の演出）。
+   *
+   * ★ 覚えておくのは、このアプリを開いている間だけです。
+   *
+   *   端末に残すと「もう見た人」に一生出なくなります。
+   *   毎回残さないことで、開くたびに1回だけ出る形になります。
+   *   逆に、ログインに失敗したときに**また見せられることはありません**
+   *   （ここが true のままなので、ログイン画面に留まります）。
+   */
+  const [splashDone, setSplashDone] = useState(false);
+
+  /**
    * 「ログアウト状態を通ったか」の目印。
    *
    * ★ この目印を Gate が持っているのには理由があります。
@@ -78,7 +91,14 @@ function Gate() {
   }, [state.status]);
 
   if (state.status === 'loading') return <Splash />;
-  if (state.status === 'signedOut') return <LoginScreen />;
+  // ★ ログイン画面の前に1枚だけ（追加仕様: 導入の演出）。
+  //
+  //   ログアウトしているときにだけ出ます。ログインしたままの人には出ません。
+  //   1回触ればログイン画面に進み、そのあとは出ません
+  //   （ログインに失敗しても、また最初から見せられることはありません）。
+  if (state.status === 'signedOut') {
+    return splashDone ? <LoginScreen /> : <SplashScreen onDone={() => setSplashDone(true)} />;
+  }
 
   if (state.status === 'unregistered') {
     return (

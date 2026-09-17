@@ -163,3 +163,79 @@ describe('表示', () => {
     expect(await screen.findByLabelText('12,345 かけら')).toBeInTheDocument();
   });
 });
+
+/**
+ * ★ その日ぶんの演出（追加仕様: 導入の演出）。
+ *
+ * ★ 出るのは1日1回だけです。かけらは1日1つしかたまらないので、
+ *   「受け取れた瞬間」に出すだけで自然にそうなります。
+ */
+describe('★ その日ぶんの演出', () => {
+  it('受け取れたら、演出が出る', async () => {
+    claimDailyPoints.mockResolvedValue({
+      points: 1,
+      dailyPoints: 1,
+      lastDate: TODAY,
+      totalDays: 1,
+    });
+    render(inRouter(<PointsCard client={aClient({ points: 0 })} isAdmin={false} />));
+
+    expect(await screen.findByText(/どこでも触ると閉じます/)).toBeInTheDocument();
+  });
+
+  it('★ すでに受け取ってあれば、演出は出ない', async () => {
+    // ★ 1日に何度も開くアプリです。毎回出たら3日で嫌われます
+    render(
+      inRouter(
+        <PointsCard
+          client={aClient({ points: 5, pointsLastDate: TODAY, pointsTotalDays: 5 })}
+          isAdmin={false}
+        />,
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('5 かけら')).toBeInTheDocument());
+    expect(screen.queryByText(/どこでも触ると閉じます/)).not.toBeInTheDocument();
+  });
+
+  it('★ 管理者が代理で見ているときは、演出は出ない', async () => {
+    render(inRouter(<PointsCard client={aClient({ points: 5 })} isAdmin={true} />));
+
+    await waitFor(() => expect(screen.getByLabelText('5 かけら')).toBeInTheDocument());
+    expect(screen.queryByText(/どこでも触ると閉じます/)).not.toBeInTheDocument();
+  });
+
+  it('★ 動きを減らす設定の端末では、演出を出さない', async () => {
+    // ★ 画面いっぱいに動くものが出るのは、人によっては具合が悪くなります。
+    //   受け取れた事実は札の数字に出ているので、無くても困りません
+    const original = window.matchMedia;
+    window.matchMedia = ((q: string) =>
+      ({
+        matches: q.includes('prefers-reduced-motion'),
+        media: q,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        onchange: null,
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList) as typeof window.matchMedia;
+
+    claimDailyPoints.mockResolvedValue({
+      points: 1,
+      dailyPoints: 1,
+      lastDate: TODAY,
+      totalDays: 1,
+    });
+
+    try {
+      render(inRouter(<PointsCard client={aClient({ points: 0 })} isAdmin={false} />));
+      await waitFor(() => expect(claimDailyPoints).toHaveBeenCalled());
+      // 札の数字は出るが、全面の演出は出ない
+      expect(await screen.findByLabelText('1 かけら')).toBeInTheDocument();
+      expect(screen.queryByText(/どこでも触ると閉じます/)).not.toBeInTheDocument();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+});

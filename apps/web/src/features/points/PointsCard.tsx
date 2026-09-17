@@ -4,6 +4,7 @@ import { pointDayKey, canClaimToday, SHARD_NAME } from '@pt/core';
 import type { Client } from '@/features/clients/clientTypes';
 import { claimDailyPoints, pointsOf } from './pointsRepo';
 import { Shards, ShardIcon } from './ShardIcon';
+import { DailyShardIntro } from './DailyShardIntro';
 
 /**
  * ポイント（追加仕様: ログインポイント）。契約者の画面に出ます。
@@ -33,6 +34,14 @@ export function PointsCard({
   const state = pointsOf(client);
   const [points, setPoints] = useState(state.points);
   const [gained, setGained] = useState<number | null>(null);
+  /**
+   * 演出を出すか（追加仕様: 導入の演出）。
+   *
+   * ★ 動きを減らす設定の端末では、最初から出しません。
+   *   画面いっぱいに動くものが出るのは、人によっては具合が悪くなります。
+   *   受け取れた事実は下の数字に出ているので、無くても困りません。
+   */
+  const [intro, setIntro] = useState<{ gained: number; total: number } | null>(null);
 
   // ★ 同じ契約者に何度も投げないための見張り。
   //   親の再描画で useEffect が走り直しても、1回で止まります。
@@ -60,8 +69,15 @@ export function PointsCard({
       try {
         const next = await claimDailyPoints(client);
         if (next === null) return;
+        const got = next.points - current.points;
         setPoints(next.points);
-        setGained(next.points - current.points);
+        setGained(got);
+
+        const calm =
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (got > 0 && !calm) setIntro({ gained: got, total: next.points });
+
         onChanged?.();
       } catch {
         // ★ 黙って諦めます。あすまた開けば受け取れます
@@ -72,6 +88,16 @@ export function PointsCard({
   const daily = state.dailyPoints;
 
   return (
+    <>
+      {intro !== null && (
+        <DailyShardIntro
+          name={client.displayName}
+          gained={intro.gained}
+          total={intro.total}
+          onClose={() => setIntro(null)}
+        />
+      )}
+
     <section className="card points-card">
       <div className="points-head">
         <span className="points-label">{SHARD_NAME}</span>
@@ -109,5 +135,6 @@ export function PointsCard({
         </Link>
       )}
     </section>
+    </>
   );
 }
