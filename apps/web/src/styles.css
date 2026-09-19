@@ -3845,3 +3845,18 @@ hr.rule {
   animation: none;
   filter: none;
 }
+
+/* ---- まとめ呼びの一覧（追加仕様: まとめ呼び） -----------------------------
+ * ★ 警告の見た目にしません。これは「そうなっている」の確認です。
+ *   赤や黄にすると、直さなければいけないものに見えます。 */
+
+.shared-names {
+  list-style: none;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.7;
+}

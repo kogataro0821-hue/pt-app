@@ -132,27 +132,70 @@ export function allNames(food: NameableFood): string[] {
   return [food.name, ...food.aliases];
 }
 
-/**
- * 名前がぴったり一致する食材を探す（別名も見る）。
- *
- * ★ AIが「鶏ムネ肉」と返しても、ここで既存の「鶏むね肉」に当たります。
- *   大半のぶれは、契約者の目に触れる前にここで消えます。
- */
-export function findExactFood<T extends NameableFood>(
-  foods: readonly T[],
-  name: string,
-): T | null {
-  const key = foodKey(name);
-  if (key.length === 0) return null;
-  return foods.find((f) => allNames(f).some((n) => foodKey(n) === key)) ?? null;
-}
-
 export interface FoodMatch<T> {
   food: T;
   /** 0〜1 */
   score: number;
   /** どの名前に当たったか（別名で当たった場合に見せる） */
   matchedName: string;
+}
+
+/**
+ * 名前がぴったり一致する食材を、**当たった全部**返す（別名も見る）。
+ *
+ * ★ 「全部」なのが要点です（追加仕様: まとめ呼び）。
+ *
+ *   1件に決め打ちすると、同じ呼び名を持つ食材が2件あったときに
+ *   **黙ってどちらかが選ばれます**。画面には何も出ません。
+ *   実際に「卵」が2件あって、古いほうの数字が使われ続けました。
+ *
+ *   返す側は数を隠さず、決めるのは画面側にします。
+ *   2件以上あるなら、人に選ばせるのが唯一の正解です。
+ *
+ * ★ これで「まとめ呼び」も安全になります。
+ *
+ *   木綿豆腐と絹豆腐の両方に別名「とうふ」を付けておけば、
+ *   「とうふ」と打ったときに2件とも出せます。
+ *   危なかったのは同じ名前が2つあることではなく、
+ *   **黙って1つに決めていたこと**でした。
+ */
+export function findExactFoods<T extends NameableFood>(
+  foods: readonly T[],
+  name: string,
+): FoodMatch<T>[] {
+  const key = foodKey(name);
+  if (key.length === 0) return [];
+
+  const out: FoodMatch<T>[] = [];
+  for (const food of foods) {
+    const hit = allNames(food).find((n) => foodKey(n) === key);
+    if (hit !== undefined) out.push({ food, score: 1, matchedName: hit });
+  }
+
+  // ★ 並びを固定します。出るたびに順番が変わると、押し間違えます
+  return out.sort((a, b) => a.food.name.localeCompare(b.food.name));
+}
+
+/**
+ * 名前がぴったり一致する食材を1件だけ探す（別名も見る）。
+ *
+ * ★ AIが「鶏ムネ肉」と返しても、ここで既存の「鶏むね肉」に当たります。
+ *   大半のぶれは、契約者の目に触れる前にここで消えます。
+ *
+ * ★ 2件以上当たるときは **null を返します。**
+ *
+ *   以前は先頭を黙って返していました。どちらが選ばれるかは
+ *   並び順しだいで、画面には何も出ません。
+ *   人に選ばせる場所（記録の入力）では findExactFoods を使い、
+ *   自動で当てる場所では「決まらないなら当てない」を選びます。
+ *   間違った数字を黙って入れるより、当たらないほうがましです。
+ */
+export function findExactFood<T extends NameableFood>(
+  foods: readonly T[],
+  name: string,
+): T | null {
+  const found = findExactFoods(foods, name);
+  return found.length === 1 ? (found[0]?.food ?? null) : null;
 }
 
 /**
@@ -284,7 +327,7 @@ export function orderedVariants(variants: readonly VariantCount[]): string[] {
  *   管理者の画面では新しいほうを直していたのに、
  *   契約者の画面には**古いほうの数字が出ていました。**
  *
- *   findExactFood は、当たった中の**先頭を黙って返します。**
+ *   findExactFood は、当たった中の**先頭を黙って返していました。**
  *   どちらが選ばれるかは並び順しだいで、画面には何も出ません。
  *   トレーナーが数字を根拠に指導するアプリで、
  *   「どの数字が使われるか分からない」は、あってはならない状態です。
@@ -293,6 +336,22 @@ export function orderedVariants(variants: readonly VariantCount[]): string[] {
  *   「卵」に別名「たまご」を足したあとで、
  *   別の食材が「たまご」という名前で登録されていれば、それもぶつかります。
  *   むしろ本名どうしより気づきにくい形です。
+ *
+ * ★ ただし「まとめ呼び」は、ぶつかりに数えません（追加仕様: まとめ呼び）。
+ *
+ *   木綿豆腐と絹豆腐の両方に別名「とうふ」を付けるのは、**わざと**です。
+ *   ひらがなで「とうふ」と打った人に、両方を見せたいからです。
+ *   これを警告にすると、管理者は「別名を付けてはいけない」と読みます。
+ *   実際そう読まれて、機能が使われませんでした。
+ *
+ *   分かれ目は **その呼び名を本名にしている食材がいるかどうか** です。
+ *
+ *     とうふ … どちらの本名でもない  → まとめ呼び（findSharedNames）
+ *     たまご … eggOld の本名          → ぶつかり（同じものが2件ある）
+ *
+ *   本名が取られている場合は、片方が相手の名前を名乗っている状態です。
+ *   選ばせる画面に出しても「卵／たまご」と並ぶだけで見分けられません。
+ *   だから、これは今までどおり直してもらいます。
  */
 export interface NameConflict<T> {
   /** ぶつかっている相手（自分は入りません） */
@@ -311,35 +370,53 @@ export interface NameConflict<T> {
  *   呼び名ごとにまとめてから、2件以上ある山だけを拾います。
  *   食材が増えても、かかる時間は件数に比例したままです。
  */
-export function findNameConflicts<T extends NameableFood>(
+/** 照合キーごとに、その呼び名を持つ食材を集める。 */
+function groupByName<T extends NameableFood>(
   foods: readonly T[],
-): Map<string, NameConflict<T>> {
-  /** 照合キー → その呼び名を持つ食材たち（同じ食材は1回だけ） */
-  const byKey = new Map<string, { name: string; foods: T[] }>();
+): Map<string, { name: string; foods: T[]; isRealName: boolean }> {
+  const byKey = new Map<string, { name: string; foods: T[]; isRealName: boolean }>();
 
   for (const food of foods) {
     // ★ 1つの食材が「卵」と別名「たまご」を持ち、両方が同じキーになることがあります。
     //   自分自身とぶつかった扱いにしないよう、食材ごとに一度だけ数えます。
     const seen = new Set<string>();
+    const ownKey = foodKey(food.name);
 
     for (const name of allNames(food)) {
       const key = foodKey(name);
       if (key.length === 0 || seen.has(key)) continue;
       seen.add(key);
 
+      // ★ その呼び名を「本名」にしている食材がいるか。
+      //   いれば、まとめ呼びではなく取り合いです。
+      const mine = key === ownKey;
+
       const bucket = byKey.get(key);
       if (bucket === undefined) {
-        byKey.set(key, { name, foods: [food] });
+        byKey.set(key, { name, foods: [food], isRealName: mine });
       } else {
         bucket.foods.push(food);
+        // 本名で名乗っている食材がいれば、そちらの表記を見せます
+        if (mine && !bucket.isRealName) {
+          bucket.isRealName = true;
+          bucket.name = name;
+        }
       }
     }
   }
 
+  return byKey;
+}
+
+export function findNameConflicts<T extends NameableFood>(
+  foods: readonly T[],
+): Map<string, NameConflict<T>> {
   const out = new Map<string, NameConflict<T>>();
 
-  for (const { name, foods: sharing } of byKey.values()) {
+  for (const { name, foods: sharing, isRealName } of groupByName(foods).values()) {
     if (sharing.length < 2) continue;
+    // ★ 誰の本名でもない呼び名は、まとめ呼びです。警告にしません
+    if (!isRealName) continue;
 
     for (const food of sharing) {
       const found = out.get(food.id) ?? { others: [], names: [] };
@@ -354,4 +431,45 @@ export function findNameConflicts<T extends NameableFood>(
   }
 
   return out;
+}
+
+/**
+ * まとめ呼び1件（追加仕様: まとめ呼び）。
+ *
+ *   とうふ → 木綿豆腐 / 絹豆腐
+ */
+export interface SharedName<T> {
+  /** 共通の呼び名。管理者に見せるので、キーではなく実際の表記です */
+  name: string;
+  /** その呼び名で出てくる食材 */
+  foods: T[];
+}
+
+/**
+ * まとめ呼びを洗い出す。
+ *
+ * ★ これは警告ではありません。**そうなっていることの確認**です。
+ *
+ *   「とうふ」と打ったら何が出るのか、管理者が見て分かる必要があります。
+ *   別名は各食材の編集画面に散らばっているので、
+ *   一覧にしないと「いま何がまとめ呼びなのか」を誰も把握できません。
+ *
+ * ★ 誰の本名でもない呼び名だけを拾います。
+ *   本名が取られているものは findNameConflicts が警告として出します。
+ */
+export function findSharedNames<T extends NameableFood>(
+  foods: readonly T[],
+): SharedName<T>[] {
+  const out: SharedName<T>[] = [];
+
+  for (const { name, foods: sharing, isRealName } of groupByName(foods).values()) {
+    if (sharing.length < 2 || isRealName) continue;
+    out.push({
+      name,
+      foods: [...sharing].sort((a, b) => a.name.localeCompare(b.name)),
+    });
+  }
+
+  // ★ 並びを固定します。開くたびに順番が変わると、読む側が追えません
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -66,13 +66,18 @@ describe('★ ぶつかっているとき', () => {
     });
   });
 
-  it('★ どちらの数字が使われるか決まらない、と書く', async () => {
+  it('★ 同じものが2件ある、と書く', async () => {
     // ★ 「重複しています」だけでは、放っておいていいものに見えます。
-    //   実害（古い数字で記録され続ける）まで書きます。
+    //   何が起きているのか（同じものが2件ある）まで書きます。
+    //
+    // ★ 以前は「どちらの数字が使われるか決まりません」と書いていました。
+    //   いまは決まらないときは選ばせるので、その文は嘘になりました。
+    //   残る問題は「選ぶ画面に出しても見分けられないこと」です。
     await show();
     await waitFor(() => {
-      expect(screen.getByText(/どちらの栄養値が使われるか決まりません/)).toBeInTheDocument();
+      expect(screen.getByText(/同じものが2件登録されている/)).toBeInTheDocument();
     });
+    expect(screen.getByText(/同じ名前が並ぶだけで見分けられません/)).toBeInTheDocument();
   });
 
   it('★ ぶつかっている相手を名指しする', async () => {
@@ -113,5 +118,44 @@ describe('★ 検索との関係', () => {
     await waitFor(() => {
       expect(screen.getByText('名前がぶつかっている食材が2件あります')).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * まとめ呼び（追加仕様: まとめ呼び）。
+ *
+ * ★ 以前はこれも「ぶつかっています。直してください」と出していました。
+ *
+ *   すると管理者は「同じ別名を複数に付けてはいけない」と読みます。
+ *   実際そう読まれて、まとめ呼びが使われませんでした。
+ *   ひらがなで当てる手段が、警告のせいで封じられていた形です。
+ */
+describe('★ まとめ呼びのとき', () => {
+  const MOMEN = aFood({ id: 'm', name: '木綿豆腐', aliases: ['とうふ'] });
+  const KINU = aFood({ id: 'k', name: '絹豆腐', aliases: ['とうふ'] });
+
+  it('★ 警告を出さない', async () => {
+    await show([MOMEN, KINU]);
+    expect(screen.queryByText(/名前がぶつかっている/)).not.toBeInTheDocument();
+  });
+
+  it('何がまとめ呼びなのか、一覧で見える', async () => {
+    // ★ 別名は食材ごとの編集画面に散らばっています。
+    //   一覧にしないと「いま『とうふ』で何が出るのか」を誰も把握できません
+    await show([MOMEN, KINU]);
+    expect(screen.getByText('まとめ呼び（1件）')).toBeInTheDocument();
+    expect(screen.getByText(/木綿豆腐・絹豆腐/)).toBeInTheDocument();
+  });
+
+  it('まとめ呼びが無ければ、その欄自体を出さない', async () => {
+    await show([RICE]);
+    expect(screen.queryByText(/まとめ呼び/)).not.toBeInTheDocument();
+  });
+
+  it('★ 本名が取られているものは、今までどおり警告に出る', async () => {
+    // ★ 「とうふ」という食材が別にあるなら、選ぶ画面でも見分けられません
+    const PLAIN = aFood({ id: 'p', name: 'とうふ', aliases: [] });
+    await show([MOMEN, PLAIN]);
+    expect(screen.getByText('名前がぶつかっている食材が2件あります')).toBeInTheDocument();
   });
 });

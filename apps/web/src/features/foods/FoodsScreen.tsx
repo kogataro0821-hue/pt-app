@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { findNameConflicts, foodKey } from '@pt/core';
+import { findNameConflicts, findSharedNames, foodKey } from '@pt/core';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { clearFoodCache, deleteFood, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { FoodEditor } from './FoodEditor';
@@ -42,6 +42,16 @@ export function FoodsScreen() {
    *   相手が検索の外にいたら、ぶつかっていないように見えてしまいます。
    */
   const conflicts = useMemo(() => findNameConflicts(foods ?? []), [foods]);
+
+  /**
+   * まとめ呼び（追加仕様: まとめ呼び）。
+   *
+   * ★ これは警告ではありません。**そうなっていることの確認**です。
+   *
+   *   別名は食材ごとの編集画面に散らばっています。
+   *   一覧にしないと「いま『とうふ』で何が出るのか」を誰も把握できません。
+   */
+  const shared = useMemo(() => findSharedNames(foods ?? []), [foods]);
 
   // 検索も照合キーで行います。「とりムネ」と打っても「鶏むね肉」に当たります。
   const shown = useMemo(() => {
@@ -100,12 +110,33 @@ export function FoodsScreen() {
         <section className="card warn" role="status">
           <h3 className="card-title">名前がぶつかっている食材が{conflicts.size}件あります</h3>
           <p className="note">
-            同じ呼び名の食材が複数あると、契約者が入力したときに
-            <b>どちらの栄養値が使われるか決まりません</b>。
-            画面には何も出ないので、気づかないまま古い数字で記録され続けます。
+            <b>同じものが2件登録されている</b>おそれがあります。
+            片方の本名を、もう片方が名乗っている状態です。
+            選ぶ画面に出しても<b>同じ名前が並ぶだけで見分けられません</b>。
             <br />
             片方を消すか、名前や別名を直してください。
           </p>
+        </section>
+      )}
+
+      {/* ★ まとめ呼びは、警告ではありません（追加仕様: まとめ呼び）。
+             以前はこれも「ぶつかっています。直してください」と出していました。
+             すると管理者は「別名を付けてはいけない」と読みます。
+             実際そう読まれて、まとめ呼びが使われませんでした。 */}
+      {shared.length > 0 && (
+        <section className="card">
+          <h3 className="card-title">まとめ呼び（{shared.length}件）</h3>
+          <p className="note">
+            この呼び名で打つと、下の食材が<b>ぜんぶ候補に出ます</b>。
+            契約者はその中から選びます。勝手に決まることはありません。
+          </p>
+          <ul className="shared-names">
+            {shared.map((s) => (
+              <li key={s.name}>
+                <b>{s.name}</b> → {s.foods.map((f) => f.name).join('・')}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

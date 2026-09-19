@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   computeItemNutrients,
   entryUnitsFor,
-  findExactFood,
+  findExactFoods,
   findSimilarFoods,
   formatAmount,
   formatNutrients,
@@ -128,10 +128,33 @@ export function ItemForm({
   // ★ 打った名前を、まず既存マスタに当てにいきます（別名も見ます）。
   //   「鶏ムネ肉」と打っても既存の「鶏むね肉」に当たるので、
   //   ぶれの大半はここで消えます。
-  const exact = useMemo(() => (picked !== null ? picked : findExactFood(foods, name)), [foods, name, picked]);
+  //
+  // ★ 当たったものは**全部**受け取ります（追加仕様: まとめ呼び）。
+  //
+  //   以前は1件に決め打ちしていました。同じ呼び名の食材が2件あると、
+  //   **黙ってどちらかの栄養値が入りました。** 画面には何も出ません。
+  //   実際に「卵」が2件あって、古い数字が使われ続けました。
+  const hits = useMemo(
+    () => (picked !== null ? [] : findExactFoods(foods, name)),
+    [foods, name, picked],
+  );
+
+  /**
+   * この記録で使う食材。
+   *
+   * ★ 2件以上当たったときは、**確定させません**（null のまま）。
+   *   下の候補に並べて、人に選んでもらいます。
+   *   選ばせずに進めていいのは、行き先が1つしかないときだけです。
+   */
+  const exact = picked !== null ? picked : hits.length === 1 ? (hits[0]?.food ?? null) : null;
+
+  /** 2件以上当たった状態か。候補の見出しを変えるために持ちます */
+  const ambiguous = picked === null && hits.length >= 2;
+
   const similar = useMemo(
-    () => (exact !== null ? [] : findSimilarFoods(foods, name, 4)),
-    [foods, name, exact],
+    () =>
+      exact !== null ? [] : ambiguous ? hits : findSimilarFoods(foods, name, 4),
+    [foods, name, exact, ambiguous, hits],
   );
 
   /**
@@ -199,7 +222,15 @@ export function ItemForm({
 
   const nameOk = name.trim().length > 0;
   const gramsOk = gramsNum !== null && gramsNum > 0 && gramsNum <= 5000;
-  const canSubmit = nameOk && gramsOk;
+  /**
+   * ★ どれか決まるまで、保存させません（追加仕様: まとめ呼び）。
+   *
+   *   ここを開けておくと「とうふ」がマスタに無い扱いで保存され、
+   *   **登録依頼まで飛びます。** マスタにはちゃんとあるのに、です。
+   *   管理者に「とうふを登録してください」と届いても、
+   *   何を登録すればいいのか分かりません。
+   */
+  const canSubmit = nameOk && gramsOk && !ambiguous;
 
   /** 記録に残す「2個」の控え。g で入れたときは残しません。 */
   const enteredAs =
@@ -215,6 +246,10 @@ export function ItemForm({
   function submit() {
     if (!nameOk) {
       setError('食材の名前を入力してください。');
+      return;
+    }
+    if (ambiguous) {
+      setError(`「${name.trim()}」で${String(hits.length)}件あります。上の候補から選んでください。`);
       return;
     }
     if (!gramsOk || gramsNum === null) {
@@ -297,7 +332,16 @@ export function ItemForm({
 
       {similar.length > 0 && (
         <>
-          <p className="field-hint">似た食材があります。同じものならこちらを選んでください。</p>
+          {/* ★ 2件以上ぴったり当たったときは、言い方を変えます。
+                 「似た食材があります」だと、当たっていないように読めます。
+                 実際は両方とも当たっていて、**どちらか決まらない**状態です。
+                 選ぶまで先に進めていないことが伝わらないと、
+                 契約者はそのまま量を入れて保存してしまいます。 */}
+          <p className="field-hint" role={ambiguous ? 'status' : undefined}>
+            {ambiguous
+              ? `「${name.trim()}」で${String(similar.length)}件あります。どれか選んでください。`
+              : '似た食材があります。同じものならこちらを選んでください。'}
+          </p>
           <ul className="suggestions">
             {similar.map((m) => (
               <li key={m.food.id}>
@@ -369,18 +413,24 @@ export function ItemForm({
         )}
       </div>
 
-      <NutritionBlock
-        food={exact}
-        name={name}
-        canEditNutrition={canEditNutrition}
-        manual={manual}
-        onManualChange={setManual}
-      />
+      {/* ★ どれか決まるまでは、栄養値の欄を出しません（追加仕様: まとめ呼び）。
+             2件当たっている状態で「マスタに無いので入れてください」と
+             欄が出ると、**マスタにあるのに手入力させる**ことになります。
+             決まっていないときは、決めることだけをさせます。 */}
+      {!ambiguous && (
+        <NutritionBlock
+          food={exact}
+          name={name}
+          canEditNutrition={canEditNutrition}
+          manual={manual}
+          onManualChange={setManual}
+        />
+      )}
 
       {/* ★ マスタに無い食材のときだけ出します（設計書 §47 / 追加仕様: 成分表示の読み取り）。
           読み取った数字は、上の入力欄にそのまま入れます。
           読み取りは間違えるので、**直せる形にしておきます**。 */}
-      {exact === null && nameOk && aiAvailable && AI_RELAY_URL !== null && !canEditNutrition && (
+      {exact === null && !ambiguous && nameOk && aiAvailable && AI_RELAY_URL !== null && !canEditNutrition && (
         <>
           {scan === null && !scanning && (
             <button

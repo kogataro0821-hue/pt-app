@@ -567,3 +567,93 @@ describe('★ 単位で入れる', () => {
     });
   });
 });
+
+/**
+ * まとめ呼び（追加仕様: まとめ呼び）。
+ *
+ * ★ ひらがなで「とうふ」と打って、木綿豆腐と絹豆腐の両方を出したい。
+ *
+ *   漢字を読みに直す処理は持てないので、読みは別名として登録します。
+ *   すると同じ別名を持つ食材が2件できます。
+ *
+ * ★ 守りたいのは1つだけです。**黙って片方に決めないこと。**
+ *
+ *   以前は当たった中の先頭を黙って返していました。
+ *   「卵」が2件あって、古いほうの数字が使われ続けたのがこれです。
+ *   画面には何も出ないので、誰も気づけませんでした。
+ */
+describe('★ 同じ呼び名の食材が2件あるとき', () => {
+  const MOMEN = aFood({
+    id: 'もめんとうふ',
+    name: '木綿豆腐',
+    aliases: ['とうふ'],
+    per100g: { kcal: 73, p: 7, f: 4.2, c: 1.5 },
+  });
+  const KINU = aFood({
+    id: 'きぬとうふ',
+    name: '絹豆腐',
+    aliases: ['とうふ'],
+    per100g: { kcal: 56, p: 5.3, f: 3.2, c: 2 },
+  });
+
+  beforeEach(() => {
+    withMaster([MOMEN, KINU]);
+  });
+
+  it('両方が候補に出る', async () => {
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), 'とうふ');
+
+    expect(await screen.findByRole('button', { name: /木綿豆腐/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /絹豆腐/ })).toBeInTheDocument();
+  });
+
+  it('★ 選ぶまで、どちらにも確定しない', async () => {
+    // ★ ここが本体です。片方の栄養値が黙って入ってはいけません
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), 'とうふ');
+
+    expect(screen.queryByText('100gあたり（共通マスタ）')).not.toBeInTheDocument();
+  });
+
+  it('★ 選ぶまで、保存できない', async () => {
+    // ★ 開けておくと「マスタに無い」扱いで保存され、登録依頼まで飛びます。
+    //   マスタにはちゃんとあるのに、です
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), 'とうふ');
+    await userEvent.type(screen.getByLabelText('食べた量'), '150');
+
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('★ 選ぶまで、仮の栄養値の欄を出さない', async () => {
+    // ★ マスタにあるのに手入力させることになります
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), 'とうふ');
+
+    expect(screen.queryByLabelText('kcal')).not.toBeInTheDocument();
+  });
+
+  it('選べば、その食材の値で確定する', async () => {
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), 'とうふ');
+    await userEvent.click(await screen.findByRole('button', { name: /絹豆腐/ }));
+    await userEvent.type(screen.getByLabelText('食べた量'), '100');
+
+    expect(screen.getByText('100gあたり（共通マスタ）')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }));
+    const item = firstCall(onSubmit)[0];
+    expect(item.name).toBe('絹豆腐');
+    expect(item.foodId).toBe('きぬとうふ');
+    expect(item.pending).toBe(false);
+  });
+
+  it('本名をそのまま打てば、1件なので確定する', async () => {
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '木綿豆腐');
+
+    expect(await screen.findByText('100gあたり（共通マスタ）')).toBeInTheDocument();
+  });
+});

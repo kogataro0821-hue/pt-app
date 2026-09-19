@@ -4,7 +4,9 @@ import {
   allNames,
   bigrams,
   findExactFood,
+  findExactFoods,
   findNameConflicts,
+  findSharedNames,
   findSimilarFoods,
   foodKey,
   isSameFoodName,
@@ -372,5 +374,93 @@ describe('★ 名前のぶつかりを見つける', () => {
     const a = { id: 'a', name: '###', aliases: [] };
     const b = { id: 'b', name: '///', aliases: [] };
     expect(findNameConflicts([a, b]).size).toBe(0);
+  });
+
+  it('★ まとめ呼びは、ぶつかりに数えない', () => {
+    // ★ 木綿豆腐と絹豆腐の両方に別名「とうふ」を付けるのは、わざとです。
+    //   これを警告にすると「別名を付けてはいけない」と読まれます。
+    //   実際そう読まれて、機能が使われませんでした。
+    const momen = { id: 'm', name: '木綿豆腐', aliases: ['とうふ'] };
+    const kinu = { id: 'k', name: '絹豆腐', aliases: ['とうふ'] };
+    expect(findNameConflicts([momen, kinu]).size).toBe(0);
+  });
+
+  it('★ ただし、その呼び名を本名にしている食材がいれば、ぶつかり', () => {
+    // ★ 「とうふ」という名前の食材が別にあるなら、話が変わります。
+    //   選ぶ画面に出しても、どれが「とうふ」本人か分かりません。
+    const momen = { id: 'm', name: '木綿豆腐', aliases: ['とうふ'] };
+    const plain = { id: 'p', name: 'とうふ', aliases: [] };
+    expect(findNameConflicts([momen, plain]).size).toBe(2);
+  });
+});
+
+/**
+ * まとめ呼び（追加仕様: まとめ呼び）。
+ *
+ * ★ ひらがなで打って当てるには、読みを別名に入れるしかありません。
+ *   漢字を読みに直す処理は持てないので（辞書が要ります）、
+ *   「とうふ」と打っても「豆腐」には当たりません。
+ */
+describe('★ まとめ呼びを洗い出す', () => {
+  const momen = { id: 'm', name: '木綿豆腐', aliases: ['とうふ'] };
+  const kinu = { id: 'k', name: '絹豆腐', aliases: ['とうふ'] };
+
+  it('共通の呼び名と、その行き先を返す', () => {
+    const found = findSharedNames([momen, kinu]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.name).toBe('とうふ');
+    expect(found[0]?.foods.map((f) => f.id).sort()).toEqual(['k', 'm']);
+  });
+
+  it('1件しか持っていない別名は、まとめ呼びではない', () => {
+    expect(findSharedNames([momen])).toHaveLength(0);
+  });
+
+  it('★ 本名が取られているものは入れない（そちらは警告に出る）', () => {
+    const plain = { id: 'p', name: 'とうふ', aliases: [] };
+    expect(findSharedNames([momen, plain])).toHaveLength(0);
+  });
+
+  it('並びが毎回同じになる', () => {
+    const a = { id: 'a', name: 'あじ', aliases: ['さかな'] };
+    const b = { id: 'b', name: 'さば', aliases: ['さかな'] };
+    expect(findSharedNames([b, a])).toEqual(findSharedNames([a, b]));
+  });
+});
+
+/**
+ * ぴったり当たったものを、全部返す（追加仕様: まとめ呼び）。
+ *
+ * ★ 危なかったのは「同じ名前が2つあること」ではありません。
+ *   **黙って1つに決めていたこと**です。
+ */
+describe('★ ぴったり当たったものを全部返す', () => {
+  const momen = { id: 'm', name: '木綿豆腐', aliases: ['とうふ'] };
+  const kinu = { id: 'k', name: '絹豆腐', aliases: ['とうふ'] };
+
+  it('2件当たったら、2件とも返す', () => {
+    const found = findExactFoods([momen, kinu], 'とうふ');
+    expect(found.map((h) => h.food.id).sort()).toEqual(['k', 'm']);
+  });
+
+  it('どの名前で当たったかを返す（別名で当たったと分かるように）', () => {
+    const found = findExactFoods([momen, kinu], 'とうふ');
+    expect(found.every((h) => h.matchedName === 'とうふ')).toBe(true);
+  });
+
+  it('カタカナ・半角でも当たる', () => {
+    expect(findExactFoods([momen, kinu], 'ﾄｳﾌ')).toHaveLength(2);
+  });
+
+  it('当たらなければ空', () => {
+    expect(findExactFoods([momen, kinu], 'アボカド')).toEqual([]);
+    expect(findExactFoods([momen, kinu], '')).toEqual([]);
+  });
+
+  it('★ 1件に決められないときは、findExactFood は当てない', () => {
+    // ★ 先頭を黙って返すより、当たらないほうがましです。
+    //   間違った栄養値が、画面に何も出ないまま入るのがいちばん困ります。
+    expect(findExactFood([momen, kinu], 'とうふ')).toBeNull();
+    expect(findExactFood([momen, kinu], '木綿豆腐')?.id).toBe('m');
   });
 });
