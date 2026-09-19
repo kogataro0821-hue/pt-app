@@ -3,7 +3,6 @@ import {
   formatDelta,
   isValidGrant,
   MAX_GRANT,
-  SHARD_NAME,
   SHARD_UNIT,
 } from '@pt/core';
 import { listClients } from '@/features/clients/clientsRepo';
@@ -197,7 +196,10 @@ export function PointsGrantScreen({ onBack }: { onBack: () => void }) {
   return (
     <>
       <div className="section-head">
-        <h2 className="title">{SHARD_NAME}を配る</h2>
+        {/* ★ タブ名と同じにしてあります。
+               タブが「お知らせ」なのに、開いた先が「かけらを配る」だと、
+               押し間違えたのかと思います。名前は揃えます。 */}
+        <h2 className="title">お知らせを送る</h2>
         <button className="button-secondary compact" type="button" onClick={onBack}>
           戻る
         </button>

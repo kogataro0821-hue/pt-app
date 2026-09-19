@@ -97,7 +97,11 @@ export function AppShell({
           <AdminLink to="/clients" label="契約者" />
           <AdminLink to="/foods" label="食品マスタ" />
           <AdminLink to="/foods/requests" label="登録依頼" badge={pendingRequests} />
-          <AdminLink to="/points" label="かけら" />
+          {/* ★ 「かけら」ではなく「お知らせ」です（追加仕様: ログインポイント）。
+                 この画面は、かけらを動かさずに**お知らせだけ送れます**。
+                 タブが「かけら」だと、お知らせを送る場所がどこにも無いように
+                 見えます。かけらを動かすのは、お知らせに付けられる側です。 */}
+          <AdminLink to="/points" label="お知らせ" />
           <AdminLink to="/points/qr" label="交換QR" />
         </nav>
       )}

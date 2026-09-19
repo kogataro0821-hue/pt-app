@@ -152,9 +152,13 @@ describe('お知らせのベル', () => {
   }
 
   it('渡されなければ、ベルは出ない', () => {
+    // ★ 名前で探していたら、管理者のタブ「お知らせ」に当たるようになりました
+    //   （かけらのタブを「お知らせ」に変えたためです）。
+    //   同じ名前のものが2つある以上、名前では見分けられません。
+    //   ベルそのものを見ます。
     role = 'admin';
     showWithBell(undefined);
-    expect(screen.queryByRole('link', { name: /お知らせ/ })).not.toBeInTheDocument();
+    expect(document.querySelector('.appbar-bell')).toBeNull();
   });
 
   it('未読があれば、数字が出る', () => {
@@ -305,5 +309,30 @@ describe('右上のメニュー', () => {
 
     await userEvent.click(button);
     expect(button).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+/**
+ * 管理者のタブ名（追加仕様: ログインポイント）。
+ *
+ * ★ 「かけら」から「お知らせ」に変えました。
+ *
+ *   この画面は、かけらを動かさずに**お知らせだけ送れます**。
+ *   タブが「かけら」だと、お知らせを送る場所がどこにも無いように見えます。
+ *   実際、そう見えていました。
+ */
+describe('★ 管理者のタブ', () => {
+  it('お知らせを送る場所が、名前で分かる', () => {
+    role = 'admin';
+    show();
+
+    const tab = screen.getByRole('link', { name: 'お知らせ' });
+    expect(tab).toHaveAttribute('href', '/points');
+  });
+
+  it('「かけら」という名前のタブは、もう無い', () => {
+    role = 'admin';
+    show();
+    expect(screen.queryByRole('link', { name: 'かけら' })).not.toBeInTheDocument();
   });
 });
