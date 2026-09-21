@@ -632,6 +632,10 @@ a {
 .client-name {
   font-size: 16px;
   font-weight: 600;
+  /* ★ 食品マスタと登録依頼の一覧も、この名前を使っています。
+         コンビニの商品名は切り所が無いほど長いことがあるので、
+         はみ出させるより折り返させます（省略はしません）。 */
+  overflow-wrap: anywhere;
 }
 
 .client-meta {
@@ -1123,6 +1127,8 @@ select.input {
 
 .item-name {
   font-weight: 600;
+  /* ★ 記録に並ぶ食材名も、長いものは折り返させます */
+  overflow-wrap: anywhere;
 }
 
 .item-grams {
@@ -1200,10 +1206,15 @@ select.input {
   overflow: hidden;
 }
 
+/* ★ 名前が長いと、横に並べきれません（コンビニの商品名は本当に長い）。
+     「ローソン ブランのしみしみお揚げと鶏そぼろのいなり」のような名前は、
+     1行に収めようとすると**枠からはみ出して読めなくなります**。
+     名前と数字を縦に積んで、名前のほうを折り返させます。 */
 .suggestion {
   display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   width: 100%;
   padding: 10px 12px;
   border: 0;
@@ -1220,11 +1231,17 @@ select.input {
 
 .suggestion-name {
   font-weight: 600;
-  flex: none;
+  /* ★ flex: none を外しました。縮まないので、はみ出す原因でした */
+  width: 100%;
+  min-width: 0;
+  /* ★ 切り所の無い長い名前でも、どこでも折り返させます。
+         省略（…）にはしません。**どの商品か分からなくなるからです。**
+         数字は省略できても、名前は省略できません。 */
+  overflow-wrap: anywhere;
 }
 
 .suggestion-meta {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   font-size: 12px;
   color: var(--muted);
