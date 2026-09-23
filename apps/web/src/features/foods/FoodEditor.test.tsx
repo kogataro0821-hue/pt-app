@@ -133,10 +133,113 @@ describe('★ 1つぶんのカロリーを出す', () => {
 describe('栄養値の欄は、これまでどおり', () => {
   it('★ かぞえ方を入れても、100gあたりの値は変わらない', () => {
     // ★ ここは物差しであって、栄養値ではありません
+    // ★ 見出しを、文字ではなく囲みで探します。
+    //   基準を選ぶボタンにも「100gあたり」と書いてあるので、
+    //   文字で探すと2つ当たります（1袋ぶんを手で選べるようにしたため）。
     setup();
-    expect(screen.getByText('100gあたり')).toBeInTheDocument();
-    expect(screen.getByLabelText('1個あたりの重さ（g）')).not.toBe(
-      screen.getByText('100gあたり'),
+    expect(screen.getByRole('group', { name: '100gあたり' })).toBeInTheDocument();
+    expect(screen.getByLabelText('1個あたりの重さ（g）')).toBeInTheDocument();
+  });
+});
+
+/**
+ * 「1袋ぶん」で登録する（追加仕様: 成分表示の読み取り）。
+ *
+ * ★ これまでは、写真を撮る道でしか選べませんでした。
+ *
+ *   成分表示に「1袋(80g)」のようなグラム数が書いてあれば割り算できますが、
+ *   **書いていない商品があります**（コンビニの惣菜が特にそう）。
+ *   その逃げ道が「1袋ぶんで登録」なのに、写真を撮らないと出てこない
+ *   場所にありました。手で登録している管理者には、無い機能と同じでした。
+ */
+describe('★ 1袋ぶんで登録する', () => {
+  it('最初は「100gあたり」が選ばれている', () => {
+    setup();
+    expect(screen.getByRole('radio', { name: '100gあたり' })).toHaveAttribute(
+      'aria-checked',
+      'true',
     );
+  });
+
+  it('★ 写真を撮らなくても選べる', async () => {
+    // ★ ここが本体です。手入力だけで登録している管理者も使えないと意味がありません
+    setup();
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+
+    expect(screen.getByLabelText('数える単位')).toHaveValue('袋');
+  });
+
+  it('見出しが「1袋あたり」に変わる', async () => {
+    // ★ 見出しが「100gあたり」のままだと、何を入れる欄なのか分かりません
+    setup();
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+
+    expect(screen.getByText('1袋あたり')).toBeInTheDocument();
+  });
+
+  it('★ 1袋 = 100g が入り、触れなくなる', async () => {
+    // ★ 本当の重さではなく、表示どおりの数字を出すための置き物です。
+    //   書き換えられると、数字が合わなくなります
+    setup();
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+
+    const box = screen.getByLabelText('1袋あたりの重さ（g）');
+    expect(box).toHaveValue(100);
+    expect(box).toHaveAttribute('readonly');
+  });
+
+  it('印と換算が、両方保存される', async () => {
+    // ★ 換算が無いと契約者が「1袋」と入れられず、数字だけが宙に浮きます。
+    //   印が無いと、100gあたりの値だと取り違えられます
+    setup();
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+    await userEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    const saved = firstCall(vi.mocked(saveFood))[0];
+    expect(saved.servingUnit).toBe('袋');
+    expect(saved.unitConversions).toEqual([{ unit: '袋', grams: 100 }]);
+  });
+
+  it('単位を選び直せる', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+    await userEvent.selectOptions(screen.getByLabelText('数える単位'), '本');
+    await userEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    const saved = firstCall(vi.mocked(saveFood))[0];
+    expect(saved.servingUnit).toBe('本');
+    // ★ 前に選んでいた袋の 100g は残しません。混ざると入れ方で数字が変わります
+    expect(saved.unitConversions).toEqual([{ unit: '本', grams: 100 }]);
+  });
+
+  it('★ 100gあたりに戻すと、置いた100gも取り消される', async () => {
+    // ★ 残ると「1袋=100g」という嘘が、本物の100g食材に付いたままになります
+    setup();
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+    await userEvent.click(screen.getByRole('radio', { name: '100gあたり' }));
+    await userEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    const saved = firstCall(vi.mocked(saveFood))[0];
+    expect(saved.servingUnit).toBeNull();
+    expect(saved.unitConversions).toEqual([]);
+  });
+
+  it('管理者が自分で入れた重さは、戻しても消さない', async () => {
+    setup();
+    await userEvent.type(screen.getByLabelText('1個あたりの重さ（g）'), '50');
+    await userEvent.click(screen.getByRole('radio', { name: '1袋ぶん（全量）' }));
+    await userEvent.click(screen.getByRole('radio', { name: '100gあたり' }));
+
+    // 1袋ぶんに切り替えた時点で他の単位は消えるので、入れ直せる状態に戻る
+    expect(screen.getByLabelText('1個あたりの重さ（g）')).toHaveValue(null);
+  });
+
+  it('編集で開くと、1袋ぶんが選ばれたまま出る', () => {
+    setup(aFood({ servingUnit: '袋', unitConversions: [{ unit: '袋', grams: 100 }] }));
+    expect(screen.getByRole('radio', { name: '1袋ぶん（全量）' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByText('1袋あたり')).toBeInTheDocument();
   });
 });

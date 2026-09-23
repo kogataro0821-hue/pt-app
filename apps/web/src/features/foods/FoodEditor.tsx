@@ -83,6 +83,46 @@ export function FoodEditor({
    */
   const [servingUnit, setServingUnit] = useState<CountableUnit | null>(base.servingUnit);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * 「1袋ぶん」に切り替える（追加仕様: 成分表示の読み取り）。
+   *
+   * ★ これまでは、写真を撮る道でしか選べませんでした。
+   *
+   *   成分表示に「1袋(80g)」のようなグラム数が書いてあれば割り算できますが、
+   *   **書いていない商品があります**。コンビニの惣菜が特にそうです。
+   *   その場合の逃げ道が「1袋ぶんで登録」なのに、
+   *   写真を撮らないと出てこない場所に置いていました。
+   *   手で登録している管理者には、**無い機能と同じ**でした。
+   *
+   * ★ 1◯ = 100g という嘘の重さを置きます。
+   *
+   *   こうすると「1袋」と入れたときに表示どおりの数字が出ます。
+   *   代わりにこの食品は **グラムで量れなくなります**。
+   *   だから印（servingUnit）を必ず残して、見出しと注意書きを変えます。
+   */
+  function useServingUnit(unit: CountableUnit) {
+    setServingUnit(unit);
+    setConversions((prev) => {
+      const next = { ...prev };
+      // ★ ほかの単位は消します。1袋=100g と 1個=30g が混ざると、
+      //   同じ食品なのに入れ方で数字が変わります
+      for (const u of COUNTABLE_UNITS) next[u] = u === unit ? '100' : '';
+      return next;
+    });
+  }
+
+  /** 100gあたりに戻す。置いた嘘の重さも取り消します。 */
+  function useGrams() {
+    const was = servingUnit;
+    setServingUnit(null);
+    if (was !== null) {
+      setConversions((prev) =>
+        // ★ こちらが入れた 100 だけ消します。管理者が自分で入れた重さは残します
+        prev[was] === '100' ? { ...prev, [was]: '' } : prev,
+      );
+    }
+  }
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
 
@@ -264,6 +304,67 @@ export function FoodEditor({
         />
       )}
 
+      {/* ★ どの基準で数字を入れるかを、最初に決めさせます。
+             以前は写真を撮る道でしか「1袋ぶん」を選べませんでした。
+             グラム数が書いていない商品のための逃げ道なのに、
+             手で登録している管理者からは見えない場所にありました。 */}
+      <div className="field">
+        <span className="field-label">下の数字は、何あたりの値ですか</span>
+        <div className="choice-row" role="radiogroup" aria-label="数字の基準">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={servingUnit === null}
+            className={servingUnit === null ? 'choice on' : 'choice'}
+            onClick={useGrams}
+          >
+            100gあたり
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={servingUnit !== null}
+            className={servingUnit !== null ? 'choice on' : 'choice'}
+            onClick={() => useServingUnit(servingUnit ?? '袋')}
+          >
+            1袋ぶん（全量）
+          </button>
+        </div>
+        {servingUnit === null ? (
+          <span className="field-hint">
+            成分表示が「100g当たり」、または「1食(◯g)当たり」でグラム数が
+            書いてある商品は、こちらです。
+          </span>
+        ) : (
+          <label className="field">
+            <span className="field-label">数える単位</span>
+            <select
+              className="input"
+              value={servingUnit}
+              onChange={(e) => {
+                useServingUnit(e.target.value as CountableUnit);
+              }}
+              aria-label="数える単位"
+            >
+              {COUNTABLE_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">
+              成分表示に<b>グラム数が書いていない</b>商品（コンビニの惣菜など）は、
+              こちらです。表示の数字をそのまま下の欄に入れてください。
+              <br />
+              契約者は「1{servingUnit}」「0.5{servingUnit}」と入れて記録します。
+              <br />※ 引き換えに、この食品は
+              <strong>グラムで量れなくなります</strong>。
+              大袋から少しずつ取る商品には向きません。
+            </span>
+          </label>
+        )}
+      </div>
+
       <fieldset className="per100g">
         <legend className="field-label">
           {servingUnit === null ? '100gあたり' : `1${servingUnit}あたり`}
@@ -324,6 +425,10 @@ export function FoodEditor({
               value={conversions[unit]}
               onChange={(e) => setConversions({ ...conversions, [unit]: e.target.value })}
               aria-label={`1${unit}あたりの重さ（g）`}
+              /* ★ 「1袋ぶん」で登録した単位は、触らせません。
+                    ここは本当の重さではなく、100 という置き物です。
+                    書き換えると、表示どおりの数字が出なくなります。 */
+              readOnly={servingUnit === unit}
             />
             <span className="conv-unit">g</span>
             {/* ★ その場で1個ぶんのカロリーを出します。
@@ -336,6 +441,14 @@ export function FoodEditor({
           空欄の単位は登録されません。食パンの「6枚切り」と「8枚切り」のように
           同じ単位で重さが違うものは、<b>食材を2件に分けて</b>ください。
         </span>
+
+        {servingUnit !== null && (
+          <span className="field-hint">
+            ★ この食材は「1{servingUnit}ぶん」で登録されています。
+            上の「1{servingUnit}」は<b>本当の重さではありません</b>。
+            表示どおりの数字を出すための置き物なので、直せないようにしてあります。
+          </span>
+        )}
       </fieldset>
 
       <label className="field">
