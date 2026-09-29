@@ -25,6 +25,9 @@ import { MemberCard } from '@/features/rank/MemberCard';
 import { PointsCard } from '@/features/points/PointsCard';
 import { PointsGrantScreen } from '@/features/points/PointsGrantScreen';
 import { QrScreen } from '@/features/points/QrScreen';
+import { ExchangeMenuScreen } from '@/features/points/ExchangeMenuScreen';
+import { ExchangeMenuList } from '@/features/points/ExchangeMenuList';
+import { pointsOf } from '@/features/points/pointsRepo';
 import { RedeemScreen } from '@/features/points/RedeemScreen';
 import { ScanScreen } from '@/features/points/ScanScreen';
 import { ShardLogScreen } from '@/features/points/ShardLogScreen';
@@ -226,6 +229,24 @@ function AppRoutes({
             <QrRoute />
           </AdminOnly>
         }
+      />
+
+      {/* ★ 交換メニューの登録（追加仕様: 交換メニュー）。
+             値段を決める場所なので、管理者だけです。 */}
+      <Route
+        path="/points/menu"
+        element={
+          <AdminOnly isAdmin={isAdmin === true} onChangePassword={onChangePassword}>
+            <ExchangeMenuAdminRoute />
+          </AdminOnly>
+        }
+      />
+
+      {/* ★ 交換メニューを見る（追加仕様: 交換メニュー）。
+             品書きなので、契約者も開けます。全員に同じものが出ます。 */}
+      <Route
+        path="/c/:clientId/menu"
+        element={<ExchangeMenuRoute onChangePassword={onChangePassword} />}
       />
 
       {/* ★ QRから開かれる交換画面（追加仕様: かけらの交換QR）。
@@ -461,6 +482,43 @@ function ScanRoute({ onChangePassword }: { onChangePassword: () => void }) {
 function QrRoute() {
   const navigate = useNavigate();
   return <QrScreen onBack={() => navigate('/points')} />;
+}
+
+function ExchangeMenuAdminRoute() {
+  const navigate = useNavigate();
+  return <ExchangeMenuScreen onBack={() => navigate('/points')} />;
+}
+
+/**
+ * 交換メニューを見る（追加仕様: 交換メニュー）。
+ *
+ * ★ 契約者ごとの住所にしてあります。
+ *   中身は全員共通ですが、「いま何個持っているか」を一緒に出したいので、
+ *   その人の札を読める形（ClientGate の中）に置いています。
+ */
+function ExchangeMenuRoute({ onChangePassword }: { onChangePassword: () => void }) {
+  const { clientId } = useParams();
+  if (clientId === undefined) return <Navigate to="/" replace />;
+
+  return (
+    <ClientGate
+      clientId={clientId}
+      wrap={(node) => <Shell onChangePassword={onChangePassword}>{node}</Shell>}
+    >
+      {(client, isAdmin) => (
+        <Shell
+          onChangePassword={onChangePassword}
+          viewing={
+            isAdmin ? { clientId: client.clientId, displayName: client.displayName } : undefined
+          }
+          bell={bellFor(client, isAdmin)}
+          settings={settingsFor(client, isAdmin)}
+        >
+          <ExchangeMenuList points={pointsOf(client).points} />
+        </Shell>
+      )}
+    </ClientGate>
+  );
 }
 
 /**

@@ -127,6 +127,13 @@ export function PointsCard({
         これまでの記録
       </Link>
 
+      {/* ★ 何と交換できるのかを見に行く（追加仕様: 交換メニュー）。
+             見るだけなので、管理者が代理で見ているときも出します。
+             減るものが何もありません。 */}
+      <Link className="button-quiet compact points-menu" to={`/c/${client.clientId}/menu`}>
+        交換メニュー
+      </Link>
+
       {/* ★ 交換の入口。管理者が代理で見ているときは出しません。
              トレーナーがうっかり押して、その人のぶんが減っては困ります。 */}
       {!isAdmin && points > 0 && (

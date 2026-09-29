@@ -3018,3 +3018,58 @@ describe('★ 保存した交換を、契約者が触れないか', () => {
     await assertFails(setDoc(doc(guest(), 'exchangeItems/i4'), item));
   });
 });
+
+/**
+ * ★ 交換メニュー（追加仕様: 交換メニュー）。
+ *
+ * ★ ここだけは、契約者も読めます。
+ *
+ *   品書きには**誰のものでもない情報**しか入りません
+ *   （何かけらで何がもらえるか）。全員に共通で、
+ *   契約者Aが契約者Bのことを知る手がかりにはなりません。
+ *   だから、契約者どうしを隔てる線をまたぎません。
+ *
+ * ★ 書けるのは管理者だけです。
+ *   値段を契約者が書けたら、いくらでも安くできます。
+ */
+describe('★ 交換メニューを、契約者が書き換えられないか', () => {
+  const item = { text: 'プロテイン1杯', amount: 3 };
+
+  async function seedMenu(): Promise<void> {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'exchangeMenu/m1'), item);
+    });
+  }
+
+  it('管理者は作れる・読める・消せる', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'exchangeMenu/m2'), item));
+    await assertSucceeds(getDoc(doc(admin(), 'exchangeMenu/m2')));
+    await assertSucceeds(deleteDoc(doc(admin(), 'exchangeMenu/m2')));
+  });
+
+  it('★ 契約者は読める（品書きなので）', async () => {
+    await seedMenu();
+    await assertSucceeds(getDoc(doc(alice(), 'exchangeMenu/m1')));
+  });
+
+  it('★ 契約者は作れない', async () => {
+    // ★ 作れてしまうと、自分で値段を決められます
+    await assertFails(setDoc(doc(alice(), 'exchangeMenu/m3'), item));
+  });
+
+  it('★ 契約者は書き換えられない（値段を安くできない）', async () => {
+    await seedMenu();
+    await assertFails(setDoc(doc(alice(), 'exchangeMenu/m1'), { text: 'プロテイン1杯', amount: 1 }));
+  });
+
+  it('契約者は消せない', async () => {
+    await seedMenu();
+    await assertFails(deleteDoc(doc(alice(), 'exchangeMenu/m1')));
+  });
+
+  it('未認証では、読むこともできない', async () => {
+    await seedMenu();
+    await assertFails(getDoc(doc(guest(), 'exchangeMenu/m1')));
+    await assertFails(setDoc(doc(guest(), 'exchangeMenu/m4'), item));
+  });
+});

@@ -103,6 +103,10 @@ export function AppShell({
                  見えます。かけらを動かすのは、お知らせに付けられる側です。 */}
           <AdminLink to="/points" label="お知らせ" />
           <AdminLink to="/points/qr" label="交換QR" />
+          {/* ★ 交換QRの隣に置きます（追加仕様: 交換メニュー）。
+                 別のものですが、頭の中では並んでいます。
+                 離すと、どちらを触ればいいのか迷わせます。 */}
+          <AdminLink to="/points/menu" label="交換メニュー" />
         </nav>
       )}
 
