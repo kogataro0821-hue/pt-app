@@ -473,7 +473,7 @@ describe('★ AI中継役の入口（このURLは公開情報）', () => {
       stubNetwork();
       await worker.fetch(post(makeToken()), env({ GEMINI_MODEL: undefined }));
       expect(calls.find((c) => c.url.includes('generativelanguage'))?.url).toContain(
-        'models/gemini-2.5-flash:generateContent',
+        'models/gemini-3.5-flash-lite:generateContent',
       );
     });
 

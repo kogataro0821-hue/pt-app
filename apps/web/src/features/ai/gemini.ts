@@ -26,6 +26,8 @@ export type AiErrorKind =
   | 'rate_limited'
   /** その人の、その日の利用回数の上限に達した（設計書 §7.6） */
   | 'daily_limit'
+  /** Gemini 側が一時的に混み合っている（503など）。待てば戻る */
+  | 'overloaded'
   | 'unavailable'
   | 'invalid_output'
   | 'network';
@@ -59,6 +61,14 @@ function baseMessage(kind: AiErrorKind): string {
       //   数分待てば戻ると思われると、一日じゅう押し続けることになります。
       //   いつ戻るのかを、はっきり書きます。
       return '今日のAIの利用回数が上限に達しました。日付が変わると、また使えます。手で入力することもできます。';
+    case 'overloaded':
+      // ★ ここに生の JSON を出していました（追加仕様: 混み合いの伝え方）。
+      //
+      //   画面いっぱいに英語の中身が出て、読んだ人には
+      //   **自分が何か壊したのか、待てば直るのかが分かりません。**
+      //   これは Google 側が混んでいるだけで、こちらは何も間違えていません。
+      //   そう書きます。
+      return 'いまAI側が混み合っています。少し待ってからもう一度お試しください。こちらの設定の問題ではありません。手で入力することもできます。';
     case 'unavailable':
       return 'AIに接続できませんでした。手で入力してください。';
     case 'invalid_output':
@@ -177,6 +187,14 @@ interface GeminiResponse {
  *   別々に書くと、片方だけ直して食い違います。ここ1か所にまとめて、
  *   テストもここに対して書きます。
  */
+/**
+ * 待てば戻る見込みのある応答。
+ *
+ * 500/502/503/504 は、どれも相手側の一時的な不調です。
+ * こちらの要求が悪いわけではないので、同じ扱いにします。
+ */
+const UPSTREAM_BUSY = [500, 502, 503, 504];
+
 export async function relayFailure(response: Response, tooLarge?: string): Promise<AiError> {
   if (response.status === 401) return new AiError('unauthenticated');
 
@@ -208,6 +226,19 @@ export async function relayFailure(response: Response, tooLarge?: string): Promi
 
   if (response.status === 413 && tooLarge !== undefined) {
     return new AiError('unavailable', tooLarge);
+  }
+
+  // ★ Gemini 側の一時的な混雑（追加仕様: 混み合いの伝え方）。
+  //
+  //   503 の本文には high demand / UNAVAILABLE と書かれています。
+  //   これまでは下の「理由をそのまま出す」に流れ込み、画面に
+  //   英語の JSON がそのまま出ていました。読んだ人には
+  //   **自分が壊したのか、待てば直るのかが分かりません。**
+  //
+  //   原因が分かっている相手なので、番号だけ残して短く伝えます。
+  //   切り分けには番号で足ります。
+  if (UPSTREAM_BUSY.includes(response.status)) {
+    return new AiError('overloaded', `AI側の応答: ${response.status}`);
   }
 
   // ★ 状態番号と、中継役が返した理由を画面に出します。

@@ -106,9 +106,11 @@ describe('中継役の断り方を読み分ける', () => {
   });
 
   it('そのほかは、状態番号を添えて返す（原因の切り分けのため）', async () => {
-    const e = await relayFailure(reply(500));
+    // ★ 500番台は「相手が混み合っている」として別に扱うようになったので、
+    //   ここでは、こちらの要求が疑わしい番号を使います
+    const e = await relayFailure(reply(403));
     expect(e.kind).toBe('unavailable');
-    expect(e.detail).toContain('500');
+    expect(e.detail).toContain('403');
   });
 });
 
@@ -132,15 +134,15 @@ describe('★ 失敗の理由を画面に出す', () => {
   });
 
   it('理由が無ければ、いままでどおり番号だけ', async () => {
-    const res = new Response(JSON.stringify({ error: 'rejected', status: 500 }), { status: 500 });
+    const res = new Response(JSON.stringify({ error: 'rejected', status: 403 }), { status: 403 });
     const err = await relayFailure(res);
-    expect(err.detail).toBe('中継役の応答: 500');
+    expect(err.detail).toBe('中継役の応答: 403');
   });
 
   it('本文が読めなくても、落ちない', async () => {
-    const res = new Response('これはJSONではありません', { status: 502 });
+    const res = new Response('これはJSONではありません', { status: 404 });
     const err = await relayFailure(res);
-    expect(err.detail).toBe('中継役の応答: 502');
+    expect(err.detail).toBe('中継役の応答: 404');
   });
 
   it('長すぎる理由は、切って出す', async () => {
@@ -212,5 +214,62 @@ describe('★ どちらの上限に当たったのかを言う', () => {
     const err = await relayFailure(res);
     expect(err.kind).toBe('rate_limited');
     expect(err.detail).toBeUndefined();
+  });
+});
+
+/**
+ * Gemini 側が混み合っているとき（追加仕様: 混み合いの伝え方）。
+ *
+ * ★ 画面に英語の JSON がそのまま出ていました。
+ *
+ *     AIに接続できませんでした。手で入力してください。
+ *     （中継役の応答: 503 / { "error": { "code": 503, "message":
+ *      "This model is currently experiencing high demand..." } }）
+ *
+ *   読んだ人には、**自分が何か壊したのか、待てば直るのかが分かりません。**
+ *   これは Google 側が混んでいるだけで、こちらは何も間違えていません。
+ */
+describe('★ AI側が混み合っているとき', () => {
+  it('503 は「混み合い」として扱う', async () => {
+    const e = await relayFailure(reply(503, { error: { code: 503, status: 'UNAVAILABLE' } }));
+    expect(e.kind).toBe('overloaded');
+  });
+
+  it('500・502・504 も同じ扱い', async () => {
+    // ★ どれも相手側の一時的な不調です。こちらの要求が悪いわけではありません
+    for (const status of [500, 502, 504]) {
+      expect((await relayFailure(reply(status))).kind).toBe('overloaded');
+    }
+  });
+
+  it('★ 生の中身を画面に出さない', async () => {
+    // ★ ここが本体です。英語の JSON は、読んだ人に何も教えません
+    const e = await relayFailure(
+      reply(503, { error: { message: 'This model is currently experiencing high demand.' } }),
+    );
+    const shown = aiErrorMessage(e.kind, e.detail);
+
+    expect(shown).not.toContain('high demand');
+    expect(shown).not.toContain('{');
+  });
+
+  it('待てば戻ること、こちらの問題ではないことを書く', async () => {
+    const e = await relayFailure(reply(503));
+    const shown = aiErrorMessage(e.kind, e.detail);
+
+    expect(shown).toContain('少し待って');
+    expect(shown).toContain('こちらの設定の問題ではありません');
+  });
+
+  it('切り分け用に、番号だけは残す', async () => {
+    // ★ 何も残さないと、今度は原因が追えなくなります
+    const e = await relayFailure(reply(503));
+    expect(aiErrorMessage(e.kind, e.detail)).toContain('503');
+  });
+
+  it('400 は、これまでどおり理由をそのまま出す', async () => {
+    // ★ こちらの要求が悪い可能性があるので、中身が手がかりになります
+    const e = await relayFailure(reply(400, { detail: 'Invalid JSON payload' }));
+    expect(e.kind).toBe('unavailable');
   });
 });

@@ -44,7 +44,7 @@
  *    GEMINI_API_KEY   … Google AI Studio で取得したキー（Secret として登録）
  *    FIREBASE_PROJECT … pt-app-54f32
  *    ALLOWED_ORIGIN   … https://kogataro0821-hue.github.io
- *    GEMINI_MODEL     … 使うモデル名（省略可。既定 gemini-2.5-flash）
+ *    GEMINI_MODEL     … 使うモデル名（省略可。既定 gemini-3.5-flash-lite）
  *    DAILY_LIMIT      … 1人が1日に使える回数（省略可。既定 50）
  *
  *  ---------------------------------------------------------------------
@@ -76,8 +76,21 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
  *   Cloudflare の管理画面で値を変えるだけで切り替えられます。
  *
  *   いま使えるモデルの一覧は、この Worker に GET でアクセスすると見られます。
+ *
+ * ★ 既定を 2.5 から 3.5-flash-lite に変えました（実際に詰まった話）。
+ *
+ *   gemini-2.5-flash は、いまも一覧には出ます。**呼べるかどうかとは別です。**
+ *   混み合っているモデルは 503「high demand」を延々と返し続けます。
+ *   「一時的な不調」の顔をしていますが、数日待っても戻りませんでした。
+ *
+ *   lite のほうが空いていて、この用途（写っているものを読むだけ）には
+ *   充分です。重いモデルを選ぶ理由がありません。
+ *
+ *   ここを直しても、**すでに動いている Worker は変わりません。**
+ *   効くのは次に貼り直したときです。動いているものを変えるには、
+ *   Cloudflare の GEMINI_MODEL を変えて Deploy します。
  */
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 
 /** 受け取る本文の上限。写真を送る Phase 8B でも収まる大きさにしてあります。 */
 const MAX_BODY_BYTES = 2_000_000;
