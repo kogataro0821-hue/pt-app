@@ -140,7 +140,12 @@ export function FoodsScreen() {
         </section>
       )}
 
-      {editing !== null && (
+      {/* ★ 新しく足すときだけ、ここに出します（追加仕様: 折り込みで編集）。
+             まだ一覧に無い食材なので、開く場所が一覧の中にありません。
+             既にある食材を編集するときは、**その行の下**に出します。
+             一覧の上に出していたときは、編集を押すたびに
+             画面のいちばん上まで戻らなければなりませんでした。 */}
+      {editing !== null && !shown.some((f) => f.id === editing.id) && (
         <FoodEditor
           initial={editing}
           all={foods ?? []}
@@ -217,8 +222,19 @@ export function FoodsScreen() {
               {food.note.length > 0 && <span className="client-meta">{food.note}</span>}
             </div>
             <div className="item-actions">
-              <button className="button-quiet" type="button" onClick={() => setEditing(food)}>
-                編集
+              <button
+                className="button-quiet"
+                type="button"
+                onClick={() => {
+                  // ★ 開いているものをもう一度押したら閉じます。
+                  //   開くことしかできないと、閉じるために「やめる」を
+                  //   探しに下まで行くことになります。
+                  setEditing((cur) => (cur !== null && cur.id === food.id ? null : food));
+                  setConfirmDelete(null);
+                }}
+                aria-expanded={editing !== null && editing.id === food.id}
+              >
+                {editing !== null && editing.id === food.id ? '閉じる' : '編集'}
               </button>
               <button
                 className="button-quiet"
@@ -229,6 +245,23 @@ export function FoodsScreen() {
               </button>
             </div>
           </div>
+
+          {/* ★ 編集の欄は、押した行のすぐ下に開きます（追加仕様: 折り込みで編集）。
+                 以前は一覧の上に出していました。100件目を直したいときに、
+                 押すたびに画面のいちばん上まで戻ることになっていました。
+                 どれを直しているのかも、離れていると分かりません。 */}
+          {editing !== null && editing.id === food.id && (
+            <FoodEditor
+              initial={editing}
+              all={foods ?? []}
+              onSaved={() => {
+                setEditing(null);
+                clearFoodCache();
+                void load();
+              }}
+              onCancel={() => setEditing(null)}
+            />
+          )}
 
           {confirmDelete === food.id && (
             <div className="notice">

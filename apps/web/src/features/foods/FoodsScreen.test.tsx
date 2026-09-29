@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { aFood } from '@/test/factories';
 import { FoodsScreen } from './FoodsScreen';
@@ -23,7 +24,13 @@ vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
 }));
 
-vi.mock('./FoodEditor', () => ({ FoodEditor: () => null }));
+// ★ 中身は作らず、目印だけ置きます。
+//   どこに開いたか（行の中か外か）を確かめるために要ります。
+vi.mock('./FoodEditor', () => ({
+  FoodEditor: ({ initial }: { initial: { name: string } }) => (
+    <div data-testid="editor">編集中: {initial.name}</div>
+  ),
+}));
 
 vi.mock('./foodsRepo', async () => {
   const actual = await vi.importActual<typeof FoodsRepo>('./foodsRepo');
@@ -157,5 +164,67 @@ describe('★ まとめ呼びのとき', () => {
     const PLAIN = aFood({ id: 'p', name: 'とうふ', aliases: [] });
     await show([MOMEN, PLAIN]);
     expect(screen.getByText('名前がぶつかっている食材が2件あります')).toBeInTheDocument();
+  });
+});
+
+/**
+ * 編集は、押した行の下に開く（追加仕様: 折り込みで編集）。
+ *
+ * ★ 以前は一覧の上に出していました。
+ *
+ *   100件目を直したいときに、押すたびに画面のいちばん上まで
+ *   戻ることになります。直したい行と編集の欄が離れているので、
+ *   どれを直しているのかも分かりません。
+ */
+describe('★ 編集の開き方', () => {
+  it('押すまでは、編集の欄は出ていない', async () => {
+    await show([RICE]);
+    expect(screen.queryByText('編集中')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '編集' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('★ 押した行の中に開く', async () => {
+    // ★ ここが本体です。行の外（一覧の上）に出ると、探しに戻ることになります
+    await show([RICE]);
+    const row = screen.getByText('白米').closest('section');
+    await userEvent.click(screen.getByRole('button', { name: '編集' }));
+
+    expect(row).not.toBeNull();
+    expect(row?.querySelector('[data-testid="editor"]')).not.toBeNull();
+  });
+
+  it('もう一度押すと閉じる', async () => {
+    // ★ 開くことしかできないと、閉じるために下まで「やめる」を探しに行くことになります
+    await show([RICE]);
+    await userEvent.click(screen.getByRole('button', { name: '編集' }));
+    await userEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+    expect(screen.getByRole('button', { name: '編集' })).toBeInTheDocument();
+  });
+
+  it('★ 開くのは、押した行だけ', async () => {
+    const EGGS = aFood({ id: 'e', name: '卵' });
+    await show([RICE, EGGS]);
+
+    const buttons = screen.getAllByRole('button', { name: '編集' });
+    await userEvent.click(buttons[0] as HTMLElement);
+
+    expect(screen.getAllByRole('button', { name: '編集' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeInTheDocument();
+  });
+
+  it('新しく足すときは、一覧の外に開く（まだ行が無いので）', async () => {
+    await show([RICE]);
+    await userEvent.click(screen.getByRole('button', { name: '+ 追加' }));
+
+    // 行の「編集」は開いたままにならない
+    expect(screen.getByRole('button', { name: '編集' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByTestId('editor')).not.toBeNull();
   });
 });
