@@ -24,6 +24,36 @@ import { readScannedRedeem, SHARD_UNIT, type RedeemRequest } from '@pt/core';
 
 type Status = 'starting' | 'scanning' | 'denied' | 'unavailable' | 'insecure';
 
+/**
+ * 一度カメラを使えた、という覚え書きの置き場所。
+ *
+ * ★ 2回目からは、断り方の説明を挟みません。
+ *
+ *   説明が要るのは「これから許可を聞かれる人」だけです。
+ *   もう許可した人に毎回1枚挟むと、レジの前で1タップ増えます。
+ *   毎日使うものなので、そこは削ります。
+ *
+ * ★ 読めなくても困りません。説明が1枚増えるだけです。
+ *   だから失敗を握りつぶします（プライベートモードでは読めません）。
+ */
+const SEEN_KEY = 'shard-scan-camera-ok';
+
+function cameraUsedBefore(): boolean {
+  try {
+    return window.localStorage.getItem(SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberCameraUsed(): void {
+  try {
+    window.localStorage.setItem(SEEN_KEY, '1');
+  } catch {
+    // 覚えられなくても、説明が1枚増えるだけです
+  }
+}
+
 export function ScanScreen({
   onFound,
   onCancel,
@@ -36,7 +66,28 @@ export function ScanScreen({
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<number | null>(null);
 
+  /**
+   * ★ 初めての人には、カメラを開く**前に**1枚挟みます。
+   *
+   *   ここで断ると、iPhone では戻す道がほとんどありません。
+   *   設定にこのアプリが出てこないので、**アイコンを作り直す**しか
+   *   なくなります（作り直すとログインし直しです）。
+   *   実際にそれで詰まった人がいました。
+   *
+   *   断ったあとに直し方を書くより、**断らせないほうが早い**です。
+   */
   const [status, setStatus] = useState<Status>('starting');
+
+  /**
+   * カメラを触ってよいか。
+   *
+   * ★ status とは別に持ちます。
+   *
+   *   status を材料にすると、'starting' → 'scanning' に変わった時点で
+   *   この仕掛け全体が組み直され、**開いたばかりのカメラを自分で止めます**。
+   *   一度だけ切り替わる値を材料にします。
+   */
+  const [started, setStarted] = useState<boolean>(() => cameraUsedBefore());
   /** このアプリのものでないQRを読んだとき。読み続けながら伝えます */
   const [foreign, setForeign] = useState(false);
 
@@ -53,6 +104,10 @@ export function ScanScreen({
   }, []);
 
   useEffect(() => {
+    // ★ 説明を出しているあいだは、カメラに触りません。
+    //   触った時点で許可を聞かれてしまい、1枚挟んだ意味がなくなります。
+    if (!started) return;
+
     let alive = true;
 
     // ★ カメラは https（または localhost）でしか開けません。
@@ -86,6 +141,9 @@ export function ScanScreen({
           await el.play().catch(() => undefined);
         }
         setStatus('scanning');
+        // ★ ここまで来たら、この端末では許可が取れています。
+        //   次からは説明を挟みません。
+        rememberCameraUsed();
         tick();
       } catch (e) {
         if (!alive) return;
@@ -141,7 +199,7 @@ export function ScanScreen({
       alive = false;
       stop();
     };
-  }, [onFound, stop]);
+  }, [onFound, stop, started]);
 
   // 画面を離れるときも必ず止めます
   useEffect(() => stop, [stop]);
@@ -150,7 +208,39 @@ export function ScanScreen({
     <section className="card scan">
       <h2 className="title">QRを読む</h2>
 
-      {status === 'scanning' || status === 'starting' ? (
+      {!started ? (
+        /* ★ カメラを開く前の1枚（追加仕様: 交換QR）。
+               ここで断られると、iPhone では戻す道がほとんどありません。
+               **断らせないことが、直し方を書くことより効きます。** */
+        <>
+          <p className="lede">このあと、カメラを使ってよいか聞かれます。</p>
+          <p className="note">
+            <b>「許可」を押してください。</b>
+            ここで断ると、あとから戻すのがとても面倒になります
+            （iPhone はアイコンを作り直すことになり、ログインし直しです）。
+          </p>
+          <p className="note">
+            カメラの映像は、この端末の中だけで見ています。どこにも送らず、保存もしません。
+            読むのは交換のQRだけです。
+          </p>
+          <div className="form-actions">
+            <button
+              className="button-primary"
+              type="button"
+              onClick={() => {
+                setStarted(true);
+              }}
+            >
+              カメラを使う
+            </button>
+            {/* ★ ここにも出口を置きます。
+                   説明だけ出して閉じられない画面は、それ自体が行き止まりです。 */}
+            <button className="button-secondary" type="button" onClick={onCancel}>
+              やめる
+            </button>
+          </div>
+        </>
+      ) : status === 'scanning' || status === 'starting' ? (
         <>
           <div className="scan-view">
             <video ref={video} className="scan-video" playsInline muted />
@@ -181,29 +271,50 @@ export function ScanScreen({
                 ? 'この開き方ではカメラを使えません。'
                 : 'この端末ではカメラを使えません。'}
           </p>
+
+          {/* ★ ここには「設定で許可してください」としか書いていませんでした。
+                 いちばん知りたいこと（**いま使う方法**）が書いていない画面です。
+                 まず今日の逃げ道、次に元に戻す道、の順に置きます。 */}
           <p className="note">
-            {status === 'denied'
-              ? '端末の設定でこのアプリにカメラを許可すると、読み取れるようになります。'
-              : 'スマホの標準のカメラでQRに向けても、交換画面を開けます。そちらをお試しください。'}
+            <b>いますぐ使うなら、スマホの標準のカメラアプリでQRに向けてください。</b>
+            画面に出るリンクを押せば、交換の画面が開きます。
+            許可を断ったままでも通ります。
           </p>
+
+          {status === 'denied' && (
+            <p className="note">
+              このアプリの中で読めるように戻すには、
+              <b>ホーム画面のアイコンを作り直します</b>
+              （長押しして削除 → Safariで開き直して「ホーム画面に追加」）。
+              ホーム画面に追加したアプリは、設定の一覧に出てこないことがあり、
+              スイッチで戻せません。
+              <br />
+              <b>作り直すとログインし直しになります。</b>
+              メールアドレスとパスワードが分かることを確かめてから行ってください。
+              記録した内容は消えません。
+            </p>
+          )}
+
           <p className="note">
             うまくいかないときは、トレーナーに{SHARD_UNIT}を引いてもらってください。
           </p>
         </>
       )}
 
-      <div className="form-actions">
-        <button
-          className="button-secondary"
-          type="button"
-          onClick={() => {
-            stop();
-            onCancel();
-          }}
-        >
-          やめる
-        </button>
-      </div>
+      {started && (
+        <div className="form-actions">
+          <button
+            className="button-secondary"
+            type="button"
+            onClick={() => {
+              stop();
+              onCancel();
+            }}
+          >
+            やめる
+          </button>
+        </div>
+      )}
     </section>
   );
 }

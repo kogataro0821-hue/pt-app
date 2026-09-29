@@ -473,3 +473,90 @@ export function findSharedNames<T extends NameableFood>(
   // ★ 並びを固定します。開くたびに順番が変わると、読む側が追えません
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// -----------------------------------------------------------------------------
+// 数字で同じ食材を探す（追加仕様: 同じ商品の作り直しを防ぐ）
+// -----------------------------------------------------------------------------
+
+/**
+ * 100gあたりの値で、同じ食材を探す。
+ *
+ * ★ 名前だけで照合すると、コンビニの商品で必ず崩れます。
+ *
+ *     「ローソン ブランのしみしみお揚げと鶏そぼろのいなり」
+ *     「ブランのいなり」
+ *
+ *   同じ商品ですが、名前の似かたでは別物と判定されます。
+ *   その結果、**同じ商品の登録依頼が何度も立ち**、
+ *   管理者はそのたびに承認することになっていました。
+ *
+ * ★ 数字は、名前よりずっと確かな手がかりです。
+ *
+ *   4つの値（kcal・P・F・C）が小数第1位まで全部そろう別商品は、
+ *   まず出てきません。成分表示から読んだ値は、同じ商品なら同じ値です。
+ *
+ * ★ ただし「同じ」以外は認めません。
+ *
+ *   「近い」で拾うと、鶏むね肉と鶏ささみのように**本当に似ている別物**が
+ *   当たります。数字が近いだけの食材を「同じです」と出すのは、
+ *   名前で外すより質の悪い間違いです。
+ *   拾えなかったぶんは、これまでどおり名前の似かたが受け持ちます。
+ *
+ * ★ これは「候補を出す」ためだけに使います。
+ *
+ *   自動で置き換えはしません。すでに承認済みの食材を指し示すだけで、
+ *   新しい数字は一切入りません。決めるのは人のままです。
+ */
+
+/** 値がそろっているとみなす細かさ。表示と同じ小数第1位まで見ます。 */
+const SAME_VALUE_EPSILON = 0.05;
+
+function sameNumber(a: number, b: number): boolean {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs(a - b) < SAME_VALUE_EPSILON;
+}
+
+/** 100gあたりの4つの値が、すべて同じか。 */
+export function sameNutrition(
+  a: { kcal: number; p: number; f: number; c: number },
+  b: { kcal: number; p: number; f: number; c: number },
+): boolean {
+  return (
+    sameNumber(a.kcal, b.kcal) &&
+    sameNumber(a.p, b.p) &&
+    sameNumber(a.f, b.f) &&
+    sameNumber(a.c, b.c)
+  );
+}
+
+/** 数字で照合できる食材が、最低限持っている情報。 */
+export interface MeasuredFood extends NameableFood {
+  per100g: { kcal: number; p: number; f: number; c: number };
+}
+
+/**
+ * 同じ数字の食材を探す。
+ *
+ * ★ 全部返します。1件に決め打ちしません。
+ *   同じ数字の食材が2件あるなら、それはそれで人に見せるべき状態です。
+ *
+ * ★ 全部が0の値では、何も返しません。
+ *   まだ何も入れていない食材どうしが、全部「同じ」になってしまいます。
+ */
+export function findSameNutritionFoods<T extends MeasuredFood>(
+  foods: readonly T[],
+  per100g: { kcal: number; p: number; f: number; c: number },
+  /** この食材は結果に入れない（自分自身を出さないため） */
+  exceptId: string | null = null,
+): T[] {
+  const empty =
+    sameNumber(per100g.kcal, 0) &&
+    sameNumber(per100g.p, 0) &&
+    sameNumber(per100g.f, 0) &&
+    sameNumber(per100g.c, 0);
+  if (empty) return [];
+
+  return foods
+    .filter((f) => f.id !== exceptId && sameNutrition(f.per100g, per100g))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}

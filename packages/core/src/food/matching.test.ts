@@ -6,6 +6,7 @@ import {
   findExactFood,
   findExactFoods,
   findNameConflicts,
+  findSameNutritionFoods,
   findSharedNames,
   findSimilarFoods,
   foodKey,
@@ -462,5 +463,87 @@ describe('★ ぴったり当たったものを全部返す', () => {
     //   間違った栄養値が、画面に何も出ないまま入るのがいちばん困ります。
     expect(findExactFood([momen, kinu], 'とうふ')).toBeNull();
     expect(findExactFood([momen, kinu], '木綿豆腐')?.id).toBe('m');
+  });
+});
+
+/**
+ * 数字で同じ食材を探す（追加仕様: 同じ商品の作り直しを防ぐ）。
+ *
+ * ★ 名前だけの照合は、コンビニの商品で必ず崩れます。
+ *   同じ商品の登録依頼が何度も立ち、そのたびに承認が要りました。
+ */
+describe('★ 数字で同じ食材を探す', () => {
+  const inari = {
+    id: 'a',
+    name: 'ローソン ブランのしみしみお揚げと鶏そぼろのいなり',
+    aliases: [],
+    per100g: { kcal: 168, p: 7.2, f: 6.4, c: 21.3 },
+  };
+  const chicken = {
+    id: 'b',
+    name: '鶏むね肉',
+    aliases: [],
+    per100g: { kcal: 108, p: 22.3, f: 1.5, c: 0.1 },
+  };
+  const sasami = {
+    id: 'c',
+    name: '鶏ささみ',
+    aliases: [],
+    per100g: { kcal: 105, p: 23, f: 0.8, c: 0.1 },
+  };
+
+  const ALL = [inari, chicken, sasami];
+
+  it('★ 名前が似ていなくても、同じ数字なら見つかる', () => {
+    // ★ ここが本体です。「ブランのいなり」とだけ打たれても当たります
+    const found = findSameNutritionFoods(ALL, { kcal: 168, p: 7.2, f: 6.4, c: 21.3 });
+    expect(found.map((f) => f.id)).toEqual(['a']);
+  });
+
+  it('★ 「近い」だけでは拾わない', () => {
+    // ★ 鶏むね肉と鶏ささみは本当に似ています。
+    //   近いだけで「同じです」と出すのは、名前で外すより質が悪いです
+    const found = findSameNutritionFoods(ALL, { kcal: 105, p: 23, f: 0.8, c: 0.1 });
+    expect(found.map((f) => f.id)).toEqual(['c']);
+  });
+
+  it('1つでも違えば、同じとみなさない', () => {
+    const found = findSameNutritionFoods(ALL, { kcal: 168, p: 7.2, f: 6.4, c: 21.9 });
+    expect(found).toEqual([]);
+  });
+
+  it('小数第1位まで同じなら、同じとみなす', () => {
+    // ★ 読み取りや割り算で、末尾にごくわずかな差が出ることがあります
+    const found = findSameNutritionFoods(ALL, {
+      kcal: 168.001,
+      p: 7.2,
+      f: 6.4,
+      c: 21.3,
+    });
+    expect(found.map((f) => f.id)).toEqual(['a']);
+  });
+
+  it('★ 全部0のときは、何も返さない', () => {
+    // ★ まだ何も入れていない食材どうしが、全部「同じ」になってしまいます
+    const blank = { id: 'z', name: '未入力', aliases: [], per100g: { kcal: 0, p: 0, f: 0, c: 0 } };
+    expect(findSameNutritionFoods([blank], { kcal: 0, p: 0, f: 0, c: 0 })).toEqual([]);
+  });
+
+  it('自分自身は返さない', () => {
+    const found = findSameNutritionFoods(ALL, inari.per100g, 'a');
+    expect(found).toEqual([]);
+  });
+
+  it('同じ数字が2件あれば、2件とも返す', () => {
+    const copy = { ...inari, id: 'a2', name: 'いなり（旧）' };
+    const found = findSameNutritionFoods([inari, copy], inari.per100g);
+    expect(found.map((f) => f.id).sort()).toEqual(['a', 'a2']);
+  });
+
+  it('並びが毎回同じになる', () => {
+    const copy = { ...inari, id: 'a2', name: 'あいなり' };
+    expect(findSameNutritionFoods([inari, copy], inari.per100g)).toEqual(
+      findSameNutritionFoods([copy, inari], inari.per100g),
+    );
   });
 });

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { findSimilarFoods, foodKey } from '@pt/core';
+import { findSameNutritionFoods, findSimilarFoods, foodKey } from '@pt/core';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { addAlias, clearFoodCache, emptyFood, loadFoods, type Food } from './foodsRepo';
@@ -128,9 +128,40 @@ function RequestCard({
   /** 拡大表示している成分表示の写真 */
   const [zoom, setZoom] = useState<string | null>(null);
 
-  const candidates = findSimilarFoods(foods, request.name, 5);
   /** 契約者が成分表示を撮っていれば、その値を初期値に使う（追加仕様: 成分表示の読み取り） */
   const label = firstCandidate(request);
+
+  /**
+   * まとめ先の候補（追加仕様: 同じ商品の作り直しを防ぐ）。
+   *
+   * ★ 名前の似かただけでは、コンビニの商品で必ず外します。
+   *
+   *     「ローソン ブランのしみしみお揚げと鶏そぼろのいなり」
+   *     「ブランのいなり」
+   *
+   *   同じ商品なのに別物と判定され、**同じ商品の依頼が何度も立ち**、
+   *   そのたびに承認することになっていました。
+   *
+   * ★ 数字が一致するものを先に出します。
+   *   4つの値が小数第1位までそろう別商品は、まず出てきません。
+   *   名前より確かな手がかりなので、上に置きます。
+   */
+  const candidates = useMemo(() => {
+    const byNumbers =
+      label === null ? [] : findSameNutritionFoods(foods, label.per100g);
+
+    const out = byNumbers.map((food) => ({
+      food,
+      label: '数字が一致',
+    }));
+
+    for (const m of findSimilarFoods(foods, request.name, 5)) {
+      if (out.some((o) => o.food.id === m.food.id)) continue;
+      out.push({ food: m.food, label: '名前が近い' });
+    }
+
+    return out;
+  }, [foods, label, request.name]);
 
   async function absorbInto(food: Food) {
     setBusy(true);
@@ -297,6 +328,12 @@ function RequestCard({
                 <>
                   <p className="field-hint">
                     書き方が違うだけかもしれません。同じ食材ならこちらにまとめてください。
+                    <br />
+                    {/* ★ なぜその候補が出ているのかを書きます。
+                           「数字が一致」は名前より強い手がかりなので、
+                           根拠が分かれば管理者はすぐ決められます。 */}
+                    <b>数字が一致</b>のものは、成分表示の4つの値がすべて同じです。
+                    同じ商品の可能性がとても高いです。
                   </p>
                   <ul className="suggestions">
                     {candidates.map((m) => (
@@ -309,8 +346,8 @@ function RequestCard({
                         >
                           <span className="suggestion-name">{m.food.name} にまとめる</span>
                           <span className="suggestion-meta">
-                            {m.food.per100g.kcal}kcal · P{m.food.per100g.p} F{m.food.per100g.f} C
-                            {m.food.per100g.c}
+                            {m.label} · {m.food.per100g.kcal}kcal · P{m.food.per100g.p} F
+                            {m.food.per100g.f} C{m.food.per100g.c}
                           </span>
                         </button>
                       </li>

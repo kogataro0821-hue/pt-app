@@ -214,3 +214,90 @@ describe('登録せずに消す', () => {
     expect(replacePastRecords).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 数字でも照合する（追加仕様: 同じ商品の作り直しを防ぐ）。
+ *
+ * ★ 名前の似かただけでは、コンビニの商品で必ず外します。
+ *
+ *     「ローソン ブランのしみしみお揚げと鶏そぼろのいなり」
+ *     「ブランのいなり」
+ *
+ *   同じ商品なのに別物と判定され、**同じ商品の依頼が何度も立ち**、
+ *   そのたびに承認することになっていました。
+ */
+describe('★ 数字が一致する食材を、まとめ先に出す', () => {
+  const VALUES = { kcal: 168, p: 7.2, f: 6.4, c: 21.3 };
+
+  /** 登録済み。名前は依頼と似ていません */
+  const INARI = aFood({
+    id: 'いなり',
+    name: 'ローソン ブランのしみしみお揚げと鶏そぼろのいなり',
+    aliases: [],
+    per100g: VALUES,
+  });
+
+  beforeEach(() => {
+    vi.mocked(loadFoods).mockResolvedValue([INARI]);
+    vi.mocked(listRequests).mockResolvedValue([
+      aRequest({
+        id: 'ぶらんのいなり',
+        name: 'ブランのいなり',
+        variants: ['ブランのいなり'],
+        from: [anEntry({ candidate: aCandidate({ per100g: VALUES }) })],
+      }),
+    ]);
+  });
+
+  it('★ 名前が似ていなくても、まとめ先として出る', async () => {
+    // ★ ここが本体です。名前の似かただけなら、この2つは当たりません
+    await openRequest();
+    expect(
+      await screen.findByRole('button', { name: /ブランのしみしみお揚げ.*にまとめる/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('なぜ出ているのかを書く', async () => {
+    // ★ 根拠が分からないと、まとめてよいか決められません
+    await openRequest();
+    // 説明文のほうと、候補の行のほうと、両方に出ます
+    expect(screen.getByText(/成分表示の4つの値がすべて同じ/)).toBeInTheDocument();
+    expect(screen.getByText(/数字が一致 · /)).toBeInTheDocument();
+  });
+
+  it('押せば、これまでどおり別名として吸収される', async () => {
+    await openRequest();
+    await userEvent.click(
+      await screen.findByRole('button', { name: /ブランのしみしみお揚げ.*にまとめる/ }),
+    );
+
+    await waitFor(() => expect(addAlias).toHaveBeenCalledTimes(1));
+    expect(firstCall(vi.mocked(addAlias))[0].id).toBe('いなり');
+  });
+
+  it('数字が違えば、出ない', async () => {
+    vi.mocked(listRequests).mockResolvedValue([
+      aRequest({
+        id: 'べつのもの',
+        name: '別のもの',
+        variants: ['別のもの'],
+        from: [anEntry({ candidate: aCandidate({ per100g: { ...VALUES, c: 30 } }) })],
+      }),
+    ]);
+    await openRequest();
+
+    expect(
+      screen.queryByRole('button', { name: /ブランのしみしみお揚げ.*にまとめる/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('写真を撮っていない依頼でも、これまでどおり動く', async () => {
+    // ★ 数字が無ければ照合しようがありません。名前の似かたに任せます
+    vi.mocked(listRequests).mockResolvedValue([
+      aRequest({ id: 'なまえだけ', name: '名前だけ', variants: ['名前だけ'], from: [anEntry()] }),
+    ]);
+    await openRequest();
+
+    expect(screen.getByRole('button', { name: '新しく登録する' })).toBeInTheDocument();
+  });
+});

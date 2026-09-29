@@ -447,7 +447,12 @@ function ScanRoute({ onChangePassword }: { onChangePassword: () => void }) {
           const q = new URLSearchParams({ a: String(req.amount), t: req.text });
           navigate(`/redeem?${q.toString()}`, { replace: true });
         }}
-        onCancel={() => navigate(-1)}
+        /* ★ 「ひとつ前に戻る」ではなく、行き先を決め打ちします。
+              以前は navigate(-1) でした。直接この住所を開いたときや
+              読み込み直したあとは**戻り先が無く、押しても何も起きません**。
+              アプリを閉じるしかない状態になっていました（実際に起きました）。
+              かけらの札があるのは入口の画面なので、そこへ返します。 */
+        onCancel={() => navigate('/')}
       />
     </Shell>
   );

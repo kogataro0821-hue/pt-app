@@ -3,6 +3,7 @@ import {
   computeItemNutrients,
   entryUnitsFor,
   findExactFoods,
+  findSameNutritionFoods,
   findSimilarFoods,
   formatAmount,
   formatNutrients,
@@ -155,6 +156,18 @@ export function ItemForm({
     () =>
       exact !== null ? [] : ambiguous ? hits : findSimilarFoods(foods, name, 4),
     [foods, name, exact, ambiguous, hits],
+  );
+
+  /**
+   * 読み取った数字と一致する、登録済みの食材（追加仕様: 同じ商品の作り直しを防ぐ）。
+   *
+   * ★ 撮ったときだけ見ます。
+   *   手で打った途中の数字で照合すると、打っている最中に候補が
+   *   出たり消えたりして、うるさいだけです。
+   */
+  const sameNumbers = useMemo(
+    () => (exact !== null || scan === null ? [] : findSameNutritionFoods(foods, scan.read)),
+    [foods, exact, scan],
   );
 
   /**
@@ -488,6 +501,46 @@ export function ItemForm({
               袋の表示と見比べて、違っていたら直してください。
               写真もトレーナーに届くので、あとで確認してもらえます。
             </p>
+          )}
+
+          {/* ★ 読み取った数字が、登録済みの食材と一致したとき
+                 （追加仕様: 同じ商品の作り直しを防ぐ）。
+
+                 名前の似かただけで照合していたので、コンビニの商品は
+                 毎回「マスタに無い」扱いになっていました。その結果、
+                 **同じ商品の登録依頼が何度も立ち**、トレーナーは
+                 そのたびに承認していました。
+
+                 4つの値が小数第1位までそろう別商品は、まず出てきません。
+                 押せば、その登録済みの食材として記録できます。
+                 依頼は立ちません。 */}
+          {sameNumbers.length > 0 && (
+            <>
+              <p className="field-hint" role="status">
+                <b>同じ数字の食材が、すでに登録されています。</b>
+                同じ商品ならこちらを選んでください。トレーナーの承認を待たずに記録できます。
+              </p>
+              <ul className="suggestions">
+                {sameNumbers.map((food) => (
+                  <li key={food.id}>
+                    <button
+                      type="button"
+                      className="suggestion"
+                      onClick={() => {
+                        setPicked(food);
+                        setName(food.name);
+                      }}
+                    >
+                      <span className="suggestion-name">{food.name}</span>
+                      <span className="suggestion-meta">
+                        {food.per100g.kcal}kcal · P{food.per100g.p} F{food.per100g.f} C
+                        {food.per100g.c}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </>
       )}
