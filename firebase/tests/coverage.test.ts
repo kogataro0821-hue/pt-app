@@ -50,7 +50,6 @@ const SHARED_COLLECTIONS = new Set([
   // 管理者が作る「値札」の一覧で、契約者には紐づきません。
   // 契約者を1人消しても、値札は残します。
   'exchangeItems',
-  'exchangeMenu',
 ]);
 
 /**

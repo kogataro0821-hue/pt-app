@@ -1,65 +1,93 @@
 /**
  * 交換メニューの読み書き（追加仕様: 交換メニュー）。
  *
- * ★ 「保存した交換QR」とは別の場所に置いています。
+ * ★ 置き場所は config です。専用のコレクションを作っていません。
  *
- *   形はよく似ています（何かけらで、何がもらえるか）。
- *   それでも一緒にしなかったのは、**見る人が違う**からです。
+ *   専用の場所を作ると、Firestore のルールを足すことになります。
+ *   ルールを足すと、そのたびに Firebase の画面を開いて貼り直す
+ *   必要が出ます。**開かずに済むなら、開かないほうがいい。**
  *
- *     保存した交換QR … 管理者の道具。よく使うQRを出すための控え
- *     交換メニュー   … 契約者に見せる品書き
+ *   config はすでに「管理者が書けて、契約者全員が読める」形に
+ *   なっています（食品マスタの更新日時がここにあります）。
+ *   同じ形のものが欲しいだけなので、ここに間借りします。
  *
- *   一緒にすると、管理者が控えとして保存したものが
- *   **そのまま全員に見えます。** 見せるつもりのないものまで
- *   並ぶ形は、あとから直しようがありません。
- *   同じものを2回登録する手間より、こちらのほうが安全です。
+ * ★ ここに置いてよいのは、誰のものでもない情報だけです。
  *
- * ★ 読めるのは全契約者、書けるのは管理者だけです（Rules 側で締めています）。
- *   品書きは全員に共通です。誰が見ても同じものが並びます。
+ *   全契約者が同じものを読みます。特定の契約者に関わることを置くと、
+ *   契約者Aが契約者Bを知る手がかりになります。
+ *   品書き（何かけらで何がもらえるか）は、店頭の貼り紙と同じで
+ *   誰が見ても同じであるべきものなので、ここで構いません。
+ *
+ * ★ 1枚の書類に、全部まとめて入れています。
+ *
+ *   読み取りは1回で済みます。件数は多くても数十なので、
+ *   1枚に収まります。
+ *
+ *   代わりに、足す・消すは「読んで、直して、書き戻す」形になります。
+ *   **2人の管理者が同時に触ると、あとから書いたほうで上書きされます。**
+ *   管理者は1人なので、ここは割り切っています。
  */
 
-import { collection, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
-import { sortExchangeItems, toExchangeItem, type ExchangeItem } from '@pt/core';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  readExchangeMenu,
+  writeExchangeMenu,
+  type ExchangeItem,
+} from '@pt/core';
 import { getDb } from '@/lib/firebase';
 
-const COLLECTION = 'exchangeMenu';
+const PATH = ['config', 'exchangeMenu'] as const;
 
-/**
- * メニューを読む。安い順に並べて返します。
- *
- * ★ 並べ替えはこちら側でやります。
- *   Firestore の並べ替えを使うと索引が要ります。件数は多くても数十なので、
- *   読んでから並べるほうが、設定を1つ減らせます。
- */
-export async function listExchangeMenu(): Promise<ExchangeItem[]> {
-  const snap = await getDocs(collection(getDb(), COLLECTION));
-  return sortExchangeItems(
-    snap.docs.map((d) => toExchangeItem(d.id, d.data() as Record<string, unknown>)),
-  );
+function menuRef() {
+  return doc(getDb(), PATH[0], PATH[1]);
 }
 
-/** 登録する。id を渡せば上書き、渡さなければ新しく作ります。 */
+/** メニューを読む。安い順に並んで返ります。 */
+export async function listExchangeMenu(): Promise<ExchangeItem[]> {
+  const snap = await getDoc(menuRef());
+  return readExchangeMenu(snap.data());
+}
+
+/** 新しい1件のID。書類の中で見分けるためだけに使います。 */
+function newMenuId(): string {
+  return `m${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+/**
+ * 1件足す。
+ *
+ * ★ 足す前に読み直します。
+ *   画面が開きっぱなしのあいだに別の端末で増えていることがあります。
+ *   画面が覚えている一覧に足して書き戻すと、その増えたぶんが消えます。
+ */
 export async function saveExchangeMenuItem(item: {
   id?: string;
   text: string;
   amount: number;
 }): Promise<ExchangeItem> {
   const now = Date.now();
-  const ref =
-    item.id === undefined
-      ? doc(collection(getDb(), COLLECTION))
-      : doc(getDb(), COLLECTION, item.id);
-
   const text = item.text.trim();
-  await setDoc(
-    ref,
-    { text, amount: item.amount, createdAt: now, updatedAt: now },
-    { merge: true },
-  );
+  const id = item.id ?? newMenuId();
 
-  return { id: ref.id, text, amount: item.amount, createdAt: now, updatedAt: now };
+  const current = await listExchangeMenu();
+  const next: ExchangeItem[] = [
+    ...current.filter((i) => i.id !== id),
+    { id, text, amount: item.amount, createdAt: now, updatedAt: now },
+  ];
+
+  await setDoc(menuRef(), { ...writeExchangeMenu(next), updatedAt: now }, { merge: true });
+
+  return { id, text, amount: item.amount, createdAt: now, updatedAt: now };
 }
 
+/** 1件消す。 */
 export async function deleteExchangeMenuItem(id: string): Promise<void> {
-  await deleteDoc(doc(getDb(), COLLECTION, id));
+  const current = await listExchangeMenu();
+  const next = current.filter((i) => i.id !== id);
+
+  await setDoc(
+    menuRef(),
+    { ...writeExchangeMenu(next), updatedAt: Date.now() },
+    { merge: true },
+  );
 }
