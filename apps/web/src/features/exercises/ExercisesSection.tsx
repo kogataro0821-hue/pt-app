@@ -158,6 +158,12 @@ export function ExercisesSection({
           <div className="row exercise-row" key={exercise.id}>
             <div className="row-label">
               <span className="item-name">{exercise.name}</span>
+              {/* ★ 入れたものだけ並べます（追加仕様: 運動記録の項目）。
+                     未入力の欄に 0 や「-」を出すと、**0で記録した**ように
+                     読めます。入れなかったことは、出さないことで伝えます。 */}
+              {summarize(exercise).length > 0 && (
+                <span className="exercise-detail">{summarize(exercise)}</span>
+              )}
               {exercise.detail.length > 0 && (
                 <span className="exercise-detail">{exercise.detail}</span>
               )}
@@ -229,31 +235,55 @@ function ExerciseForm({
         />
       </label>
 
-      <label className="field">
-        <span className="field-label">時間（分）</span>
-        <input
-          className="input"
-          type="number"
-          inputMode="numeric"
-          value={draft.minutes ?? ''}
-          onChange={(e) =>
-            onChange({
-              ...draft,
-              minutes: e.target.value.trim() === '' ? null : Number(e.target.value),
-            })
-          }
-          placeholder="未入力でも構いません"
+      {/* ★ ここから下は、すべて未入力で構いません（追加仕様: 運動記録の項目）。
+
+             運動によって埋まる欄が違います。
+               ベンチプレス … 重量・カウント・セット
+               ランニング   … 時間だけ
+               懸垂         … カウントとセットだけ（自重なので重量が無い）
+
+             全部を必須にすると、埋めるために**嘘の数字**を入れることに
+             なります。0 と書かせるのも同じです。
+             「0kgで挙げた」という記録が残ってしまいます。 */}
+      <p className="field-hint">
+        下の欄は<b>入れたものだけで構いません</b>。使わない欄は空のままにしてください。
+      </p>
+
+      <div className="exercise-grid">
+        <NumberField
+          label="重量"
+          unit="kg"
+          value={draft.weight}
+          onChange={(weight) => onChange({ ...draft, weight })}
         />
-      </label>
+        <NumberField
+          label="カウント数"
+          unit="回"
+          value={draft.reps}
+          onChange={(reps) => onChange({ ...draft, reps })}
+        />
+        <NumberField
+          label="セット数"
+          unit="セット"
+          value={draft.sets}
+          onChange={(sets) => onChange({ ...draft, sets })}
+        />
+        <NumberField
+          label="時間"
+          unit="分"
+          value={draft.minutes}
+          onChange={(minutes) => onChange({ ...draft, minutes })}
+        />
+      </div>
 
       <label className="field">
-        <span className="field-label">内容</span>
+        <span className="field-label">メモ</span>
         <input
           className="input"
           type="text"
           value={draft.detail}
           onChange={(e) => onChange({ ...draft, detail: e.target.value })}
-          placeholder="60kg 10回 3セット"
+          placeholder="フォームを意識／最後の1回がきつい"
         />
       </label>
 
@@ -267,4 +297,75 @@ function ExerciseForm({
       </div>
     </div>
   );
+}
+
+/**
+ * 数を入れる欄1つ（追加仕様: 運動記録の項目）。
+ *
+ * ★ 空欄と 0 を、はっきり分けます。
+ *
+ *   空欄は null（入れていない）、0 は 0（0と入れた）です。
+ *   ここを混ぜると、入れなかった欄が「0」として残ります。
+ *
+ * ★ 単位は欄の中に出します。
+ *   見出しに「重量（kg）」と書く形もありますが、
+ *   数字のすぐ隣にあるほうが、入れている最中に目に入ります。
+ */
+function NumberField({
+  label,
+  unit,
+  value,
+  onChange,
+}: {
+  label: string;
+  unit: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label className="field exercise-field">
+      <span className="field-label small">{label}</span>
+      <span className="exercise-input-row">
+        <input
+          className="input"
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={value ?? ''}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            onChange(raw === '' ? null : Number(raw));
+          }}
+          placeholder="—"
+          aria-label={label}
+        />
+        <span className="exercise-unit">{unit}</span>
+      </span>
+    </label>
+  );
+}
+
+/**
+ * 一覧に出す1行ぶんの言い方（追加仕様: 運動記録の項目）。
+ *
+ *   60kg × 10回 × 3セット
+ *   10回 × 3セット          （自重のとき）
+ *   60kg                     （重量だけ入れたとき）
+ *
+ * ★ 入れていない欄は、書きません。
+ *   「-」や「0」で埋めると、入れたのか入れていないのかが
+ *   読み取れなくなります。
+ *
+ * ★ 時間はここに入れません。行の右端に別で出しているためです。
+ */
+export function summarize(exercise: {
+  weight: number | null;
+  reps: number | null;
+  sets: number | null;
+}): string {
+  const parts: string[] = [];
+  if (exercise.weight !== null) parts.push(`${String(exercise.weight)}kg`);
+  if (exercise.reps !== null) parts.push(`${String(exercise.reps)}回`);
+  if (exercise.sets !== null) parts.push(`${String(exercise.sets)}セット`);
+  return parts.join(' × ');
 }

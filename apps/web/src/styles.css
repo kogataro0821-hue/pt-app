@@ -3913,3 +3913,37 @@ hr.rule {
 .exchange-menu-cost {
   flex: none;
 }
+
+/* ---- 運動の入力（追加仕様: 運動記録の項目） -------------------------------
+ * ★ 4つの数を、狭い画面でも2列で収めます。
+ *   縦に4つ並べると、1件入れるのに画面を何度もスクロールすることになります。 */
+
+.exercise-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-md);
+}
+
+.exercise-field {
+  min-width: 0;
+}
+
+.exercise-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.exercise-input-row .input {
+  min-width: 0;
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ★ 単位は縮めません。「kg」が折れると読めなくなります */
+.exercise-unit {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
