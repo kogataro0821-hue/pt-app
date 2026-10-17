@@ -115,18 +115,56 @@ body {
 
   /* iOS でゴムのように跳ねる挙動を抑える。アプリらしい手触りにするため */
   overscroll-behavior-y: none;
-  /* 長押しで文字が選択されるのを防ぐ（入力欄は下で戻す） */
-  -webkit-user-select: none;
-  user-select: none;
   /* タップ時の青いハイライトを消す */
   -webkit-tap-highlight-color: transparent;
+
+  /* ★ 文字は選べます（追加仕様: 文字を選べるようにする）。
+   *
+   *   以前はここで user-select: none にしていました。
+   *   長押しで文字が選択されるのを防ぐためです。
+   *
+   *   ですが、そのせいで **アプリ内の文字を1つもコピーできません**でした。
+   *   食材名も、トレーナーの評価の文章も、交換の内容も、
+   *   帳簿の数字も、ぜんぶ選べません。
+   *   手触りのために、必要なことを潰していました。
+   *
+   *   いまは逆にしています。文字は選べるのが既定で、
+   *   **何度も押す場所だけ**を選べないようにします（下）。 */
+  -webkit-user-select: text;
+  user-select: text;
 }
 
+/* ★ 押すためのものは、選べないままにします。
+ *
+ *   ボタンやタブを長押ししたときに文字が反転すると、
+ *   押したのか選んだのか分からなくなります。
+ *   iOS では「コピー」の吹き出しも出て、押す邪魔になります。
+ *
+ *   ここに入れるのは「読むため」ではなく「押すため」のものだけです。 */
+button,
+select,
+[role='button'],
+[role='radio'],
+.admin-link,
+.choice,
+.chevron,
+.badge,
+.appbar-home,
+.appbar-bell {
+  -webkit-user-select: none;
+  user-select: none;
+  /* iOS の長押しメニューも出しません */
+  -webkit-touch-callout: none;
+}
+
+/* ★ 入力欄は、選べるだけでなく長押しメニューも要ります。
+ *   貼り付けができないと、QRの内容などを持ち込めません。 */
 input,
 textarea,
 [contenteditable] {
   -webkit-user-select: text;
   user-select: text;
+  -webkit-touch-callout: default;
 }
 
 /* iOS で入力欄をタップしたときに画面が拡大しないよう、16px 未満にしない */
