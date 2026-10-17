@@ -12,7 +12,14 @@ import {
 import { monthRange, photoWarnThreshold, type DateKey, type MonthKey } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 import { clearRankCache } from '@/features/rank/rankRepo';
-import { emptyDay, type Day, type DayStatus } from './dayTypes';
+import {
+  emptyDay,
+  MAX_SUBMIT_REASON,
+  toSubmitMark,
+  type Day,
+  type DayStatus,
+  type SubmitMark,
+} from './dayTypes';
 
 /**
  * 日次データの読み書き（設計書 §5.3）。
@@ -89,6 +96,8 @@ function toDay(id: string, data: Record<string, unknown>): Day {
     checkedAt: num(data.checkedAt),
     checkedBy: typeof data.checkedBy === 'string' ? data.checkedBy : null,
     photoOldestAt: num(data.photoOldestAt),
+    mealsSubmit: toSubmitMark(data.mealsSubmit),
+    exerciseSubmit: toSubmitMark(data.exerciseSubmit),
     updatedAt: num(data.updatedAt),
   };
 }
@@ -255,4 +264,76 @@ export async function listDaysWithExpiringPhotos(
     ),
   );
   return snap.docs.map((d) => toDay(d.id, d.data()));
+}
+
+/**
+ * トレーナーが「提出扱い」にする（追加仕様: 提出扱い）。
+ *
+ * ★ 連続記録は、その日の hasMeals / hasExercise だけを見て数えています。
+ *   だから印を立てれば連続は途切れません。
+ *
+ * ★ 立てるのと同時に、**誰が・いつ・なぜ**を残します。
+ *
+ *   黙って立てると、普通に記録した日と見分けが付きません。
+ *   数か月後に「この日は本当に記録したのか」が分からなくなります。
+ *
+ * ★ 付ける前の値を一緒に覚えます。
+ *
+ *   取り消したときに、ここへ戻すためです。
+ *   覚えていないと、本人が記録した日に押して取り消したときに、
+ *   **本人の記録まで消す**ことになります。
+ */
+export async function markDaySubmitted(
+  clientId: string,
+  date: DateKey,
+  kind: 'meals' | 'exercise',
+  adminUid: string,
+  reason: string,
+  /** いまの値。取り消したときに戻す先 */
+  prev: boolean,
+): Promise<void> {
+  const field = kind === 'meals' ? 'mealsSubmit' : 'exerciseSubmit';
+  const flag = kind === 'meals' ? 'hasMeals' : 'hasExercise';
+
+  await setDoc(
+    doc(daysCol(clientId), date),
+    {
+      date,
+      [flag]: true,
+      [field]: {
+        at: Date.now(),
+        by: adminUid,
+        reason: reason.trim().slice(0, MAX_SUBMIT_REASON),
+        prev,
+      },
+      updatedAt: Date.now(),
+    },
+    { merge: true },
+  );
+
+  clearRankCache(clientId);
+}
+
+/** 提出扱いを取り消す。印を付ける前の状態へ戻します。 */
+export async function unmarkDaySubmitted(
+  clientId: string,
+  date: DateKey,
+  kind: 'meals' | 'exercise',
+  mark: SubmitMark,
+): Promise<void> {
+  const field = kind === 'meals' ? 'mealsSubmit' : 'exerciseSubmit';
+  const flag = kind === 'meals' ? 'hasMeals' : 'hasExercise';
+
+  await setDoc(
+    doc(daysCol(clientId), date),
+    {
+      date,
+      [flag]: mark.prev,
+      [field]: null,
+      updatedAt: Date.now(),
+    },
+    { merge: true },
+  );
+
+  clearRankCache(clientId);
 }

@@ -19,10 +19,13 @@ import { ReviewSection } from '@/features/review/ReviewSection';
 import { AI_RELAY_URL } from '@/config/firebase';
 import { hasValidAiConsent } from '@/features/clients/clientTypes';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { SubmitCard, SubmitNotice } from './SubmitCard';
 import {
   getDay,
   saveBodyMetrics,
+  markDaySubmitted,
   setDayChecked,
+  unmarkDaySubmitted,
   setDayStatus,
   validateBodyMetrics,
 } from './daysRepo';
@@ -151,6 +154,58 @@ export function DayScreen({
       );
     } catch {
       setError('確認を記録できませんでした。通信状態を確認してください。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * 提出扱いにする（追加仕様: 提出扱い）。
+   *
+   * ★ いまの値を一緒に渡します。取り消したときに戻す先です。
+   *   渡さないと、本人が記録した日に押して取り消したときに、
+   *   **本人の記録まで消す**ことになります。
+   */
+  async function markSubmitted(kind: 'meals' | 'exercise', reason: string) {
+    if (day === null) return;
+    setBusy(true);
+    setError(null);
+    const prev = kind === 'meals' ? day.hasMeals : day.hasExercise;
+    try {
+      await markDaySubmitted(client.clientId, date, kind, adminUid, reason, prev);
+      const mark = { at: Date.now(), by: adminUid, reason: reason.trim(), prev };
+      setDay((cur) =>
+        cur === null
+          ? cur
+          : kind === 'meals'
+            ? { ...cur, hasMeals: true, mealsSubmit: mark }
+            : { ...cur, hasExercise: true, exerciseSubmit: mark },
+      );
+    } catch {
+      setError('提出扱いにできませんでした。通信状態を確認してください。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unmarkSubmitted(kind: 'meals' | 'exercise') {
+    if (day === null) return;
+    const mark = kind === 'meals' ? day.mealsSubmit : day.exerciseSubmit;
+    if (mark === null) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await unmarkDaySubmitted(client.clientId, date, kind, mark);
+      setDay((cur) =>
+        cur === null
+          ? cur
+          : kind === 'meals'
+            ? { ...cur, hasMeals: mark.prev, mealsSubmit: null }
+            : { ...cur, hasExercise: mark.prev, exerciseSubmit: null },
+      );
+    } catch {
+      setError('提出扱いをやめられませんでした。通信状態を確認してください。');
     } finally {
       setBusy(false);
     }
@@ -359,6 +414,39 @@ export function DayScreen({
             canEdit={canEdit || isAdmin}
             uid={adminUid}
           />
+
+          {/* ★ 提出扱いの印は、契約者にも見せます（追加仕様: 提出扱い）。
+                 連続が続いている理由が分からないままだと、
+                 「数えられていないのでは」と不安になります。
+                 理由は出しません。あれはトレーナーの覚え書きです。 */}
+          {!isAdmin && (
+            <SubmitNotice
+              meals={day.mealsSubmit !== null}
+              exercise={day.exerciseSubmit !== null}
+            />
+          )}
+
+          {/* ★ 管理者だけ（追加仕様: 提出扱い）。
+                 食事と運動を分けています。まとめて立てると、
+                 運動していない日まで「運動した」ことになります。 */}
+          {isAdmin && (
+            <>
+              <SubmitCard
+                kind="meals"
+                mark={day.mealsSubmit}
+                busy={busy}
+                onMark={(reason) => void markSubmitted('meals', reason)}
+                onUnmark={() => void unmarkSubmitted('meals')}
+              />
+              <SubmitCard
+                kind="exercise"
+                mark={day.exerciseSubmit}
+                busy={busy}
+                onMark={(reason) => void markSubmitted('exercise', reason)}
+                onUnmark={() => void unmarkSubmitted('exercise')}
+              />
+            </>
+          )}
 
           {/* ★ 管理者だけ。1日確定（契約者の意思表示）とは別ものです。 */}
           {isAdmin && (

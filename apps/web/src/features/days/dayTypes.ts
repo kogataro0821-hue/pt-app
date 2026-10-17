@@ -73,8 +73,53 @@ export interface Day {
    */
   photoOldestAt: number | null;
 
+  /**
+   * トレーナーが「提出扱い」にした印（追加仕様: 提出扱い）。
+   *
+   * ★ 何のためにあるか。
+   *
+   *   やむを得ない事情で、いつもの記録ができない日があります。
+   *   相談のうえ写真だけ出してもらった、というような日です。
+   *   そのままだと連続記録が途切れますが、**本人は約束を守っています**。
+   *   続けるための仕掛けが、続けている人を罰する形になってはいけません。
+   *
+   * ★ 印を残すのは、**あとから嘘にしないため**です。
+   *
+   *   黙って hasMeals を立てると、普通に記録した日と見分けが付きません。
+   *   数か月後に見返したときに「この日は本当に記録したのか」が
+   *   分からなくなります。誰が、いつ、なぜ立てたかを残します。
+   *
+   * ★ 取り消せます。そのときは印を付ける前の状態に戻します。
+   */
+  mealsSubmit: SubmitMark | null;
+  exerciseSubmit: SubmitMark | null;
+
   updatedAt: number | null;
 }
+
+/** 提出扱いの印1件（追加仕様: 提出扱い）。 */
+export interface SubmitMark {
+  /** 押した時刻 */
+  at: number;
+  /** 押した管理者のUID */
+  by: string;
+  /** なぜ提出扱いにしたか */
+  reason: string;
+  /**
+   * 印を付ける**前**の値。
+   *
+   * ★ 取り消したときに、ここへ戻します。
+   *
+   *   戻す先を覚えていないと、取り消しのたびに
+   *   「本当に記録があったかどうか」を数え直すことになります。
+   *   本人が記録した日に押してしまって取り消した場合に、
+   *   **本人の記録まで消す**のがいちばん困ります。
+   */
+  prev: boolean;
+}
+
+/** 提出扱いの理由に書ける長さ。 */
+export const MAX_SUBMIT_REASON = 60;
 
 export function emptyDay(date: DateKey): Day {
   return {
@@ -90,7 +135,23 @@ export function emptyDay(date: DateKey): Day {
     checkedAt: null,
     checkedBy: null,
     photoOldestAt: null,
+    mealsSubmit: null,
+    exerciseSubmit: null,
     updatedAt: null,
+  };
+}
+
+/** 保存されている印を読む。壊れていても落ちません。 */
+export function toSubmitMark(raw: unknown): SubmitMark | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const row = raw as Record<string, unknown>;
+  const at = typeof row.at === 'number' && Number.isFinite(row.at) ? row.at : null;
+  if (at === null) return null;
+  return {
+    at,
+    by: typeof row.by === 'string' ? row.by : '',
+    reason: typeof row.reason === 'string' ? row.reason.slice(0, MAX_SUBMIT_REASON) : '',
+    prev: row.prev === true,
   };
 }
 
