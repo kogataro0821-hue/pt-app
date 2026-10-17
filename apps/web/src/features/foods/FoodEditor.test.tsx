@@ -43,18 +43,27 @@ describe('かぞえ方の欄', () => {
   it('4つの単位ぶん、最初から欄が出ている', () => {
     // ★ 「行を足す」形にすると、押さないと存在に気づけません
     setup();
-    for (const unit of ['個', '枚', '本', 'パック']) {
+    for (const unit of ['個', '枚', '本', 'パック', '杯']) {
       expect(screen.getByLabelText(`1${unit}あたりの重さ（g）`)).toBeInTheDocument();
     }
   });
 
-  it('★ 危ない単位の欄は出さない', () => {
-    // ★ 「1杯」が誰の茶碗かは、こちらには決めようがありません。
-    //   正確そうに見えて実は目分量、が一番たちの悪い数字です。
+  it('★ 「杯」の欄も出る（追加仕様: 単位を増やす）', () => {
+    // ★ 以前は出していませんでした。「1杯」が誰の茶碗か決めようがない、
+    //   という理由です。考えを変えています。
+    //
+    //   外しても目分量は無くなりませんでした。使う人は当て推量の
+    //   グラム数を打つだけで、そちらは目分量だと分かりません。
+    //   いまは「1杯＝○g」をここで決められるようにして、
+    //   決めていないあいだは栄養値を入れない形にしました。
     setup();
-    expect(screen.queryByLabelText(/1杯/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/1食/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/大さじ/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('1杯あたりの重さ（g）')).toBeInTheDocument();
+  });
+
+  it('最初から用意していない単位は、まだ出さない', () => {
+    // ★ 管理者が「単位を増やす」で足すと、ここにも出ます
+    setup();
+    expect(screen.queryByLabelText(/1切れ/)).not.toBeInTheDocument();
   });
 
   it('入れた単位だけが保存される（空欄は登録しない）', async () => {

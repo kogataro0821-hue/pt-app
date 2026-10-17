@@ -453,34 +453,72 @@ describe('★ 単位で入れる', () => {
     expect(screen.getByText('100g')).toBeInTheDocument();
   });
 
-  it('★ かぞえ方が無い食材では、g だけ。しかも理由を書く', async () => {
-    // ★ 「個が選べない」だけだと、壊れていると思われます。
-    //   ボタンが無いのと機能が無いのは、使う側からは区別が付きません。
+  it('★ かぞえ方が無くても、単位は選べる', async () => {
+    // ★ 以前は選べませんでした。選べなくても目分量は無くならず、
+    //   「150g」と当て推量で打たれるだけです。そちらは目分量だと
+    //   分からないぶん、かえって危なかった。
     withMaster();
     setup();
     await userEvent.type(screen.getByLabelText('食材の名前'), '白米');
 
     const unit = await screen.findByLabelText('単位');
-    expect(within(unit).queryByRole('option', { name: '個' })).not.toBeInTheDocument();
-    expect(screen.getByText(/まだ「1個＝○g」が登録されていない/)).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: '杯' })).toBeInTheDocument();
   });
 
-  it('★ 食材を書き換えたら、その食材に無い単位は g に戻る', async () => {
-    // ★ 「卵 2個」のあとに名前を「白米」に直すと、白米に『個』はありません。
-    //   選んだままにすると、量の決まらない記録ができてしまいます。
+  it('★ 重さが分からないときは、その場で言う', async () => {
+    // ★ ここを黙って通すのが、いちばん危ない作りです。
+    //   「1杯」と入れた人は、カロリーも入ったと思っています
+    withMaster();
+    setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '白米');
+    await userEvent.selectOptions(await screen.findByLabelText('単位'), '杯');
+    await userEvent.type(screen.getByLabelText('食べた量'), '1');
+
+    expect(await screen.findByText(/この食材の「1杯」が何gか、まだ登録されていません/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/カロリーとPFCはこの食材ぶん入りません/)).toBeInTheDocument();
+  });
+
+  it('★ 重さが分からなくても、記録は残せる', async () => {
+    // ★ 記録そのものを止めると、その日が丸ごと空になります。
+    //   残したうえで、数字だけ入れないのが正解です
+    withMaster();
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText('食材の名前'), '白米');
+    await userEvent.selectOptions(await screen.findByLabelText('単位'), '杯');
+    await userEvent.type(screen.getByLabelText('食べた量'), '1');
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }));
+
+    const item = firstCall(onSubmit)[0];
+    expect(item.enteredAs).toEqual({ value: 1, unit: '杯' });
+    expect(item.nutrients).toEqual(ZERO);
+    expect(item.pending).toBe(true);
+    // ★ 0g として残ります。合計には入りません
+    expect(item.grams).toBe(0);
+  });
+
+  it('★ 食材を書き換えても、「2個」が「2g」に化けない', async () => {
+    // ★ ここは一度壊した場所です。「卵 2個」のあとに名前を「白米」に
+    //   直すと、白米に『個』の換算はありません。
+    //   昔は単位を g に戻していたので、**2個が2gとして保存**されました。
+    //   いまは単位をそのまま残し、重さが分からないものとして扱います。
     withMaster([EGG, aFood()]);
     setup();
     const nameInput = screen.getByLabelText('食材の名前');
     await userEvent.type(nameInput, '卵');
     await userEvent.selectOptions(await screen.findByLabelText('単位'), '個');
-    expect(screen.getByLabelText('単位')).toHaveValue('個');
+    await userEvent.type(screen.getByLabelText('食べた量'), '2');
 
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, '白米');
 
     await waitFor(() => {
-      expect(screen.getByLabelText('単位')).toHaveValue('g');
+      expect(screen.getByLabelText('単位')).toHaveValue('個');
     });
+    expect(screen.getByLabelText('食べた量')).toHaveValue(2);
+    expect(
+      await screen.findByText(/この食材の「1個」が何gか、まだ登録されていません/),
+    ).toBeInTheDocument();
   });
 
   it('編集で開くと、入れたときの「2個」で出る', async () => {

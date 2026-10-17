@@ -9,6 +9,7 @@ import {
   type Meal,
   type MealItem,
   type Nutrients,
+  MAX_SHOP_NAME,
 } from '@pt/core';
 import { getDb } from '@/lib/firebase';
 import { clearRankCache } from '@/features/rank/rankRepo';
@@ -86,6 +87,8 @@ function toMeal(id: string, data: Record<string, unknown>): Meal {
     order: typeof data.order === 'number' ? data.order : 0,
     label: typeof data.label === 'string' ? data.label : '食事',
     memo: typeof data.memo === 'string' ? data.memo : '',
+    // ★ 古い記録には入っていません。無ければ空（外食ではない）です
+    shop: typeof data.shop === 'string' ? data.shop.slice(0, MAX_SHOP_NAME) : '',
     items: rawItems.map(toItem),
     createdAt: numOrNull(data.createdAt),
     updatedAt: numOrNull(data.updatedAt),
@@ -144,6 +147,7 @@ function toFirestore(meal: Meal): Record<string, unknown> {
     order: meal.order,
     label: meal.label,
     memo: meal.memo,
+    shop: meal.shop,
     items: meal.items.map((i) => ({
       id: i.id,
       name: i.name,

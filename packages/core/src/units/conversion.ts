@@ -19,27 +19,47 @@
  */
 
 /**
- * 数えられる単位（このアプリで扱うぶん）。
+ * 最初から用意してある単位（追加仕様: 単位を増やす）。
  *
- * ★ 「杯」「食」「大さじ」「小さじ」は、あえて外しています。
+ * ★ 以前は「杯」を外していました。考えを変えています。
  *
- *   設計書 §10.5 の表には載っていますが、これらは人によって量が違います。
- *   「1杯」が誰の茶碗なのか、こちらには決めようがありません。
- *   正確そうに見えて実は目分量、というのが一番たちの悪い数字です。
- *   分からないものは、分からないまま g で入れてもらいます。
+ *   外していた理由は、「1杯」が誰の茶碗か決めようがないからでした。
+ *   目分量の数字が正確な顔で残るのが怖かったためです。
+ *
+ *   ですが、**外しても目分量は無くなりませんでした。** 使う人は
+ *   「150g」と当て推量で打つだけで、しかもそちらは目分量だと分かりません。
+ *   選べないことが、かえって見えない当て推量を増やしていました。
+ *
+ *   いまは「1杯」と選べます。そのかわり **その食材の1杯が何gかを
+ *   登録していなければ、栄養値を入れません**（下の toGrams が null を返し、
+ *   画面は「値なし」として扱います）。
+ *   分からないものを分からないまま残すほうが、嘘の数字より安全です。
+ *
+ * ★ 管理者がここに無い単位を足せます。
+ *   足したものは config に入り、全員の入力欄に出ます。
+ *   この配列は「最初から入っているもの」であって、全部ではありません。
  */
-/**
- * ★ 「袋」を入れてあります（追加仕様: 成分表示の読み取り）。
- *
- *   既製品の成分表示に「1食当たり」とだけ書かれていて、
- *   それが何グラムか分からない商品があります。そのとき
- *   「1袋ぶん」として登録できるようにするために要ります。
- *   袋・個・本・パックは目の前にある物そのものなので、
- *   「1杯」のような目分量とは違い、数え間違えようがありません。
- */
-export const COUNTABLE_UNITS = ['個', '枚', '本', '袋', 'パック'] as const;
+export const COUNTABLE_UNITS = ['個', '枚', '本', '袋', 'パック', '杯'] as const;
 
-export type CountableUnit = (typeof COUNTABLE_UNITS)[number];
+/**
+ * 数えられる単位。
+ *
+ * ★ 決まった何種類か、ではなくなりました。
+ *   管理者が足せるので、形としては「短い文字列」です。
+ *   受け付けてよい形かどうかは isCountableUnit が見ます。
+ */
+export type CountableUnit = string;
+
+/** 単位の名前に使ってよい長さ。 */
+export const MAX_UNIT_LABEL = 6;
+
+/**
+ * 管理者が足せる単位の数。
+ *
+ * ★ 上限を置くのは、入力欄が選びきれなくなるのを防ぐためです。
+ *   30個も並ぶ選択欄から「個」を探すのは、g で打つより面倒です。
+ */
+export const MAX_CUSTOM_UNITS = 12;
 
 /** 入力欄で選べる単位。g は常に選べます。 */
 export type EntryUnit = 'g' | CountableUnit;
@@ -67,8 +87,40 @@ export interface EnteredAmount {
 export const MIN_CONVERSION_GRAMS = 0.1;
 export const MAX_CONVERSION_GRAMS = 2000;
 
+/**
+ * 単位の名前として受け付けてよいか。
+ *
+ * ★ 一覧に入っているかどうかでは見ません（管理者が足せるため）。
+ *   **形**だけを見ます。長い文章や空白を単位にされると、
+ *   入力欄も一覧も崩れます。
+ *
+ * ★ 'g' は単位の一覧に入れません。
+ *   g は常に選べるもので、換算を持たない特別な存在です。
+ *   一覧に入れると「1g = ○g」という意味のない換算が作れてしまいます。
+ */
 export function isCountableUnit(value: unknown): value is CountableUnit {
-  return typeof value === 'string' && (COUNTABLE_UNITS as readonly string[]).includes(value);
+  if (typeof value !== 'string') return false;
+  const t = value.trim();
+  if (t.length === 0 || t.length > MAX_UNIT_LABEL) return false;
+  if (t === 'g') return false;
+  // 空白・改行を含むものは単位ではありません
+  return !/[\s\u3000]/.test(t);
+}
+
+/**
+ * 使える単位の一覧（最初からあるもの＋管理者が足したもの）。
+ *
+ * ★ 並びは「最初からあるもの」が先です。
+ *   よく使うものが上にあるほうが、選ぶ回数が減ります。
+ */
+export function unitChoices(extra: readonly string[] | undefined): CountableUnit[] {
+  const out: CountableUnit[] = [...COUNTABLE_UNITS];
+  for (const raw of extra ?? []) {
+    if (!isCountableUnit(raw)) continue;
+    const t = raw.trim();
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
 }
 
 /**
@@ -114,9 +166,19 @@ export function normalizeConversions(
   }
 
   // 画面での並びを、単位の決まった順に揃えます（食品ごとに順が違うと読みにくい）
-  return out.sort(
-    (a, b) => COUNTABLE_UNITS.indexOf(a.unit) - COUNTABLE_UNITS.indexOf(b.unit),
-  );
+  return out.sort((a, b) => unitOrder(a.unit) - unitOrder(b.unit));
+}
+
+/**
+ * 並べるときの順番。
+ *
+ * ★ 最初からある単位が先、管理者が足した単位は後ろです。
+ *   一覧に無い単位（足したもの）を -1 のまま使うと、
+ *   **足した単位が先頭に来ます**。並びが食品ごとに変わって読みにくくなります。
+ */
+function unitOrder(unit: CountableUnit): number {
+  const i = (COUNTABLE_UNITS as readonly string[]).indexOf(unit);
+  return i < 0 ? COUNTABLE_UNITS.length : i;
 }
 
 /** その単位の換算を探す。無ければ undefined。 */
@@ -127,9 +189,30 @@ export function conversionFor(
   return (list ?? []).find((c) => c.unit === unit);
 }
 
-/** その食品で選べる単位。g は必ず入ります。 */
-export function entryUnitsFor(list: readonly UnitConversion[] | undefined): EntryUnit[] {
-  return ['g', ...normalizeConversions(list).map((c) => c.unit)];
+/**
+ * その食品で選べる単位。g は必ず入ります。
+ *
+ * ★ 以前は「登録済みの換算があるものだけ」でした（追加仕様: 単位を増やす）。
+ *
+ *   そのせいで、ほとんどの食材で g しか出ず、**壊れているように
+ *   見えていました**。使う人は理由が分からないまま、
+ *   当て推量のグラム数を打つことになります。
+ *
+ *   いまは全部出します。換算が無い単位を選んだときは、
+ *   グラムに直せないので**栄養値を入れません**（toGrams が null）。
+ *   分からないものは、分からないまま残します。
+ *
+ * ★ 登録済みの単位が先に来ます。
+ *   その食材で実際に使える（＝数字が出る）ものを上に置きます。
+ */
+export function entryUnitsFor(
+  list: readonly UnitConversion[] | undefined,
+  /** 管理者が足した単位。渡さなければ最初からあるものだけ */
+  extra: readonly string[] | undefined = undefined,
+): EntryUnit[] {
+  const known = normalizeConversions(list).map((c) => c.unit);
+  const rest = unitChoices(extra).filter((u) => !known.includes(u));
+  return ['g', ...known, ...rest];
 }
 
 /**

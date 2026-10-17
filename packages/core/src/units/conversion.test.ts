@@ -7,6 +7,7 @@ import {
   isCountableUnit,
   normalizeConversions,
   toGrams,
+  unitChoices,
   validateConversion,
   type UnitConversion,
 } from './conversion';
@@ -23,34 +24,71 @@ import {
 const EGG: UnitConversion[] = [{ unit: '個', grams: 50 }];
 
 describe('扱う単位', () => {
-  it('個 / 枚 / 本 / 袋 / パック の5つだけ', () => {
+  it('最初から6つ入っている', () => {
     // ★ 「袋」は、成分表示にグラム数が書かれていない既製品を
     //   「1袋ぶん」として登録するために足しました
     //   （追加仕様: 成分表示の読み取り）。
-    expect(COUNTABLE_UNITS).toEqual(['個', '枚', '本', '袋', 'パック']);
+    // ★ 「杯」は、あとから足しました（追加仕様: 単位を増やす）。
+    expect(COUNTABLE_UNITS).toEqual(['個', '枚', '本', '袋', 'パック', '杯']);
   });
 
-  it('★ 足した「袋」も、目の前にある物そのもの', () => {
-    // ★ 「1杯」と違い、袋は数え間違えようがありません。
-    //   ここが、扱う単位と扱わない単位の分かれ目です。
-    expect(isCountableUnit('袋')).toBe(true);
+  it('★ 「杯」も選べる。ただし重さは別の話', () => {
+    // ★ 以前は外していました。外しても目分量は無くならず、
+    //   「150g」と当て推量で打たれるだけでした。そちらは
+    //   目分量だと分かりません。選べないほうが危なかったのです。
+    //
+    //   選べるようにしたうえで、その食材の1杯が何gか登録されて
+    //   いなければ栄養値を入れません（toGrams が null）。
+    expect(isCountableUnit('杯')).toBe(true);
+    expect(toGrams(1, '杯', EGG)).toBeNull();
   });
 
-  it('★ 「杯」「食」「大さじ」「小さじ」は扱わない', () => {
-    // ★ 設計書 §10.5 の表には載っていますが、量が人によって違います。
-    //   「1杯」が誰の茶碗かは、こちらには決めようがありません。
-    //   正確そうに見えて実は目分量、が一番たちの悪い数字です。
-    expect(isCountableUnit('杯')).toBe(false);
-    expect(isCountableUnit('食')).toBe(false);
-    expect(isCountableUnit('大さじ')).toBe(false);
-    expect(isCountableUnit('小さじ')).toBe(false);
+  it('★ 管理者が足した単位も受け付ける', () => {
+    // ★ 一覧に入っているかではなく、形だけを見ます
+    expect(isCountableUnit('切れ')).toBe(true);
+    expect(isCountableUnit('房')).toBe(true);
   });
 
-  it('知らない文字列も受け付けない', () => {
-    expect(isCountableUnit('こ')).toBe(false);
+  it('★ 単位の名前にならない形は、受け付けない', () => {
+    // ★ 長い文章や空白を単位にされると、入力欄も一覧も崩れます
     expect(isCountableUnit('')).toBe(false);
+    expect(isCountableUnit('   ')).toBe(false);
+    expect(isCountableUnit('大きめの茶碗に1杯ぶん')).toBe(false);
+    expect(isCountableUnit('お 椀')).toBe(false);
     expect(isCountableUnit(null)).toBe(false);
     expect(isCountableUnit(50)).toBe(false);
+  });
+
+  it('★ g は単位の一覧に入れない', () => {
+    // ★ g は常に選べる特別な存在です。一覧に入れると
+    //   「1g = ○g」という意味のない換算が作れてしまいます
+    expect(isCountableUnit('g')).toBe(false);
+  });
+});
+
+describe('★ 使える単位の一覧', () => {
+  it('管理者が足したぶんが、後ろに付く', () => {
+    expect(unitChoices(['切れ'])).toEqual(['個', '枚', '本', '袋', 'パック', '杯', '切れ']);
+  });
+
+  it('最初からあるものと同じ名前は、増えない', () => {
+    expect(unitChoices(['個', '杯'])).toEqual(['個', '枚', '本', '袋', 'パック', '杯']);
+  });
+
+  it('形のおかしいものは混ぜない', () => {
+    expect(unitChoices(['', '長すぎる単位の名前', 'g', '房'])).toEqual([
+      '個',
+      '枚',
+      '本',
+      '袋',
+      'パック',
+      '杯',
+      '房',
+    ]);
+  });
+
+  it('未設定でも落ちない', () => {
+    expect(unitChoices(undefined)).toEqual(['個', '枚', '本', '袋', 'パック', '杯']);
   });
 });
 
@@ -126,7 +164,7 @@ describe('整える', () => {
   it('壊れた値は落とす（読めた分は残す）', () => {
     const broken = [
       { unit: '個', grams: 50 },
-      { unit: '杯', grams: 200 },
+      { unit: '', grams: 200 },
       { unit: '枚', grams: 0 },
       { unit: '本', grams: 100 },
     ] as UnitConversion[];
@@ -144,21 +182,33 @@ describe('整える', () => {
 });
 
 describe('選べる単位', () => {
-  it('★ g は必ず選べる', () => {
+  it('★ g は必ず先頭にある', () => {
     // ★ 換算が1件も無い食材でも、量りで測れば入れられます。
     //   ここを閉じると、登録が追いつくまで記録そのものが止まります。
-    expect(entryUnitsFor([])).toEqual(['g']);
-    expect(entryUnitsFor(undefined)).toEqual(['g']);
+    expect(entryUnitsFor([])[0]).toBe('g');
+    expect(entryUnitsFor(undefined)[0]).toBe('g');
   });
 
-  it('登録されている単位が足される', () => {
-    expect(entryUnitsFor(EGG)).toEqual(['g', '個']);
+  it('★ 登録が無くても、単位は全部出す', () => {
+    // ★ 以前は登録済みのものだけでした。ほとんどの食材で g しか出ず、
+    //   壊れているように見えていました。使う人は理由が分からないまま、
+    //   当て推量のグラム数を打つことになります
+    expect(entryUnitsFor([])).toEqual(['g', '個', '枚', '本', '袋', 'パック', '杯']);
+  });
+
+  it('★ 登録済みの単位が、先に来る', () => {
+    // ★ その食材で実際に数字が出るものを上に置きます
+    expect(entryUnitsFor(EGG)).toEqual(['g', '個', '枚', '本', '袋', 'パック', '杯']);
     expect(
       entryUnitsFor([
         { unit: 'パック', grams: 45 },
-        { unit: '個', grams: 25 },
+        { unit: '杯', grams: 25 },
       ]),
-    ).toEqual(['g', '個', 'パック']);
+    ).toEqual(['g', 'パック', '杯', '個', '枚', '本', '袋']);
+  });
+
+  it('管理者が足した単位も出る', () => {
+    expect(entryUnitsFor([], ['切れ'])).toContain('切れ');
   });
 });
 

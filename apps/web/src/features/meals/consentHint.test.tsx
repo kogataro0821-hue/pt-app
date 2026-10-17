@@ -49,6 +49,7 @@ function aMeal(over: Partial<Meal> = {}): Meal {
     id: 'm1',
     order: 0,
     label: '1食目',
+    shop: '',
     items: [],
     memo: '',
     createdAt: 1_700_000_000_000,

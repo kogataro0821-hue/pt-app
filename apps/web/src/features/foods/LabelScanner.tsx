@@ -1,17 +1,18 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  COUNTABLE_UNITS,
   formatNutrients,
   kcalMismatchWarning,
   labelBasisLabel,
   labelToPer100g,
   toInternal,
+  unitChoices,
   type CountableUnit,
   type DecimalNutrients,
   type LabelBasis,
   type LabelReading,
 } from '@pt/core';
 import { AiError, aiErrorMessage, readNutritionLabel } from '@/features/ai/gemini';
+import { cachedCustomUnits, loadCustomUnits } from './unitsRepo';
 import {
   LABEL_MAX_EDGE,
   PhotoResizeError,
@@ -89,6 +90,20 @@ export function LabelScanner({
    */
   const [useServingUnit, setUseServingUnit] = useState(false);
   const [servingUnit, setServingUnit] = useState<CountableUnit>('袋');
+
+  /** 選べる単位（最初からあるもの＋管理者が足したもの） */
+  const [units, setUnits] = useState<CountableUnit[]>(() => unitChoices(cachedCustomUnits()));
+  useEffect(() => {
+    let alive = true;
+    void loadCustomUnits()
+      .then((extra) => {
+        if (alive) setUnits(unitChoices(extra));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
   /** 撮った写真そのもの。管理者が確かめられるように持ち回る */
   const [photo, setPhoto] = useState<string>('');
 
@@ -274,7 +289,7 @@ export function LabelScanner({
                     value={servingUnit}
                     onChange={(e) => setServingUnit(e.target.value as CountableUnit)}
                   >
-                    {COUNTABLE_UNITS.map((u) => (
+                    {units.map((u) => (
                       <option key={u} value={u}>
                         {u}
                       </option>

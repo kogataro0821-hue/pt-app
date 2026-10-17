@@ -124,6 +124,21 @@ export interface Meal {
   label: string;
   items: MealItem[];
   memo: string;
+  /**
+   * 外食の店名（追加仕様: 店名）。外食でなければ空。
+   *
+   * ★ 食事ごとに持ちます。食材ごとではありません。
+   *
+   *   外食は食事まるごとが「その店」です。同じ店の名前を
+   *   食材1つずつに入れさせるのは、ただの手間です。
+   *
+   * ★ 栄養値には一切関わりません。
+   *
+   *   店名から勝手にメニューを当てたりはしません。
+   *   当てた数字は根拠が無く、合っているかどうかも確かめられません。
+   *   これは**あとで人が見て思い出すため**の覚え書きです。
+   */
+  shop: string;
   createdAt: number | null;
   updatedAt: number | null;
 }
@@ -135,6 +150,9 @@ export interface Meal {
 export function computeItemNutrients(per100g: Nutrients, grams: number): Nutrients {
   return scaleByGrams(per100g, grams);
 }
+
+/** 店名に書ける長さ。 */
+export const MAX_SHOP_NAME = 40;
 
 /** 1回の食事の合計。 */
 export function mealTotals(meal: Pick<Meal, 'items'>): Nutrients {

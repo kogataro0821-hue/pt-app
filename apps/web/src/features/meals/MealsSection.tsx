@@ -17,6 +17,7 @@ import {
   type MealItem,
   type Nutrients,
   type Targets,
+  MAX_SHOP_NAME,
 } from '@pt/core';
 import { AI_RELAY_URL } from '@/config/firebase';
 import { AiTextPanel } from '@/features/ai/AiTextPanel';
@@ -27,6 +28,7 @@ import {
 } from '@/features/clients/clientTypes';
 import { requestFood, type LabelCandidate } from '@/features/foods/requestsRepo';
 import { ItemForm } from './ItemForm';
+import { rememberedShops, rememberShop } from './shopNames';
 import { LabelItemPanel } from './LabelItemPanel';
 import { deleteMeal, listMeals, newMealId, saveMeal, syncDayMealFlag } from './mealsRepo';
 
@@ -82,6 +84,8 @@ export function MealsSection({
   const [labelFor, setLabelFor] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ mealId: string; item: MealItem } | null>(null);
   const [busy, setBusy] = useState(false);
+  /** これまでに入れた店名（この端末の中だけ。追加仕様: 店名） */
+  const [shops, setShops] = useState<string[]>(() => rememberedShops(clientId));
   /** 登録依頼が届かなかったとき。記録は成立しているので、止めずに知らせるだけ */
   const [requestFailed, setRequestFailed] = useState(false);
 
@@ -170,6 +174,7 @@ export function MealsSection({
       label: nextMealLabel(list),
       items: [],
       memo: '',
+      shop: '',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -197,6 +202,29 @@ export function MealsSection({
   function renameMeal(meal: Meal, label: string) {
     const updated = { ...meal, label };
     setMeals((prev) => (prev ?? []).map((m) => (m.id === meal.id ? updated : m)));
+  }
+
+  /**
+   * 店名を書き換える（追加仕様: 店名）。
+   *
+   * ★ 栄養値には一切関わりません。あとで人が見て思い出すための覚え書きです。
+   *   店名からメニューを当てたりはしません。当てた数字は根拠が無く、
+   *   合っているかどうかも確かめられません。
+   */
+  function setShop(meal: Meal, shop: string) {
+    const updated = { ...meal, shop: shop.slice(0, MAX_SHOP_NAME) };
+    setMeals((prev) => (prev ?? []).map((m) => (m.id === meal.id ? updated : m)));
+  }
+
+  function commitShop(meal: Meal) {
+    const list = meals ?? [];
+    const found = list.find((m) => m.id === meal.id);
+    if (found === undefined) return;
+    if (found.shop.trim().length > 0) {
+      rememberShop(clientId, found.shop);
+      setShops(rememberedShops(clientId));
+    }
+    void persist(list, found);
   }
 
   function commitRename(meal: Meal) {
@@ -329,6 +357,14 @@ export function MealsSection({
         </p>
       )}
 
+      {/* ★ 候補は1か所にまとめて置きます（追加仕様: 店名）。
+             食事ごとに作ると、同じ中身の一覧が食事の数だけできます。 */}
+      <datalist id="shop-names">
+        {shops.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
       {meals.map((meal) => (
         <section className="card meal" key={meal.id}>
           <div className="meal-head">
@@ -355,6 +391,30 @@ export function MealsSection({
               </button>
             )}
           </div>
+
+          {/* ★ 外食のときだけ使う欄です（追加仕様: 店名）。
+                 ふだんは空のままで構いません。
+
+                 候補は、これまでに入れた店名です。同じ店に何度も行くので、
+                 毎回打たせるのは手間なだけです。 */}
+          {canEdit ? (
+            <label className="field">
+              <span className="field-label">店名（外食のとき）</span>
+              <input
+                className="input"
+                type="text"
+                value={meal.shop}
+                onChange={(e) => setShop(meal, e.target.value)}
+                onBlur={() => commitShop(meal)}
+                placeholder="入れなくても構いません"
+                maxLength={MAX_SHOP_NAME}
+                list="shop-names"
+                aria-label="店名"
+              />
+            </label>
+          ) : (
+            meal.shop.length > 0 && <p className="note">店名: {meal.shop}</p>
+          )}
 
           {meal.items.length === 0 && <p className="note">まだ食材がありません。</p>}
 

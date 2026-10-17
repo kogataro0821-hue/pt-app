@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  COUNTABLE_UNITS,
   conversionFor,
+  unitChoices,
   findSimilarFoods,
   foodKey,
   kcalMismatchWarning,
@@ -13,6 +13,7 @@ import {
 import { AI_RELAY_URL } from '@/config/firebase';
 import { writeErrorMessage } from '@/lib/firestoreError';
 import { LabelScanner } from './LabelScanner';
+import { cachedCustomUnits, loadCustomUnits } from './unitsRepo';
 import { emptyFood, newFoodId, saveFood, type Food } from './foodsRepo';
 
 /**
@@ -67,9 +68,32 @@ export function FoodEditor({
    *   「行を足す」形にすると、押さないと存在に気づけません。
    *   空欄のままなら、その単位は登録されません。
    */
+  /**
+   * かぞえ方の欄に出す単位（追加仕様: 単位を増やす）。
+   *
+   * ★ 最初からあるものに、管理者が足したものを足した一覧です。
+   *   読めるまでは最初からあるものだけで出します。
+   *   読み込み待ちで欄が空になるほうが困ります。
+   */
+  const [units, setUnits] = useState<CountableUnit[]>(() => unitChoices(cachedCustomUnits()));
+  useEffect(() => {
+    let alive = true;
+    void loadCustomUnits()
+      .then((extra) => {
+        if (alive) setUnits(unitChoices(extra));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const [conversions, setConversions] = useState<Record<CountableUnit, string>>(() => {
     const out = {} as Record<CountableUnit, string>;
-    for (const unit of COUNTABLE_UNITS) {
+    // ★ 登録済みの換算は、一覧に無い単位（過去に足して消えたもの）でも拾います
+    for (const c of base.unitConversions) out[c.unit] = String(c.grams);
+    for (const unit of units) {
+      if (out[unit] !== undefined) continue;
       const found = conversionFor(base.unitConversions, unit);
       out[unit] = found === undefined ? '' : String(found.grams);
     }
@@ -82,6 +106,7 @@ export function FoodEditor({
    *   見出しを「1袋あたり」に変えて、取り違えを防ぎます。
    */
   const [servingUnit, setServingUnit] = useState<CountableUnit | null>(base.servingUnit);
+
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -107,7 +132,7 @@ export function FoodEditor({
       const next = { ...prev };
       // ★ ほかの単位は消します。1袋=100g と 1個=30g が混ざると、
       //   同じ食品なのに入れ方で数字が変わります
-      for (const u of COUNTABLE_UNITS) next[u] = u === unit ? '100' : '';
+      for (const u of units) next[u] = u === unit ? '100' : '';
       return next;
     });
   }
@@ -153,26 +178,26 @@ export function FoodEditor({
   /** 入力されている換算（空欄の単位は入りません）。 */
   const filledConversions: UnitConversion[] = useMemo(
     () =>
-      COUNTABLE_UNITS.flatMap((unit) => {
-        const text = conversions[unit].trim();
+      units.flatMap((unit) => {
+        const text = (conversions[unit] ?? '').trim();
         if (text.length === 0) return [];
         const grams = Number(text);
         if (!Number.isFinite(grams)) return [];
         return [{ unit, grams }];
       }),
-    [conversions],
+    [conversions, units],
   );
 
   /** 換算のうち、範囲から外れているもの。最初の1件だけ知らせます。 */
   const conversionError = useMemo(() => {
-    for (const unit of COUNTABLE_UNITS) {
-      const text = conversions[unit].trim();
+    for (const unit of units) {
+      const text = (conversions[unit] ?? '').trim();
       if (text.length === 0) continue;
       const message = validateConversion(Number(text));
       if (message !== null) return `「1${unit}」の重さ: ${message}`;
     }
     return null;
-  }, [conversions]);
+  }, [conversions, units]);
 
   async function submit() {
     if (!nameOk) {
@@ -346,7 +371,7 @@ export function FoodEditor({
               }}
               aria-label="数える単位"
             >
-              {COUNTABLE_UNITS.map((u) => (
+              {units.map((u) => (
                 <option key={u} value={u}>
                   {u}
                 </option>
@@ -413,7 +438,7 @@ export function FoodEditor({
           入れると2割ぶん多く計算されるので、<b>食べる部分の重さ</b>を入れてください。
         </p>
 
-        {COUNTABLE_UNITS.map((unit) => (
+        {units.map((unit) => (
           <div className="conv-row" key={unit}>
             <span className="conv-label">1{unit}</span>
             <span className="conv-eq">=</span>
@@ -433,7 +458,7 @@ export function FoodEditor({
             <span className="conv-unit">g</span>
             {/* ★ その場で1個ぶんのカロリーを出します。
                    桁を間違えて 500 と打てば 710kcal と出るので、保存前に気づけます。 */}
-            <span className="conv-preview">{previewFor(unit, conversions[unit], numbers)}</span>
+            <span className="conv-preview">{previewFor(unit, conversions[unit] ?? '', numbers)}</span>
           </div>
         ))}
 

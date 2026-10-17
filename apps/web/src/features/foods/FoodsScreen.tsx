@@ -4,6 +4,7 @@ import { findNameConflicts, findSharedNames, foodKey } from '@pt/core';
 import { readErrorMessage, writeErrorMessage } from '@/lib/firestoreError';
 import { clearFoodCache, deleteFood, emptyFood, loadFoods, type Food } from './foodsRepo';
 import { FoodEditor } from './FoodEditor';
+import { UnitsCard } from './UnitsCard';
 
 /**
  * 共通食品マスタの管理（設計書 §21 / Phase 9）。
@@ -157,6 +158,10 @@ export function FoodsScreen() {
           onCancel={() => setEditing(null)}
         />
       )}
+
+      {/* ★ 単位は食材のためのものなので、食品マスタに置きます
+             （追加仕様: 単位を増やす）。 */}
+      <UnitsCard />
 
       <label className="field">
         <span className="field-label">さがす</span>

@@ -52,6 +52,7 @@ function meal(order: number, items: MealItem[]): Meal {
     label: `${order + 1}食目`,
     items,
     memo: '',
+    shop: '',
     createdAt: null,
     updatedAt: null,
   };
@@ -263,6 +264,7 @@ describe('未確定の食材にあとから栄養値を入れる', () => {
       order: 0,
       label: '1食目',
       memo: '',
+    shop: '',
       items: [
         {
           id: 'i1',
@@ -414,7 +416,16 @@ describe('仮の栄養値', () => {
   }
 
   function mealOf(items: MealItem[]): Meal {
-    return { id: 'm1', order: 0, label: '1食目', memo: '', items, createdAt: null, updatedAt: null };
+    return {
+      id: 'm1',
+      order: 0,
+      label: '1食目',
+      memo: '',
+      shop: '',
+      items,
+      createdAt: null,
+      updatedAt: null,
+    };
   }
 
   it('仮の値は、その日の合計に入る', () => {

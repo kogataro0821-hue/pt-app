@@ -18,6 +18,7 @@ import {
 } from '@pt/core';
 import { AI_RELAY_URL } from '@/config/firebase';
 import { loadFoods, type Food } from '@/features/foods/foodsRepo';
+import { cachedCustomUnits, loadCustomUnits } from '@/features/foods/unitsRepo';
 import { LabelScanner } from '@/features/foods/LabelScanner';
 import type { LabelCandidate } from '@/features/foods/requestsRepo';
 import { newItemId } from './mealsRepo';
@@ -91,6 +92,8 @@ export function ItemForm({
    *   区別しないと、下の単位の戻し処理が**読み込む前に走ります**。
    */
   const [foodsLoaded, setFoodsLoaded] = useState(false);
+  /** 管理者が足した単位（追加仕様: 単位を増やす） */
+  const [customUnits, setCustomUnits] = useState<string[]>(() => cachedCustomUnits());
   const [picked, setPicked] = useState<Food | null>(null);
   /**
    * その場で入れた100gあたりの栄養値。
@@ -124,6 +127,10 @@ export function ItemForm({
       .then(setFoods)
       .catch(() => setFoods([]))
       .finally(() => setFoodsLoaded(true));
+    // ★ 単位はめったに変わらないので、一度読んだら使い回します
+    void loadCustomUnits()
+      .then(setCustomUnits)
+      .catch(() => undefined);
   }, []);
 
   // ★ 打った名前を、まず既存マスタに当てにいきます（別名も見ます）。
@@ -175,7 +182,20 @@ export function ItemForm({
    *
    * ★ g は常に先頭にあります。換算が無くても、量りで測れば記録できます。
    */
-  const units = useMemo(() => entryUnitsFor(exact?.unitConversions), [exact]);
+  /**
+   * この食材で選べる単位（追加仕様: 単位を増やす）。
+   *
+   * ★ 登録済みのものだけでなく、**全部**出します。
+   *   以前は登録済みだけで、ほとんどの食材で g しか出ませんでした。
+   *   理由が画面に出ないので、壊れているようにしか見えません。
+   *   使う人は結局、当て推量のグラム数を打つことになります。
+   *
+   * ★ 換算の無い単位を選んだときは、栄養値を入れません（下を参照）。
+   */
+  const units = useMemo(
+    () => entryUnitsFor(exact?.unitConversions, customUnits),
+    [exact, customUnits],
+  );
 
   // ★ 食材を変えたら、その食材に無い単位は g に戻します。
   //   「卵 2個」のあとに名前を「白米」に書き換えると、
@@ -235,6 +255,22 @@ export function ItemForm({
 
   const nameOk = name.trim().length > 0;
   const gramsOk = gramsNum !== null && gramsNum > 0 && gramsNum <= 5000;
+
+  /**
+   * 重さが分からない状態（追加仕様: 単位を増やす）。
+   *
+   * ★ その食材の「1杯」が何gか登録されていない、という状態です。
+   *
+   *   以前はこの単位を選べないようにしていました。でも選べなくても
+   *   目分量は無くなりません。「150g」と当て推量で打たれるだけで、
+   *   しかもそちらは**目分量だと分かりません**。
+   *
+   *   いまは「1杯」と記録できます。そのかわり**栄養値は入れません**。
+   *   分からないものを分からないまま残すほうが、嘘の数字より安全です。
+   *   トレーナーが「1杯＝○g」を登録すれば、次から数字が出ます。
+   */
+  const amountPositive = amountNum !== null && amountNum > 0;
+  const unknownWeight = unit !== 'g' && amountPositive && gramsNum === null;
   /**
    * ★ どれか決まるまで、保存させません（追加仕様: まとめ呼び）。
    *
@@ -243,7 +279,7 @@ export function ItemForm({
    *   管理者に「とうふを登録してください」と届いても、
    *   何を登録すればいいのか分かりません。
    */
-  const canSubmit = nameOk && gramsOk && !ambiguous;
+  const canSubmit = nameOk && (gramsOk || unknownWeight) && !ambiguous;
 
   /** 記録に残す「2個」の控え。g で入れたときは残しません。 */
   const enteredAs =
@@ -265,7 +301,7 @@ export function ItemForm({
       setError(`「${name.trim()}」で${String(hits.length)}件あります。上の候補から選んでください。`);
       return;
     }
-    if (!gramsOk || gramsNum === null) {
+    if (!gramsOk && !unknownWeight) {
       setError(
         unit === 'g'
           ? '量は0より大きく、5000g以内で入力してください。'
@@ -276,19 +312,22 @@ export function ItemForm({
 
     const trimmed = name.trim();
     const internal = per100g === null ? ZERO : toInternal(per100g);
-    // 値が無いときだけ0。仮の値が入っていれば、ちゃんと計算します
-    const noValue = pending && !provisional;
+    // ★ 重さが分からないときは、栄養値を入れません（追加仕様: 単位を増やす）。
+    //   「1杯」とだけ残し、数字はトレーナーが登録してから出します。
+    const noValue = unknownWeight || (pending && !provisional);
 
     onSubmit(
       {
         id: initial?.id ?? newItemId(),
         name: exact !== null ? exact.name : trimmed,
-        grams: gramsNum,
+        // ★ 重さが分からないときは 0 です。合計に入りません。
+        //   0 を「0gを食べた」と読まれないよう、enteredAs に「1杯」が残ります。
+        grams: gramsNum ?? 0,
         per100g: internal,
-        nutrients: noValue ? ZERO : computeItemNutrients(internal, gramsNum),
+        nutrients: noValue || gramsNum === null ? ZERO : computeItemNutrients(internal, gramsNum),
         foodId: exact?.id ?? null,
-        pending,
-        provisional,
+        pending: pending || unknownWeight,
+        provisional: provisional && !unknownWeight,
         enteredAs,
       },
       // 未確定なら、管理者へ登録依頼を出す
@@ -417,11 +456,30 @@ export function ItemForm({
           </span>
         )}
 
+        {/* ★ 重さが分からない単位を選んだとき（追加仕様: 単位を増やす）。
+
+               ここを黙って通すのが、いちばん危ない作りです。
+               「1杯」と入れた人は、カロリーも入ったと思っています。
+               実際には合計に入っていない、と**その場で**伝えます。 */}
+        {unknownWeight && (
+          <p className="notice" role="status">
+            <b>この食材の「1{unit}」が何gか、まだ登録されていません。</b>
+            <br />
+            記録は残りますが、<b>カロリーとPFCはこの食材ぶん入りません</b>
+            （合計にも入りません）。
+            <br />
+            トレーナーが「1{unit}＝○g」を登録すると、次から数字が出ます。
+            いますぐ数字も残したいときは、単位を <b>g</b> にして、
+            量りで測った重さを入れてください。
+          </p>
+        )}
+
         {/* ★ この食材に、まだ かぞえ方 が登録されていないとき。
                「なぜ『個』が選べないのか」が分からないと、壊れていると思われます。 */}
         {units.length === 1 && exact !== null && (
           <span className="field-hint">
-            この食材はまだ「1個＝○g」が登録されていないので、gで入れてください。
+            この食材はまだ「1個＝○g」が登録されていません。
+            数字も残したいときは、g で入れてください。
           </span>
         )}
 
@@ -434,8 +492,9 @@ export function ItemForm({
                「個」を選べるようにしても、何gか誰も知らないので計算できません。 */}
         {units.length === 1 && exact === null && nameOk && (
           <span className="field-hint">
-            まだ登録されていない食材なので、<b>gでしか入れられません</b>。
-            「1袋」などで入れたいときは、トレーナーに登録してもらってください。
+            まだ登録されていない食材です。「1袋」などでも記録できますが、
+            重さが分からないので<b>栄養値は入りません</b>。
+            数字も残したいときは、g で入れてください。
           </span>
         )}
       </div>
